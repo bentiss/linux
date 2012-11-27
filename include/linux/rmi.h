@@ -73,16 +73,16 @@ enum rmi_attn_polarity {
  *               automatically enabled for this sensor.
  */
 struct rmi_f11_2d_axis_alignment {
-	bool swap_axes;
-	bool flip_x;
-	bool flip_y;
-	int clip_X_low;
-	int clip_Y_low;
-	int clip_X_high;
-	int clip_Y_high;
-	int offset_X;
-	int offset_Y;
-	int rel_report_enabled;
+	bool rel_report_enabled;
+	u32 swap_axes;	/* boolean, but u32 is needed by debugfs API */
+	u32 flip_x;	/* boolean */
+	u32 flip_y;	/* boolean */
+	u16 clip_x_low;
+	u16 clip_y_low;
+	u16 clip_x_high;
+	u16 clip_y_high;
+	u16 offset_x;
+	u16 offset_y;
 	u8 delta_x_threshold;
 	u8 delta_y_threshold;
 };
