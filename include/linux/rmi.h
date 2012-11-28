@@ -73,7 +73,6 @@ enum rmi_attn_polarity {
  *               automatically enabled for this sensor.
  */
 struct rmi_f11_2d_axis_alignment {
-	bool rel_report_enabled;
 	u32 swap_axes;	/* boolean, but u32 is needed by debugfs API */
 	u32 flip_x;	/* boolean */
 	u32 flip_y;	/* boolean */
