@@ -832,42 +832,6 @@ enum finger_state_values {
 	F11_RESERVED	= 0x03
 };
 
-static ssize_t rmi_f11_relreport_show(struct device *dev,
-				      struct device_attribute *attr,
-				      char *buf)
-{
-	struct rmi_function *fn = to_rmi_function(dev);
-	struct f11_data *data = fn->data;
-
-	return snprintf(buf, PAGE_SIZE, "%u\n",
-			data->sensors[0].axis_align.rel_report_enabled);
-}
-
-static ssize_t rmi_f11_relreport_store(struct device *dev,
-				       struct device_attribute *attr,
-				       const char *buf,
-				       size_t count)
-{
-	struct rmi_function *fn = to_rmi_function(dev);
-	struct f11_data *data = fn->data;
-	unsigned int new_value;
-	int error;
-
-	error = kstrtouint(buf, 0, &new_value);
-	if (error)
-		return error;
-
-	if (new_value > 1)
-		return -ERANGE;
-
-	data->sensors[0].axis_align.rel_report_enabled = new_value;
-
-	return count;
-}
-
-static DEVICE_ATTR(relreport, RMI_RW_ATTR,
-		   rmi_f11_relreport_show, rmi_f11_relreport_store);
-
 static ssize_t rmi_f11_rezero_store(struct device *dev,
 				    struct device_attribute *attr,
 				    const char *buf, size_t count)
@@ -906,7 +870,6 @@ static ssize_t rmi_f11_rezero_store(struct device *dev,
 static DEVICE_ATTR(rezero, RMI_WO_ATTR, NULL, rmi_f11_rezero_store);
 
 static struct attribute *rmi_f11_attrs[] = {
-	&dev_attr_relreport.attr,
 	&dev_attr_rezero.attr,
 	NULL
 };
