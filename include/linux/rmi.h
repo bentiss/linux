@@ -590,11 +590,11 @@ void rmi_unregister_phys_device(struct rmi_phys_device *phys);
 int rmi_for_each_dev(void *data, int (*func)(struct device *dev, void *data));
 
 /**
- * module_serio_driver() - Helper macro for registering a serio driver
- * @__serio_driver: serio_driver struct
+ * module_rmi_driver() - Helper macro for registering a function driver
+ * @__rmi_driver: rmi_function_handler struct
  *
- * Helper macro for serio drivers which do not do anything special in
- * module init/exit. This eliminates a lot of boilerplate. Each module
+ * Helper macro for RMI4 function drivers which do not do anything special
+ * in module init/exit. This eliminates a lot of boilerplate. Each module
  * may only use this macro once, and calling it replaces module_init()
  * and module_exit().
  */
