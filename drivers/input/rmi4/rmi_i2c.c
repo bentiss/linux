@@ -381,18 +381,7 @@ static struct i2c_driver rmi_i2c_driver = {
 	.remove		= rmi_i2c_remove,
 };
 
-static int __init rmi_i2c_init(void)
-{
-	return i2c_add_driver(&rmi_i2c_driver);
-}
-
-static void __exit rmi_i2c_exit(void)
-{
-	i2c_del_driver(&rmi_i2c_driver);
-}
-
-module_init(rmi_i2c_init);
-module_exit(rmi_i2c_exit);
+module_i2c_driver(rmi_i2c_driver);
 
 MODULE_AUTHOR("Christopher Heiny <cheiny@synaptics.com>");
 MODULE_DESCRIPTION("RMI I2C driver");
