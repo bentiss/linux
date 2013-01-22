@@ -1359,7 +1359,7 @@ exit:
 
 #endif /* CONFIG_PM */
 
-static int __devexit rmi_driver_remove(struct device *dev)
+static int rmi_driver_remove(struct device *dev)
 {
 	struct rmi_driver_data *data;
 	int i;
@@ -1380,7 +1380,7 @@ static int __devexit rmi_driver_remove(struct device *dev)
 	return 0;
 }
 
-static int __devinit rmi_driver_probe(struct device *dev)
+static int rmi_driver_probe(struct device *dev)
 {
 	struct rmi_driver *rmi_driver;
 	struct rmi_driver_data *data = NULL;
@@ -1602,7 +1602,7 @@ struct rmi_driver rmi_sensor_driver = {
 		.bus = &rmi_bus_type,
 		.pm = &rmi_driver_pm,
 		.probe = rmi_driver_probe,
-		.remove = __devexit_p(rmi_driver_remove),
+		.remove = rmi_driver_remove,
 	},
 	.irq_handler = rmi_driver_irq_handler,
 	.reset_handler = rmi_driver_reset_handler,
