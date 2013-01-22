@@ -262,8 +262,8 @@ exit:
 	return retval;
 }
 
-static int __devinit rmi_i2c_probe(struct i2c_client *client,
-				  const struct i2c_device_id *id)
+static int rmi_i2c_probe(struct i2c_client *client,
+			 const struct i2c_device_id *id)
 {
 	struct rmi_phys_device *rmi_phys;
 	struct rmi_i2c_data *data;
@@ -350,7 +350,7 @@ err_gpio:
 	return retval;
 }
 
-static int __devexit rmi_i2c_remove(struct i2c_client *client)
+static int rmi_i2c_remove(struct i2c_client *client)
 {
 	struct rmi_phys_device *phys = i2c_get_clientdata(client);
 	struct rmi_device_platform_data *pd = client->dev.platform_data;
@@ -378,7 +378,7 @@ static struct i2c_driver rmi_i2c_driver = {
 	},
 	.id_table	= rmi_id,
 	.probe		= rmi_i2c_probe,
-	.remove		= __devexit_p(rmi_i2c_remove),
+	.remove		= rmi_i2c_remove,
 };
 
 static int __init rmi_i2c_init(void)
