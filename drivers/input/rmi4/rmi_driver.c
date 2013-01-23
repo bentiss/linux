@@ -28,6 +28,7 @@
 #include <linux/slab.h>
 #include <linux/uaccess.h>
 #include <uapi/linux/input.h>
+#include "rmi_bus.h"
 #include "rmi_driver.h"
 #include "rmi_f01.h"
 
