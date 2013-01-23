@@ -16,6 +16,7 @@
 #include <linux/slab.h>
 #include <linux/types.h>
 #include <linux/debugfs.h>
+#include "rmi_bus.h"
 #include "rmi_driver.h"
 
 DEFINE_MUTEX(rmi_bus_mutex);

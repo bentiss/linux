@@ -13,6 +13,7 @@
 #include <linux/ctype.h>
 #include <linux/hrtimer.h>
 #include <linux/ktime.h>
+#include "rmi_bus.h"
 
 #define RMI_DRIVER_VERSION "1.6"
 
