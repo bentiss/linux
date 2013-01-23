@@ -94,13 +94,15 @@ int rmi_register_phys_device(struct rmi_phys_device *phys)
 		return -ENOMEM;
 
 	rmi_dev->phys = phys;
-	rmi_dev->dev.bus = &rmi_bus_type;
-	rmi_dev->dev.type = &rmi_sensor_type;
-
 	rmi_dev->number = atomic_inc_return(&physical_device_count) - 1;
-	rmi_dev->dev.release = release_rmidev_device;
 
 	dev_set_name(&rmi_dev->dev, "sensor%02d", rmi_dev->number);
+
+	rmi_dev->dev.bus = &rmi_bus_type;
+	rmi_dev->dev.type = &rmi_sensor_type;
+	rmi_dev->dev.release = release_rmidev_device;
+	rmi_dev->dev.driver = &rmi_sensor_driver.driver;
+
 	phys->rmi_dev = rmi_dev;
 
 	error = device_register(&rmi_dev->dev);
@@ -214,7 +216,7 @@ static int rmi_function_probe(struct device *dev)
 	return 0;
 }
 
-static int rmi_function_remove(struct device *dev)
+static int __rmi_function_remove(struct device *dev)
 {
 	struct rmi_function *fn = to_rmi_function(dev);
 	struct rmi_function_handler *handler =
@@ -222,6 +224,14 @@ static int rmi_function_remove(struct device *dev)
 
 	if (handler->remove)
 		handler->remove(fn);
+
+	return 0;
+}
+
+static int rmi_function_remove(struct device *dev)
+{
+	if (dev->type == &rmi_function_type)
+		__rmi_function_remove(dev);
 
 	return 0;
 }
