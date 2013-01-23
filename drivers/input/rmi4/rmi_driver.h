@@ -42,8 +42,8 @@ struct rmi_driver_data {
 	struct rmi_function *f01_container;
 	bool f01_bootloader_mode;
 
-	atomic_t attn_count;
-	bool irq_debug;
+	u32 attn_count;
+	u32 irq_debug;	/* Should be bool, but debugfs wants u32 */
 	int irq;
 	int irq_flags;
 	int num_of_irq_regs;

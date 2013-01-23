@@ -168,13 +168,13 @@ struct rmi_f30_gpioled_map {
  * with assert==FALSE.
  */
 struct rmi_device_platform_data_spi {
-	int block_delay_us;
-	int split_read_block_delay_us;
-	int read_delay_us;
-	int write_delay_us;
-	int split_read_byte_delay_us;
-	int pre_delay_us;
-	int post_delay_us;
+	u32 block_delay_us;
+	u32 split_read_block_delay_us;
+	u32 read_delay_us;
+	u32 write_delay_us;
+	u32 split_read_byte_delay_us;
+	u32 pre_delay_us;
+	u32 post_delay_us;
 
 	void *cs_assert_data;
 	int (*cs_assert) (const void *cs_assert_data, const bool assert);
