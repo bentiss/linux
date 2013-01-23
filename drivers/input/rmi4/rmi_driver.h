@@ -36,7 +36,8 @@ struct pdt_properties {
 } __attribute__((__packed__));
 
 struct rmi_driver_data {
-	struct rmi_function rmi_functions;
+	struct list_head function_list;
+
 	struct rmi_device *rmi_dev;
 
 	struct rmi_function *f01_container;
@@ -121,17 +122,11 @@ static inline void copy_pdt_entry_to_fd(struct pdt_entry *pdt,
 	fd->function_version = pdt->function_version;
 }
 
-#ifdef	CONFIG_RMI4_FWLIB
-extern void rmi4_fw_update(struct rmi_device *rmi_dev,
-		struct pdt_entry *f01_pdt, struct pdt_entry *f34_pdt);
-#else
-#define rmi4_fw_update(rmi_dev, f01_pdt, f34_pdt)
-#endif
+bool rmi_is_physical_driver(struct device_driver *);
+int rmi_register_physical_driver(void);
+void rmi_unregister_physical_driver(void);
 
-extern struct rmi_driver rmi_sensor_driver;
-extern struct rmi_function_handler rmi_f01_handler;
-
-int rmi_register_sensor_driver(void);
-void rmi_unregister_sensor_driver(void);
+int rmi_register_f01_handler(void);
+void rmi_unregister_f01_handler(void);
 
 #endif

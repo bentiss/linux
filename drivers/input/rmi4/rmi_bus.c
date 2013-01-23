@@ -19,67 +19,126 @@
 #include "rmi_bus.h"
 #include "rmi_driver.h"
 
-DEFINE_MUTEX(rmi_bus_mutex);
+static int rmi_function_match(struct device *dev, struct device_driver *drv)
+{
+	struct rmi_function_handler *handler = to_rmi_function_handler(drv);
+	struct rmi_function *fn = to_rmi_function(dev);
 
-static struct attribute *function_dev_attrs[] = {
-	NULL,
-};
+	return fn->fd.function_number == handler->func;
+}
 
-static struct attribute_group function_dev_attr_group = {
-	.attrs = function_dev_attrs,
-};
+static int rmi_bus_match(struct device *dev, struct device_driver *drv)
+{
+	bool physical = rmi_is_physical_device(dev);
 
-static const struct attribute_group *function_dev_attr_groups[] = {
-	&function_dev_attr_group,
-	NULL,
-};
+	/* First see if types are not compatible */
+	if (physical != rmi_is_physical_driver(drv))
+		return 0;
 
-struct device_type rmi_function_type = {
-	.name = "rmi_function",
-	.groups = function_dev_attr_groups,
-};
-EXPORT_SYMBOL_GPL(rmi_function_type);
+	return physical || rmi_function_match(dev, drv);
+}
 
-static struct attribute *sensor_dev_attrs[] = {
-	NULL,
+struct bus_type rmi_bus_type = {
+	.match		= rmi_bus_match,
+	.name		= "rmi",
 };
-static struct attribute_group sensor_dev_attr_group = {
-	.attrs = sensor_dev_attrs,
-};
-
-static const struct attribute_group *sensor_dev_attr_groups[] = {
-	&sensor_dev_attr_group,
-	NULL,
-};
-
-struct device_type rmi_sensor_type = {
-	.name = "rmi_sensor",
-	.groups = sensor_dev_attr_groups,
-};
-EXPORT_SYMBOL_GPL(rmi_sensor_type);
-
-static atomic_t physical_device_count = ATOMIC_INIT(0);
 
 #ifdef CONFIG_RMI4_DEBUG
+
 static struct dentry *rmi_debugfs_root;
+
+static void rmi_bus_setup_debugfs(void)
+{
+	rmi_debugfs_root = debugfs_create_dir(rmi_bus_type.name, NULL);
+	if (!rmi_debugfs_root)
+		pr_err("%s: Failed to create debugfs root\n",
+		       __func__);
+}
+
+static void rmi_bus_teardown_debugfs(void)
+{
+	if (rmi_debugfs_root)
+		debugfs_remove_recursive(rmi_debugfs_root);
+}
+
+#else
+
+static void rmi_bus_setup_debugfs(void)
+{
+}
+
+static void rmi_bus_teardown_debugfs(void)
+{
+}
+
 #endif
 
-static void release_rmidev_device(struct device *dev)
+
+/*
+ * RMI Physical devices
+ *
+ * Physical RMI device consists of several functions serving particular
+ * purpose. For example F11 is a 2D touch sensor while F10 is a generic
+ * function present in every RMI device.
+ */
+
+static void rmi_release_device(struct device *dev)
 {
 	struct rmi_device *rmi_dev = to_rmi_device(dev);
 
 	kfree(rmi_dev);
 }
 
+/* Device type for physical RMI devices */
+struct device_type rmi_device_type = {
+	.name		= "rmi_sensor",
+	.release	= rmi_release_device,
+};
+
+bool rmi_is_physical_device(struct device *dev)
+{
+	return dev->type == &rmi_device_type;
+}
+
+#if CONFIG_RMI4_DEBUG
+
+static void rmi_physical_setup_debugfs(struct rmi_device *rmi_dev)
+{
+	rmi_dev->debugfs_root = debugfs_create_dir(dev_name(&rmi_dev->dev),
+						   rmi_debugfs_root);
+	if (!rmi_dev->debugfs_root)
+		dev_warn(&rmi_dev->dev, "Failed to create debugfs root.\n");
+}
+
+static void rmi_physical_teardown_debugfs(struct rmi_device *rmi_dev)
+{
+	if (rmi_dev->debugfs_root)
+		debugfs_remove_recursive(rmi_dev->debugfs_root);
+}
+
+#else
+
+static void rmi_physocal_setup_debugfs(struct rmi_device *rmi_dev)
+{
+}
+
+static void rmi_physical_teardown_debugfs(struct rmi_device *rmi_dev)
+{
+}
+
+#endif
+
+
 /**
- * rmi_register_phys_device - register a physical device connection on the RMI
+ * rmi_register_physical_device - register a physical device connection on the RMI
  * bus.  Physical drivers provide communication from the devices on the bus to
  * the RMI4 sensor on a bus such as SPI, I2C, and so on.
  *
  * @phys: the physical device to register
  */
-int rmi_register_phys_device(struct rmi_phys_device *phys)
+int rmi_register_physical_device(struct rmi_phys_device *phys)
 {
+	static atomic_t physical_device_count = ATOMIC_INIT(0);
 	struct rmi_device_platform_data *pdata = phys->dev->platform_data;
 	struct rmi_device *rmi_dev;
 	int error;
@@ -100,9 +159,7 @@ int rmi_register_phys_device(struct rmi_phys_device *phys)
 	dev_set_name(&rmi_dev->dev, "sensor%02d", rmi_dev->number);
 
 	rmi_dev->dev.bus = &rmi_bus_type;
-	rmi_dev->dev.type = &rmi_sensor_type;
-	rmi_dev->dev.release = release_rmidev_device;
-	rmi_dev->dev.driver = &rmi_sensor_driver.driver;
+	rmi_dev->dev.type = &rmi_device_type;
 
 	phys->rmi_dev = rmi_dev;
 
@@ -110,35 +167,140 @@ int rmi_register_phys_device(struct rmi_phys_device *phys)
 	if (error)
 		return error;
 
+	rmi_physical_setup_debugfs(rmi_dev);
+
 	dev_dbg(phys->dev, "%s: Registered %s as %s.\n", __func__,
 		pdata->sensor_name, dev_name(&rmi_dev->dev));
-
-	if (IS_ENABLED(CONFIG_RMI4_DEBUG) && rmi_debugfs_root) {
-		rmi_dev->debugfs_root = debugfs_create_dir(
-			dev_name(&rmi_dev->dev), rmi_debugfs_root);
-		if (!rmi_dev->debugfs_root)
-			dev_warn(&rmi_dev->dev, "Failed to create debugfs root.\n");
-	}
 
 	return 0;
 }
 EXPORT_SYMBOL(rmi_register_phys_device);
 
 /**
- * rmi_unregister_phys_device - unregister a physical device connection
+ * rmi_unregister_physical_device - unregister a physical device connection
  * @phys: the physical driver to unregister
  *
  */
-void rmi_unregister_phys_device(struct rmi_phys_device *phys)
+void rmi_unregister_physical_device(struct rmi_phys_device *phys)
 {
 	struct rmi_device *rmi_dev = phys->rmi_dev;
 
-	if (IS_ENABLED(CONFIG_RMI4_DEBUG) && rmi_dev->debugfs_root)
-		debugfs_remove(rmi_dev->debugfs_root);
-
+	rmi_physical_teardown_debugfs(rmi_dev);
 	device_unregister(&rmi_dev->dev);
 }
-EXPORT_SYMBOL(rmi_unregister_phys_device);
+EXPORT_SYMBOL(rmi_unregister_physical_device);
+
+
+/*
+ * RMI Function devices and their handlers
+ */
+
+static void rmi_release_function(struct device *dev)
+{
+	struct rmi_function *fn = to_rmi_function(dev);
+
+	kfree(fn);
+}
+
+/* Device type for RMI Function devices */
+struct device_type rmi_function_type = {
+	.name		= "rmi_function",
+	.release	= rmi_release_function,
+};
+
+bool rmi_is_function_device(struct device *dev)
+{
+	return dev->type == &rmi_function_type;
+}
+
+#if CONFIG_RMI4_DEBUG
+
+static void rmi_function_setup_debugfs(struct rmi_function *fn)
+{
+	char dirname[12];
+
+	snprintf(dirname, sizeof(dirname), "F%02X", fn->fd.function_number);
+	fn->debugfs_root = debugfs_create_dir(dirname,
+					      fn->rmi_dev->debugfs_root);
+	if (!fn->debugfs_root)
+		dev_warn(&fn->dev, "Failed to create debugfs dir.\n");
+}
+
+static void rmi_function_teardown_debugfs(struct rmi_function *fn)
+{
+	if (fn->debugfs_root)
+		debugfs_remove_recursive(fn->debugfs_root);
+}
+
+#else
+
+static void rmi_function_setup_debugfs(struct rmi_function *fn)
+{
+}
+
+static void rmi_function_teardown_debugfs(struct rmi_function *fn)
+{
+}
+
+#endif
+
+int rmi_register_function(struct rmi_function *fn)
+{
+	struct rmi_device *rmi_dev = fn->rmi_dev;
+	int error;
+
+	dev_set_name(&fn->dev, "%s.fn%02x",
+		     dev_name(&rmi_dev->dev), fn->fd.function_number);
+
+	fn->dev.parent = &rmi_dev->dev;
+	fn->dev.type = &rmi_function_type;
+	fn->dev.bus = &rmi_bus_type;
+
+	error = device_register(&fn->dev);
+	if (error) {
+		dev_err(&rmi_dev->dev,
+			"Failed device_register function device %s\n",
+			dev_name(&fn->dev));
+	}
+
+	dev_dbg(&rmi_dev->dev, "Registered F%02X.\n", fn->fd.function_number);
+
+	rmi_function_setup_debugfs(fn);
+	return 0;
+}
+
+void rmi_unregister_function(struct rmi_function *fn)
+{
+	rmi_function_teardown_debugfs(fn);
+	device_unregister(&fn->dev);
+}
+
+static int rmi_function_probe(struct device *dev)
+{
+	struct rmi_function *fn = to_rmi_function(dev);
+	struct rmi_function_handler *handler =
+					to_rmi_function_handler(dev->driver);
+	int error;
+
+	if (handler->probe) {
+		error = handler->probe(fn);
+		return error;
+	}
+
+	return 0;
+}
+
+static int rmi_function_remove(struct device *dev)
+{
+	struct rmi_function *fn = to_rmi_function(dev);
+	struct rmi_function_handler *handler =
+					to_rmi_function_handler(dev->driver);
+
+	if (handler->remove)
+		handler->remove(fn);
+
+	return 0;
+}
 
 /**
  * rmi_register_function_handler - register a handler for an RMI function
@@ -154,11 +316,14 @@ int __rmi_register_function_handler(struct rmi_function_handler *handler,
 				     struct module *owner,
 				     const char *mod_name)
 {
+	struct device_driver *driver = &handler->driver;
 	int error;
 
-	handler->driver.bus = &rmi_bus_type;
-	handler->driver.owner = owner;
-	handler->driver.mod_name = mod_name;
+	driver->bus = &rmi_bus_type;
+	driver->owner = owner;
+	driver->mod_name = mod_name;
+	driver->probe = rmi_function_probe;
+	driver->remove = rmi_function_remove;
 
 	error = driver_register(&handler->driver);
 	if (error) {
@@ -184,128 +349,13 @@ void rmi_unregister_function_handler(struct rmi_function_handler *handler)
 }
 EXPORT_SYMBOL(rmi_unregister_function_handler);
 
-
-static int rmi_function_match(struct device *dev, struct device_driver *drv)
-{
-	struct rmi_function_handler *handler;
-	struct rmi_function *fn;
-
-	if (dev->type != &rmi_function_type)
-		return 0;
-
-	if (drv == &rmi_sensor_driver.driver)
-		return 0;
-
-	fn = to_rmi_function(dev);
-	handler = to_rmi_function_handler(drv);
-
-	return fn->fd.function_number == handler->func;
-}
-
-static int rmi_function_probe(struct device *dev)
-{
-	struct rmi_function *fn = to_rmi_function(dev);
-	struct rmi_function_handler *handler =
-					to_rmi_function_handler(dev->driver);
-	int error;
-
-	if (handler->probe) {
-		error = handler->probe(fn);
-		return error;
-	}
-
-	return 0;
-}
-
-static int __rmi_function_remove(struct device *dev)
-{
-	struct rmi_function *fn = to_rmi_function(dev);
-	struct rmi_function_handler *handler =
-					to_rmi_function_handler(dev->driver);
-
-	if (handler->remove)
-		handler->remove(fn);
-
-	return 0;
-}
-
-static int rmi_function_remove(struct device *dev)
-{
-	if (dev->type == &rmi_function_type)
-		__rmi_function_remove(dev);
-
-	return 0;
-}
-
-#ifdef CONFIG_PM
-static int rmi_bus_suspend(struct device *dev)
-{
-	struct device_driver *driver = dev->driver;
-	const struct dev_pm_ops *pm;
-
-	if (!driver)
-		return 0;
-
-	pm = driver->pm;
-	if (pm && pm->suspend)
-		return pm->suspend(dev);
-	if (driver->suspend)
-		return driver->suspend(dev, PMSG_SUSPEND);
-
-	return 0;
-}
-
-static int rmi_bus_resume(struct device *dev)
-{
-	struct device_driver *driver = dev->driver;
-	const struct dev_pm_ops *pm;
-
-	if (!driver)
-		return 0;
-
-	pm = driver->pm;
-	if (pm && pm->resume)
-		return pm->resume(dev);
-	if (driver->resume)
-		return driver->resume(dev);
-
-	return 0;
-}
-#endif
-
-static SIMPLE_DEV_PM_OPS(rmi_bus_pm_ops,
-			 rmi_bus_suspend, rmi_bus_resume);
-
-struct bus_type rmi_bus_type = {
-	.match		= rmi_function_match,
-	.probe		= rmi_function_probe,
-	.remove		= rmi_function_remove,
-	.name		= "rmi",
-	.pm		= &rmi_bus_pm_ops,
-};
-
-/**
- * rmi_for_each_dev - provides a way for other parts of the system to enumerate
- * the devices on the RMI bus.
- *
- * @data - will be passed into the callback function.
- * @func - will be called for each device.
+/*
+ * Bus registration and tear-down
  */
-int rmi_for_each_dev(void *data, int (*func)(struct device *dev, void *data))
-{
-	int retval;
-	mutex_lock(&rmi_bus_mutex);
-	retval = bus_for_each_dev(&rmi_bus_type, NULL, data, func);
-	mutex_unlock(&rmi_bus_mutex);
-	return retval;
-}
-EXPORT_SYMBOL(rmi_for_each_dev);
 
 static int __init rmi_bus_init(void)
 {
 	int error;
-
-	mutex_init(&rmi_bus_mutex);
 
 	error = bus_register(&rmi_bus_type);
 	if (error) {
@@ -314,40 +364,31 @@ static int __init rmi_bus_init(void)
 		return error;
 	}
 
-	error = rmi_register_function_handler(&rmi_f01_handler);
+	error = rmi_register_f01_handler();
 	if (error) {
 		pr_err("%s: error registering the RMI F01 handler: %d\n",
 			__func__, error);
 		goto err_unregister_bus;
 	}
 
-	error = rmi_register_sensor_driver();
+	error = rmi_register_physical_driver();
 	if (error) {
-		pr_err("%s: error registering the RMI sensor driver: %d\n",
+		pr_err("%s: error registering the RMI physical driver: %d\n",
 			__func__, error);
 		goto err_unregister_f01;
 	}
 
-	if (IS_ENABLED(CONFIG_RMI4_DEBUG)) {
-		rmi_debugfs_root = debugfs_create_dir(rmi_bus_type.name, NULL);
-		if (!rmi_debugfs_root)
-			pr_err("%s: Failed to create debugfs root.\n",
-			       __func__);
-		else if (IS_ERR(rmi_debugfs_root)) {
-			pr_err("%s: Kernel may not contain debugfs support, code=%ld\n",
-				__func__, PTR_ERR(rmi_debugfs_root));
-			rmi_debugfs_root = NULL;
-		}
-	}
+	rmi_bus_setup_debugfs();
 
 	return 0;
 
 err_unregister_f01:
-	rmi_unregister_function_handler(&rmi_f01_handler);
+	rmi_unregister_f01_handler();
 err_unregister_bus:
 	bus_unregister(&rmi_bus_type);
 	return error;
 }
+module_init(rmi_bus_init);
 
 static void __exit rmi_bus_exit(void)
 {
@@ -355,15 +396,12 @@ static void __exit rmi_bus_exit(void)
 	 * We should only ever get here if all drivers are unloaded, so
 	 * all we have to do at this point is unregister ourselves.
 	 */
-	if (IS_ENABLED(CONFIG_RMI4_DEBUG) && rmi_debugfs_root)
-		debugfs_remove(rmi_debugfs_root);
 
-	rmi_unregister_sensor_driver();
-	rmi_unregister_function_handler(&rmi_f01_handler);
+	rmi_bus_teardown_debugfs();
+	rmi_unregister_physical_driver();
+	rmi_unregister_f01_handler();
 	bus_unregister(&rmi_bus_type);
 }
-
-module_init(rmi_bus_init);
 module_exit(rmi_bus_exit);
 
 MODULE_AUTHOR("Christopher Heiny <cheiny@synaptics.com");

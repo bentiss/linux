@@ -2071,16 +2071,17 @@ int rmi_f11_attention(struct rmi_function *fn,
 	return 0;
 }
 
-#ifdef CONFIG_PM
-static int rmi_f11_resume(struct rmi_function *fn)
+#ifdef CONFIG_PM_SLEEP
+static int rmi_f11_resume(struct device *dev)
 {
+	struct rmi_function *fn = to_rmi_function(dev);
 	struct rmi_device *rmi_dev = fn->rmi_dev;
 	struct f11_data *data = fn->data;
 	/* Command register always reads as 0, so we can just use a local. */
 	struct f11_2d_commands commands = {
 		.rezero = true,
 	};
-	int retval = 0;
+	int error;
 
 	dev_dbg(&fn->dev, "Resuming...\n");
 	if (!data->rezero_wait_ms)
@@ -2088,17 +2089,20 @@ static int rmi_f11_resume(struct rmi_function *fn)
 
 	mdelay(data->rezero_wait_ms);
 
-	retval = rmi_write_block(rmi_dev, fn->fd.command_base_addr,
-			&commands, sizeof(commands));
-	if (retval < 0) {
-		dev_err(&fn->dev, "%s: failed to issue rezero command, error = %d.",
-			__func__, retval);
-		return retval;
+	error = rmi_write_block(rmi_dev, fn->fd.command_base_addr,
+				&commands, sizeof(commands));
+	if (error < 0) {
+		dev_err(&fn->dev,
+			"%s: failed to issue rezero command, error = %d.",
+			__func__, error);
+		return error;
 	}
 
-	return retval;
+	return 0;
 }
-#endif /* CONFIG_PM */
+#endif /* CONFIG_PM_SLEEP */
+
+static SIMPLE_DEV_PM_OPS(rmi_f11_pm_ops, NULL, rmi_f11_resume);
 
 static int rmi_f11_probe(struct rmi_function *fn)
 {
@@ -2129,18 +2133,14 @@ static void rmi_f11_remove(struct rmi_function *fn)
 
 static struct rmi_function_handler rmi_f11_handler = {
 	.driver = {
-		.name = "rmi_f11",
+		.name	= "rmi_f11",
+		.pm	= &rmi_f11_pm_ops,
 	},
-	.func = 0x11,
-	.probe = rmi_f11_probe,
-	.remove = rmi_f11_remove,
-	.config = rmi_f11_config,
-	.attention = rmi_f11_attention,
-#ifdef CONFIG_HAS_EARLYSUSPEND
-	.late_resume = rmi_f11_resume
-#elif defined(CONFIG_PM)
-	.resume = rmi_f11_resume
-#endif  /* defined(CONFIG_HAS_EARLYSUSPEND) */
+	.func		= 0x11,
+	.probe		= rmi_f11_probe,
+	.remove		= rmi_f11_remove,
+	.config		= rmi_f11_config,
+	.attention	= rmi_f11_attention,
 };
 
 module_rmi_driver(rmi_f11_handler);

@@ -1135,64 +1135,58 @@ static void rmi_f01_remove(struct rmi_function *fn)
 	sysfs_remove_group(&fn->dev.kobj, &rmi_fn_01_attr_group);
 }
 
-#ifdef CONFIG_PM
-static int rmi_f01_suspend(struct rmi_function *fn)
+#ifdef CONFIG_PM_SLEEP
+static int rmi_f01_suspend(struct device *dev)
 {
+	struct rmi_function *fn = to_rmi_function(dev);
 	struct rmi_device *rmi_dev = fn->rmi_dev;
 	struct f01_data *data = fn->data;
-	int retval = 0;
-
-	if (data->suspended)
-		return 0;
+	int error;
 
 	data->old_nosleep = data->device_control.ctrl0.nosleep;
 	data->device_control.ctrl0.nosleep = 0;
 	data->device_control.ctrl0.sleep_mode = RMI_SLEEP_MODE_SENSOR_SLEEP;
 
-	retval = rmi_write_block(rmi_dev,
+	error = rmi_write_block(rmi_dev,
 			fn->fd.control_base_addr,
 			&data->device_control.ctrl0,
 			sizeof(data->device_control.ctrl0));
-	if (retval < 0) {
+	if (error < 0) {
 		dev_err(&fn->dev, "Failed to write sleep mode. Code: %d.\n",
-			retval);
+			error);
 		data->device_control.ctrl0.nosleep = data->old_nosleep;
 		data->device_control.ctrl0.sleep_mode = RMI_SLEEP_MODE_NORMAL;
-	} else {
-		data->suspended = true;
-		retval = 0;
+		return error;
 	}
 
-	return retval;
+	return 0;
 }
 
-static int rmi_f01_resume(struct rmi_function *fn)
+static int rmi_f01_resume(struct device *dev)
 {
+	struct rmi_function *fn = to_rmi_function(dev);
 	struct rmi_device *rmi_dev = fn->rmi_dev;
 	struct f01_data *data = fn->data;
-	int retval = 0;
-
-	if (!data->suspended)
-		return 0;
+	int error;
 
 	data->device_control.ctrl0.nosleep = data->old_nosleep;
 	data->device_control.ctrl0.sleep_mode = RMI_SLEEP_MODE_NORMAL;
 
-	retval = rmi_write_block(rmi_dev, fn->fd.control_base_addr,
+	error = rmi_write_block(rmi_dev, fn->fd.control_base_addr,
 			&data->device_control.ctrl0,
 			sizeof(data->device_control.ctrl0));
-	if (retval < 0)
+	if (error < 0) {
 		dev_err(&fn->dev,
 			"Failed to restore normal operation. Code: %d.\n",
-			retval);
-	else {
-		data->suspended = false;
-		retval = 0;
+			error);
+		return error;
 	}
 
-	return retval;
+	return 0;
 }
-#endif /* CONFIG_PM */
+#endif /* CONFIG_PM_SLEEP */
+
+static SIMPLE_DEV_PM_OPS(rmi_f01_pm_ops, rmi_f01_suspend, rmi_f01_resume);
 
 static int rmi_f01_attention(struct rmi_function *fn,
 			     unsigned long *irq_bits)
@@ -1208,6 +1202,7 @@ static int rmi_f01_attention(struct rmi_function *fn,
 			retval);
 		return retval;
 	}
+
 	if (data->device_status.unconfigured) {
 		dev_warn(&fn->dev, "Device reset detected.\n");
 		retval = rmi_dev->driver->reset_handler(rmi_dev);
@@ -1217,17 +1212,29 @@ static int rmi_f01_attention(struct rmi_function *fn,
 	return 0;
 }
 
-struct rmi_function_handler rmi_f01_handler = {
+static struct rmi_function_handler rmi_f01_handler = {
 	.driver = {
-		.name = "rmi_f01",
+		.name	= "rmi_f01",
+		.pm	= &rmi_f01_pm_ops,
+		/*
+		 * Do not allow user unbinding F01 as it is critical
+		 * function.
+		 */
+		.suppress_bind_attrs = true,
 	},
-	.func = 0x01,
-	.probe = rmi_f01_probe,
-	.remove = rmi_f01_remove,
-	.config = rmi_f01_config,
-	.attention = rmi_f01_attention,
-#ifdef CONFIG_PM
-	.suspend = rmi_f01_suspend,
-	.resume = rmi_f01_resume,
-#endif  /* CONFIG_PM */
+	.func		= 0x01,
+	.probe		= rmi_f01_probe,
+	.remove		= rmi_f01_remove,
+	.config		= rmi_f01_config,
+	.attention	= rmi_f01_attention,
 };
+
+int __init rmi_register_f10_handler(void)
+{
+	return rmi_register_function_handler(&rmi_f01_handler);
+}
+
+void __exit rmi_unregister_f10_handler(void)
+{
+	rmi_unregister_function_handler(&rmi_f01_handler);
+}
