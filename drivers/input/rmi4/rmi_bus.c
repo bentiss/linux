@@ -65,7 +65,9 @@ static struct dentry *rmi_debugfs_root;
 
 static void release_rmidev_device(struct device *dev)
 {
-	device_unregister(dev);
+	struct rmi_device *rmi_dev = to_rmi_device(dev);
+
+	kfree(rmi_dev);
 }
 
 /**
@@ -124,7 +126,7 @@ void rmi_unregister_phys_device(struct rmi_phys_device *phys)
 	if (IS_ENABLED(CONFIG_RMI4_DEBUG) && rmi_dev->debugfs_root)
 		debugfs_remove(rmi_dev->debugfs_root);
 
-	kfree(rmi_dev);
+	device_unregister(&rmi_dev->dev);
 }
 EXPORT_SYMBOL(rmi_unregister_phys_device);
 
