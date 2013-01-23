@@ -44,308 +44,45 @@
 #define IRQ_DEBUG(data) (IS_ENABLED(CONFIG_RMI4_DEBUG) && data->irq_debug)
 
 #ifdef	CONFIG_RMI4_DEBUG
-struct driver_debugfs_data {
-	bool done;
-	struct rmi_device *rmi_dev;
-};
-
-static int debug_open(struct inode *inodep, struct file *filp)
-{
-	struct driver_debugfs_data *data;
-	struct rmi_device *rmi_dev;
-
-	rmi_dev = inodep->i_private;
-	data = kzalloc(sizeof(struct driver_debugfs_data),
-				GFP_KERNEL);
-	if (!data)
-		return -ENOMEM;
-
-	data->rmi_dev = inodep->i_private;
-	filp->private_data = data;
-	return 0;
-}
-
-static int debug_release(struct inode *inodep, struct file *filp)
-{
-	kfree(filp->private_data);
-	return 0;
-}
-
-static ssize_t delay_read(struct file *filp, char __user *buffer, size_t size,
-		    loff_t *offset) {
-	struct driver_debugfs_data *data = filp->private_data;
-	struct rmi_device_platform_data *pdata =
-			data->rmi_dev->phys->dev->platform_data;
-	int retval;
-	char *local_buf;
-
-	if (data->done)
-		return 0;
-
-	data->done = 1;
-
-	local_buf = kcalloc(size, sizeof(u8), GFP_KERNEL);
-	if (!local_buf)
-		return -ENOMEM;
-
-	retval = snprintf(local_buf, size, "%d %d %d %d %d\n",
-		pdata->spi_data.read_delay_us, pdata->spi_data.write_delay_us,
-		pdata->spi_data.block_delay_us,
-		pdata->spi_data.pre_delay_us, pdata->spi_data.post_delay_us);
-
-	if (retval <= 0 || copy_to_user(buffer, local_buf, retval))
-		retval = -EFAULT;
-	kfree(local_buf);
-
-	return retval;
-}
-
-static ssize_t delay_write(struct file *filp, const char __user *buffer,
-			   size_t size, loff_t *offset) {
-	struct driver_debugfs_data *data = filp->private_data;
-	struct rmi_device_platform_data *pdata =
-			data->rmi_dev->phys->dev->platform_data;
-	int retval;
-	char *local_buf;
-	unsigned int new_read_delay;
-	unsigned int new_write_delay;
-	unsigned int new_block_delay;
-	unsigned int new_pre_delay;
-	unsigned int new_post_delay;
-
-	local_buf = kcalloc(size, sizeof(u8), GFP_KERNEL);
-	if (!local_buf)
-		return -ENOMEM;
-
-	retval = copy_from_user(local_buf, buffer, size);
-	if (retval) {
-		kfree(local_buf);
-		return -EFAULT;
-	}
-
-	retval = sscanf(local_buf, "%u %u %u %u %u", &new_read_delay,
-			&new_write_delay, &new_block_delay,
-			&new_pre_delay, &new_post_delay);
-	kfree(local_buf);
-
-	if (retval != 5) {
-		dev_err(&data->rmi_dev->dev,
-			"Incorrect number of values provided for delay.");
-		return -EINVAL;
-	}
-	dev_dbg(&data->rmi_dev->dev,
-		 "Setting delays to %u %u %u %u %u.\n", new_read_delay,
-		 new_write_delay, new_block_delay, new_pre_delay,
-		 new_post_delay);
-	pdata->spi_data.read_delay_us = new_read_delay;
-	pdata->spi_data.write_delay_us = new_write_delay;
-	pdata->spi_data.block_delay_us = new_block_delay;
-	pdata->spi_data.pre_delay_us = new_pre_delay;
-	pdata->spi_data.post_delay_us = new_post_delay;
-
-	return size;
-}
-
-static const struct file_operations delay_fops = {
-	.owner = THIS_MODULE,
-	.open = debug_open,
-	.release = debug_release,
-	.read = delay_read,
-	.write = delay_write,
-};
-
-#define PHYS_NAME "phys"
-
-static ssize_t phys_read(struct file *filp, char __user *buffer, size_t size,
-		    loff_t *offset) {
-	struct driver_debugfs_data *data = filp->private_data;
-	struct rmi_phys_info *info = &data->rmi_dev->phys->info;
-	int retval;
-	char *local_buf;
-
-	if (data->done)
-		return 0;
-
-	local_buf = kcalloc(size, sizeof(u8), GFP_KERNEL);
-	if (!local_buf)
-		return -ENOMEM;
-
-	data->done = 1;
-
-	retval = snprintf(local_buf, size,
-		"%-5s %ld %ld %ld %ld %ld %ld\n",
-		 info->proto ? info->proto : "unk",
-		 info->tx_count, info->tx_bytes, info->tx_errs,
-		 info->rx_count, info->rx_bytes, info->rx_errs);
-	if (retval <= 0 || copy_to_user(buffer, local_buf, retval))
-		retval = -EFAULT;
-	kfree(local_buf);
-
-	return retval;
-}
-
-static const struct file_operations phys_fops = {
-	.owner = THIS_MODULE,
-	.open = debug_open,
-	.release = debug_release,
-	.read = phys_read,
-};
-
-static ssize_t attn_count_read(struct file *filp, char __user *buffer,
-		size_t size, loff_t *offset) {
-	struct driver_debugfs_data *data = filp->private_data;
-	struct rmi_driver_data *rmi_data = dev_get_drvdata(&data->rmi_dev->dev);
-	int retval;
-	char *local_buf;
-
-	if (data->done)
-		return 0;
-
-	local_buf = kcalloc(size, sizeof(u8), GFP_KERNEL);
-	if (!local_buf)
-		return -ENOMEM;
-
-	data->done = 1;
-
-	retval = snprintf(local_buf, size, "%d\n",
-			  rmi_data->attn_count.counter);
-	if (retval <= 0 || copy_to_user(buffer, local_buf, retval))
-		retval = -EFAULT;
-	kfree(local_buf);
-
-	return retval;
-}
-
-static const struct file_operations attn_count_fops = {
-	.owner = THIS_MODULE,
-	.open = debug_open,
-	.release = debug_release,
-	.read = attn_count_read,
-};
-
-static ssize_t irq_debug_read(struct file *filp, char __user *buffer,
-			size_t size, loff_t *offset) {
-	int retval;
-	char *local_buf;
-	struct driver_debugfs_data *data = filp->private_data;
-	struct rmi_driver_data *rmi_data = dev_get_drvdata(&data->rmi_dev->dev);
-
-	if (data->done)
-		return 0;
-
-	local_buf = kcalloc(size, sizeof(u8), GFP_KERNEL);
-	if (!local_buf)
-		return -ENOMEM;
-
-	data->done = 1;
-
-	retval = snprintf(local_buf, size, "%u\n", rmi_data->irq_debug);
-
-	if (retval <= 0 || copy_to_user(buffer, local_buf, retval))
-		retval = -EFAULT;
-	kfree(local_buf);
-
-	return retval;
-}
-
-static ssize_t irq_debug_write(struct file *filp, const char __user *buffer,
-			   size_t size, loff_t *offset) {
-	int retval;
-	char *local_buf;
-	unsigned int new_value;
-	struct driver_debugfs_data *data = filp->private_data;
-	struct rmi_driver_data *rmi_data = dev_get_drvdata(&data->rmi_dev->dev);
-
-
-	local_buf = kcalloc(size, sizeof(u8), GFP_KERNEL);
-	if (!local_buf)
-		return -ENOMEM;
-	retval = copy_from_user(local_buf, buffer, size);
-	if (retval) {
-		kfree(local_buf);
-		return -EFAULT;
-	}
-
-	retval = sscanf(local_buf, "%u", &new_value);
-	if (retval != 1 || new_value > 1)
-		retval = -EINVAL;
-	kfree(local_buf);
-	rmi_data->irq_debug = new_value;
-
-	return size;
-}
-
-static const struct file_operations irq_debug_fops = {
-	.owner = THIS_MODULE,
-	.open = debug_open,
-	.release = debug_release,
-	.read = irq_debug_read,
-	.write = irq_debug_write,
-};
-
-static int setup_debugfs(struct rmi_device *rmi_dev)
+static void rmi_driver_setup_debugfs(struct rmi_device *rmi_dev)
 {
 	struct rmi_driver_data *data = dev_get_drvdata(&rmi_dev->dev);
 	struct rmi_phys_info *info = &rmi_dev->phys->info;
-	int retval = 0;
 
 	if (!rmi_dev->debugfs_root)
-		return -ENODEV;
+		return;
 
-	if (IS_ENABLED(CONFIG_RMI4_SPI) && !strncmp("spi", info->proto, 3)) {
-		data->debugfs_delay = debugfs_create_file("delay",
-				RMI_RW_ATTR, rmi_dev->debugfs_root, rmi_dev,
-				&delay_fops);
-		if (!data->debugfs_delay || IS_ERR(data->debugfs_delay)) {
-			dev_warn(&rmi_dev->dev, "Failed to create debugfs delay.\n");
-			data->debugfs_delay = NULL;
-		}
-	}
+	if (!debugfs_create_u32_array("transport_stats", RMI_RO_ATTR,
+				      rmi_dev->debugfs_root,
+				      (u32 *)&info->tx_count, 6))
+		dev_warn(&rmi_dev->dev,
+			 "Failed to create debugfs transport_stats\n");
 
-	data->debugfs_phys = debugfs_create_file(PHYS_NAME, RMI_RO_ATTR,
-				rmi_dev->debugfs_root, rmi_dev, &phys_fops);
-	if (!data->debugfs_phys || IS_ERR(data->debugfs_phys)) {
-		dev_warn(&rmi_dev->dev, "Failed to create debugfs phys.\n");
-		data->debugfs_phys = NULL;
-	}
+	if (!debugfs_create_bool("irq_debug", RMI_RW_ATTR,
+				 rmi_dev->debugfs_root,
+				 &data->irq_debug))
+		dev_warn(&rmi_dev->dev, "Failed to create debugfs irq_debug\n");
 
-	data->debugfs_irq = debugfs_create_file("irq_debug",
-			RMI_RW_ATTR,
-			rmi_dev->debugfs_root,
-			rmi_dev, &irq_debug_fops);
-	if (!data->debugfs_irq || IS_ERR(data->debugfs_irq)) {
-		dev_warn(&rmi_dev->dev, "Failed to create debugfs irq_debug.\n");
-		data->debugfs_irq = NULL;
-	}
-
-	data->debugfs_attn_count = debugfs_create_file("attn_count",
-				RMI_RO_ATTR,
+	if (!debugfs_create_u32("attn_count", RMI_RO_ATTR,
 				rmi_dev->debugfs_root,
-				rmi_dev, &attn_count_fops);
-	if (!data->debugfs_phys || IS_ERR(data->debugfs_attn_count)) {
-		dev_warn(&rmi_dev->dev, "Failed to create debugfs attn_count.\n");
-		data->debugfs_attn_count = NULL;
-	}
-
-	return retval;
+				&data->attn_count))
+		dev_warn(&rmi_dev->dev,
+			 "Failed to create debugfs attn_count\n");
 }
 
-static void teardown_debugfs(struct rmi_device *rmi_dev)
+static void rmi_driver_teardown_debugfs(struct rmi_device *rmi_dev)
 {
-	struct rmi_driver_data *data = dev_get_drvdata(&rmi_dev->dev);
-
-	if (IS_ENABLED(CONFIG_RMI4_SPI) && data->debugfs_delay)
-		debugfs_remove(data->debugfs_delay);
-	if (data->debugfs_phys)
-		debugfs_remove(data->debugfs_phys);
-	if (data->debugfs_irq)
-		debugfs_remove(data->debugfs_irq);
-	if (data->debugfs_attn_count)
-		debugfs_remove(data->debugfs_attn_count);
+	debugfs_remove_recursive(rmi_dev->debugfs_root);
 }
+
 #else
-#define teardown_debugfs(rmi_dev)
-#define setup_debugfs(rmi_dev) 0
+static inline void rmi_driver_setup_debugfs(struct rmi_device *rmi_dev)
+{
+}
+
+static inline rmi_driver_teardown_debugfs(struct rmi_device *rmi_dev)
+{
+}
 #endif
 
 static irqreturn_t rmi_irq_thread(int irq, void *p)
@@ -358,12 +95,12 @@ static irqreturn_t rmi_irq_thread(int irq, void *p)
 
 	data = dev_get_drvdata(&rmi_dev->dev);
 
-	if IRQ_DEBUG(data)
+	if (IRQ_DEBUG(data))
 		dev_dbg(phys->dev, "ATTN gpio, value: %d.\n",
 				gpio_get_value(pdata->attn_gpio));
 
 	if (gpio_get_value(pdata->attn_gpio) == pdata->attn_polarity) {
-		atomic_inc(&data->attn_count);
+		data->attn_count++;
 		if (driver && driver->irq_handler && rmi_dev)
 			driver->irq_handler(rmi_dev, irq);
 	}
@@ -525,14 +262,13 @@ static ssize_t rmi_driver_bsr_store(struct device *dev,
 	return count;
 }
 
+static DEVICE_ATTR(bsr, RMI_RW_ATTR, rmi_driver_bsr_show, rmi_driver_bsr_store);
+
 static ssize_t rmi_driver_enabled_show(struct device *dev,
 				       struct device_attribute *attr, char *buf)
 {
-	struct rmi_device *rmi_dev;
-	struct rmi_driver_data *data;
-
-	rmi_dev = to_rmi_device(dev);
-	data = dev_get_drvdata(&rmi_dev->dev);
+	struct rmi_device *rmi_dev = to_rmi_device(dev);
+	struct rmi_driver_data *data = dev_get_drvdata(&rmi_dev->dev);
 
 	return snprintf(buf, PAGE_SIZE, "%u\n", data->enabled);
 }
@@ -541,13 +277,9 @@ static ssize_t rmi_driver_enabled_store(struct device *dev,
 					struct device_attribute *attr,
 					const char *buf, size_t count)
 {
+	struct rmi_device *rmi_dev = to_rmi_device(dev);
 	int retval;
 	int new_value;
-	struct rmi_device *rmi_dev;
-	struct rmi_driver_data *data;
-
-	rmi_dev = to_rmi_device(dev);
-	data = dev_get_drvdata(&rmi_dev->dev);
 
 	if (sysfs_streq(buf, "0"))
 		new_value = false;
@@ -572,13 +304,35 @@ static ssize_t rmi_driver_enabled_store(struct device *dev,
 
 /** This sysfs attribute is deprecated, and will be removed in a future release.
  */
-static struct device_attribute attrs[] = {
-	__ATTR(enabled, RMI_RW_ATTR,
-	       rmi_driver_enabled_show, rmi_driver_enabled_store),
+static DEVICE_ATTR(enabled, RMI_RW_ATTR,
+		   rmi_driver_enabled_show, rmi_driver_enabled_store);
+
+static umode_t rmi_driver_attr_visible(struct kobject *kobj,
+				       struct attribute *attr, int n)
+{
+	struct device *dev = kobj_to_dev(kobj);
+	struct rmi_device *rmi_dev = to_rmi_device(dev);
+	struct rmi_driver_data *data = dev_get_drvdata(&rmi_dev->dev);
+	umode_t mode = attr->mode;
+
+	if (attr == &dev_attr_bsr.attr) {
+		if (!data->pdt_props.has_bsr)
+			mode = 0;
+	}
+
+	return mode;
+}
+
+static struct attribute *rmi_driver_attrs[] = {
+	&dev_attr_bsr.attr,
+	&dev_attr_enabled.attr,
+	NULL
 };
 
-static struct device_attribute bsr_attribute = __ATTR(bsr, RMI_RW_ATTR,
-	       rmi_driver_bsr_show, rmi_driver_bsr_store);
+static struct attribute_group rmi_driver_attr_group = {
+	.is_visible	= rmi_driver_attr_visible,
+	.attrs		= rmi_driver_attrs,
+};
 
 static void rmi_free_function_list(struct rmi_device *rmi_dev)
 {
@@ -1009,7 +763,7 @@ static void check_bootloader_mode(struct rmi_device *rmi_dev,
 	struct f01_device_status device_status;
 	int retval = 0;
 
-	retval = rmi_read(rmi_dev, pdt_ptr->data_base_addr+page_start,
+	retval = rmi_read(rmi_dev, pdt_ptr->data_base_addr + page_start,
 			  &device_status);
 	if (retval < 0) {
 		dev_err(&rmi_dev->dev, "Failed to read device status.\n");
@@ -1362,22 +1116,14 @@ exit:
 
 static int rmi_driver_remove(struct device *dev)
 {
-	struct rmi_driver_data *data;
-	int i;
 	struct rmi_device *rmi_dev = to_rmi_device(dev);
 
-	data = dev_get_drvdata(&rmi_dev->dev);
+	rmi_driver_teardown_debugfs(rmi_dev);
+	sysfs_remove_group(&dev->kobj, &rmi_driver_attr_group);
 
 	disable_sensor(rmi_dev);
-
-	if (IS_ENABLED(CONFIG_RMI4_DEBUG))
-		teardown_debugfs(rmi_dev);
-
 	rmi_free_function_list(rmi_dev);
-	for (i = 0; i < ARRAY_SIZE(attrs); i++)
-		device_remove_file(&rmi_dev->dev, &attrs[i]);
-	if (data->pdt_props.has_bsr)
-		device_remove_file(&rmi_dev->dev, &bsr_attribute);
+
 	return 0;
 }
 
@@ -1388,7 +1134,6 @@ static int rmi_driver_probe(struct device *dev)
 	struct rmi_function *fn;
 	struct rmi_device_platform_data *pdata;
 	int retval = 0;
-	int attr_count = 0;
 	struct rmi_device *rmi_dev;
 
 	dev_dbg(dev, "%s: Starting probe.\n", __func__);
@@ -1439,7 +1184,6 @@ static int rmi_driver_probe(struct device *dev)
 	if (retval)
 		dev_warn(dev, "RMI initial reset failed! Continuing in spite of this.\n");
 
-
 	retval = rmi_scan_pdt(rmi_dev);
 	if (retval) {
 		dev_err(dev, "PDT scan for %s failed with code %d.\n",
@@ -1469,24 +1213,6 @@ static int rmi_driver_probe(struct device *dev)
 		 */
 		dev_warn(dev, "Could not read PDT properties from %#06x. Assuming 0x00.\n",
 			 PDT_PROPERTIES_LOCATION);
-	}
-
-	dev_dbg(dev, "%s: Creating sysfs files.", __func__);
-	for (attr_count = 0; attr_count < ARRAY_SIZE(attrs); attr_count++) {
-		retval = device_create_file(dev, &attrs[attr_count]);
-		if (retval < 0) {
-			dev_err(dev, "%s: Failed to create sysfs file %s.\n",
-				__func__, attrs[attr_count].attr.name);
-			goto err_free_data;
-		}
-	}
-	if (data->pdt_props.has_bsr) {
-		retval = device_create_file(dev, &bsr_attribute);
-		if (retval < 0) {
-			dev_err(dev, "%s: Failed to create sysfs file bsr.\n",
-				__func__);
-			goto err_free_data;
-		}
 	}
 
 	mutex_init(&data->irq_mutex);
@@ -1535,6 +1261,14 @@ static int rmi_driver_probe(struct device *dev)
 		mutex_init(&data->suspend_mutex);
 	}
 
+	retval = sysfs_create_group(&dev->kobj, &rmi_driver_attr_group);
+	if (retval < 0) {
+		dev_err(dev, "%s: Failed to create sysfs group\n", __func__);
+		goto err_free_data;
+	}
+
+	rmi_driver_setup_debugfs(rmi_dev);
+
 	if (pdata->attn_gpio) {
 		data->irq = gpio_to_irq(pdata->attn_gpio);
 		if (pdata->level_triggered) {
@@ -1554,13 +1288,6 @@ static int rmi_driver_probe(struct device *dev)
 	if (data->f01_container->dev.driver) {
 		/* Driver already bound, so enable ATTN now. */
 		enable_sensor(rmi_dev);
-	}
-
-	if (IS_ENABLED(CONFIG_RMI4_DEBUG)) {
-		retval = setup_debugfs(rmi_dev);
-		if (retval < 0)
-			dev_warn(&fn->dev, "Failed to setup debugfs. Code: %d.\n",
-				retval);
 	}
 
 	if (IS_ENABLED(CONFIG_RMI4_DEV) && pdata->attn_gpio) {
@@ -1585,11 +1312,6 @@ static int rmi_driver_probe(struct device *dev)
 	return 0;
 
  err_free_data:
-	rmi_free_function_list(rmi_dev);
-	for (attr_count--; attr_count >= 0; attr_count--)
-		device_remove_file(dev, &attrs[attr_count]);
-	if (data->pdt_props.has_bsr)
-		device_remove_file(dev, &bsr_attribute);
 	return retval;
 }
 

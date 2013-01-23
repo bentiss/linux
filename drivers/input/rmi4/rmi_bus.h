@@ -233,8 +233,8 @@ struct rmi_device {
 #endif
 };
 
-#define to_rmi_device(d) container_of(d, struct rmi_device, dev);
-#define to_rmi_platform_data(d) ((d)->phys->dev->platform_data);
+#define to_rmi_device(d) container_of(d, struct rmi_device, dev)
+#define to_rmi_platform_data(d) ((d)->phys->dev->platform_data)
 
 /**
  * rmi_read - read a single byte
