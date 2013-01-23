@@ -81,13 +81,15 @@ int rmi_register_phys_device(struct rmi_phys_device *phys)
 {
 	struct rmi_device_platform_data *pdata = phys->dev->platform_data;
 	struct rmi_device *rmi_dev;
+	int error;
 
 	if (!pdata) {
 		dev_err(phys->dev, "no platform data!\n");
 		return -EINVAL;
 	}
 
-	rmi_dev = kzalloc(sizeof(struct rmi_device), GFP_KERNEL);
+	rmi_dev = devm_kzalloc(phys->dev,
+				sizeof(struct rmi_device), GFP_KERNEL);
 	if (!rmi_dev)
 		return -ENOMEM;
 
@@ -99,6 +101,12 @@ int rmi_register_phys_device(struct rmi_phys_device *phys)
 	rmi_dev->dev.release = release_rmidev_device;
 
 	dev_set_name(&rmi_dev->dev, "sensor%02d", rmi_dev->number);
+	phys->rmi_dev = rmi_dev;
+
+	error = device_register(&rmi_dev->dev);
+	if (error)
+		return error;
+
 	dev_dbg(phys->dev, "%s: Registered %s as %s.\n", __func__,
 		pdata->sensor_name, dev_name(&rmi_dev->dev));
 
@@ -106,11 +114,10 @@ int rmi_register_phys_device(struct rmi_phys_device *phys)
 		rmi_dev->debugfs_root = debugfs_create_dir(
 			dev_name(&rmi_dev->dev), rmi_debugfs_root);
 		if (!rmi_dev->debugfs_root)
-			dev_err(&rmi_dev->dev, "Failed to create debugfs root.\n");
+			dev_warn(&rmi_dev->dev, "Failed to create debugfs root.\n");
 	}
 
-	phys->rmi_dev = rmi_dev;
-	return device_register(&rmi_dev->dev);
+	return 0;
 }
 EXPORT_SYMBOL(rmi_register_phys_device);
 
