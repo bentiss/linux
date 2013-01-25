@@ -484,12 +484,9 @@ static int process_interrupt_requests(struct rmi_device *rmi_dev)
 static int rmi_driver_set_input_params(struct rmi_device *rmi_dev,
 				struct input_dev *input)
 {
-	struct rmi_driver_data *data = dev_get_drvdata(&rmi_dev->dev);
-
+	// FIXME: set up parent
 	input->name = SYNAPTICS_INPUT_DEVICE_NAME;
 	input->id.vendor  = SYNAPTICS_VENDOR_ID;
-	input->id.product = data->board;
-	input->id.version = data->rev;
 	input->id.bustype = BUS_RMI;
 	return 0;
 }
@@ -644,8 +641,21 @@ int rmi_driver_irq_get_mask(struct rmi_device *rmi_dev,
 		return -ENOMEM;
 }
 
+static void rmi_driver_copy_pdt_to_fd(struct pdt_entry *pdt,
+				      struct rmi_function_descriptor *fd,
+				      u16 page_start)
+{
+	fd->query_base_addr = pdt->query_base_addr + page_start;
+	fd->command_base_addr = pdt->command_base_addr + page_start;
+	fd->control_base_addr = pdt->control_base_addr + page_start;
+	fd->data_base_addr = pdt->data_base_addr + page_start;
+	fd->function_number = pdt->function_number;
+	fd->interrupt_source_count = pdt->interrupt_source_count;
+	fd->function_version = pdt->function_version;
+}
+
 static int create_function(struct rmi_device *rmi_dev,
-				     struct pdt_entry *pdt_ptr,
+				     struct pdt_entry *pdt,
 				     int *current_irq_count,
 				     u16 page_start)
 {
@@ -655,25 +665,25 @@ static int create_function(struct rmi_device *rmi_dev,
 	struct rmi_function *fn;
 	int error;
 
-	dev_dbg(dev, "Initializing F%02X for %s.\n", pdt_ptr->function_number,
-		pdata->sensor_name);
+	dev_dbg(dev, "Initializing F%02X for %s.\n",
+		pdt->function_number, pdata->sensor_name);
 
 	fn = kzalloc(sizeof(struct rmi_function), GFP_KERNEL);
 	if (!fn) {
 		dev_err(dev, "Failed to allocate memory for F%02X\n",
-			pdt_ptr->function_number);
+			pdt->function_number);
 		return -ENOMEM;
 	}
 
 	INIT_LIST_HEAD(&fn->node);
 
 	fn->rmi_dev = rmi_dev;
-	fn->num_of_irqs = pdt_ptr->interrupt_source_count;
+	fn->num_of_irqs = pdt->interrupt_source_count;
 
 	fn->irq_pos = *current_irq_count;
 	*current_irq_count += fn->num_of_irqs;
 
-	copy_pdt_entry_to_fd(pdt_ptr, &fn->fd, page_start);
+	rmi_driver_copy_pdt_to_fd(pdt, &fn->fd, page_start);
 
 	error = rmi_register_function(fn);
 	if (error)
@@ -686,31 +696,6 @@ static int create_function(struct rmi_device *rmi_dev,
 err_free_mem:
 	kfree(fn);
 	return error;
-}
-
-/*
- * Once we find F01, we need to see if we're in bootloader mode.  If we are,
- * we'll stop scanning the PDT with the current page (usually 0x00 in that
- * case).
- */
-static void check_bootloader_mode(struct rmi_device *rmi_dev,
-				     struct pdt_entry *pdt_ptr,
-				     u16 page_start)
-{
-	struct rmi_driver_data *data = dev_get_drvdata(&rmi_dev->dev);
-	struct f01_device_status device_status;
-	int retval = 0;
-
-	retval = rmi_read(rmi_dev, pdt_ptr->data_base_addr + page_start,
-			  &device_status);
-	if (retval < 0) {
-		dev_err(&rmi_dev->dev, "Failed to read device status.\n");
-		return;
-	}
-	data->f01_bootloader_mode = device_status.flash_prog;
-	if (device_status.flash_prog)
-		dev_warn(&rmi_dev->dev,
-			 "WARNING: RMI4 device is in bootloader mode!\n");
 }
 
 /*
@@ -784,43 +769,6 @@ static int reset_and_reflash(struct rmi_device *rmi_dev)
 	return 0;
 }
 
-
-/* extract product ID */
-void get_prod_id(struct rmi_device *rmi_dev, struct rmi_driver_data *drvdata)
-{
-	struct device *dev = &rmi_dev->dev;
-	int retval;
-	int board = 0, rev = 0;
-	int i;
-	static const char * const pattern[] = {
-		"tm%4d-%d", "s%4d-%d", "s%4d-ver%1d"};
-	u8 product_id[RMI_PRODUCT_ID_LENGTH+1];
-
-	retval = rmi_read_block(rmi_dev,
-		drvdata->f01_container->fd.query_base_addr+
-		sizeof(struct f01_basic_queries),
-		product_id, RMI_PRODUCT_ID_LENGTH);
-	if (retval < 0) {
-		dev_err(dev, "Failed to read product id, code=%d!", retval);
-		return;
-	}
-	product_id[RMI_PRODUCT_ID_LENGTH] = '\0';
-
-	for (i = 0; i < sizeof(product_id); i++)
-		product_id[i] = tolower(product_id[i]);
-
-	for (i = 0; i < sizeof(pattern); i++) {
-		retval = sscanf(product_id, pattern[i], &board, &rev);
-		if (retval)
-			break;
-	}
-	/* save board and rev data in the rmi_driver_data */
-	drvdata->board = board;
-	drvdata->rev = rev;
-	dev_dbg(dev, "Rmi_driver getProdID, set board: %d rev: %d\n",
-		drvdata->board, drvdata->rev);
-}
-
 static int rmi_scan_pdt(struct rmi_device *rmi_dev)
 {
 	struct rmi_driver_data *data;
@@ -859,19 +807,12 @@ static int rmi_scan_pdt(struct rmi_device *rmi_dev)
 					pdt_entry.function_number, page);
 			done = false;
 
-			if (pdt_entry.function_number == 0x01)
-				check_bootloader_mode(rmi_dev, &pdt_entry,
-						      page_start);
-
 			// XXX need to make sure we create F01 first...
 			retval = create_function(rmi_dev,
 					&pdt_entry, &irq_count, page_start);
 
 			if (retval)
 				goto error_exit;
-
-			if (pdt_entry.function_number == 0x01)
-				get_prod_id(rmi_dev, data);
 		}
 		done = done || data->f01_bootloader_mode;
 	}

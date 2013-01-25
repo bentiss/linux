@@ -822,7 +822,7 @@ static struct attribute *rmi_fn_01_attrs[] = {
 static umode_t rmi_fn_01_attr_visible(struct kobject *kobj,
 				      struct attribute *attr, int n)
 {
-	struct device *dev = kobj_to_dev(kobj); 
+	struct device *dev = kobj_to_dev(kobj);
 	struct rmi_function *fn = to_rmi_function(dev);
 	struct f01_data *data = fn->data;
 	umode_t mode = attr->mode;
@@ -1034,6 +1034,12 @@ static int rmi_f01_initialize(struct rmi_function *fn)
 		dev_err(&fn->dev, "Failed to read device status.\n");
 		goto error_exit;
 	}
+
+	driver_data->f01_bootloader_mode = data->device_status.flash_prog;
+	if (driver_data->f01_bootloader_mode)
+		dev_warn(&rmi_dev->dev,
+			 "WARNING: RMI4 device is in bootloader mode!\n");
+
 
 	if (data->device_status.unconfigured) {
 		dev_err(&fn->dev, "Device reset during configuration process, status: %#02x!\n",
