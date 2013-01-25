@@ -30,7 +30,6 @@
 #include <uapi/linux/input.h>
 #include "rmi_bus.h"
 #include "rmi_driver.h"
-#include "rmi_f01.h"
 
 #define HAS_NONSTANDARD_PDT_MASK 0x40
 #define RMI4_MAX_PAGE 0xff
