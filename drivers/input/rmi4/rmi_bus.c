@@ -174,7 +174,7 @@ int rmi_register_physical_device(struct rmi_phys_device *phys)
 
 	return 0;
 }
-EXPORT_SYMBOL(rmi_register_phys_device);
+EXPORT_SYMBOL(rmi_register_physical_device);
 
 /**
  * rmi_unregister_physical_device - unregister a physical device connection

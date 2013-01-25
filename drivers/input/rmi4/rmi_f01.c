@@ -1229,12 +1229,12 @@ static struct rmi_function_handler rmi_f01_handler = {
 	.attention	= rmi_f01_attention,
 };
 
-int __init rmi_register_f10_handler(void)
+int __init rmi_register_f01_handler(void)
 {
 	return rmi_register_function_handler(&rmi_f01_handler);
 }
 
-void __exit rmi_unregister_f10_handler(void)
+void __exit rmi_unregister_f01_handler(void)
 {
 	rmi_unregister_function_handler(&rmi_f01_handler);
 }
