@@ -292,8 +292,8 @@ static inline int rmi_write_block(struct rmi_device *d, u16 addr,
 	return d->phys->write_block(d->phys, addr, buf, len);
 }
 
-int rmi_register_phys_device(struct rmi_phys_device *phys);
-void rmi_unregister_phys_device(struct rmi_phys_device *phys);
+int rmi_register_physical_device(struct rmi_phys_device *phys);
+void rmi_unregister_physical_device(struct rmi_phys_device *phys);
 int rmi_for_each_dev(void *data, int (*func)(struct device *dev, void *data));
 
 /**

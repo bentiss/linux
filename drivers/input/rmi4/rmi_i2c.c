@@ -327,7 +327,7 @@ static int rmi_i2c_probe(struct i2c_client *client,
 		return retval;
 	}
 
-	retval = rmi_register_phys_device(rmi_phys);
+	retval = rmi_register_physical_device(rmi_phys);
 	if (retval) {
 		dev_err(&client->dev, "Failed to register physical driver at 0x%.2X.\n",
 			client->addr);
@@ -357,7 +357,7 @@ static int rmi_i2c_remove(struct i2c_client *client)
 
 	teardown_debugfs(phys->data);
 
-	rmi_unregister_phys_device(phys);
+	rmi_unregister_physical_device(phys);
 
 	if (pd->gpio_config)
 		pd->gpio_config(&pd->gpio_data, false);

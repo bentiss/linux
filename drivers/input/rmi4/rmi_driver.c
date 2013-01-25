@@ -994,6 +994,8 @@ exit:
 
 #endif /* CONFIG_PM */
 
+static SIMPLE_DEV_PM_OPS(rmi_driver_pm, rmi_driver_suspend, rmi_driver_resume);
+
 static int rmi_driver_remove(struct device *dev)
 {
 	struct rmi_device *rmi_dev = to_rmi_device(dev);
@@ -1190,9 +1192,6 @@ static int rmi_driver_probe(struct device *dev)
  err_free_data:
 	return retval;
 }
-
-static UNIVERSAL_DEV_PM_OPS(rmi_driver_pm, rmi_driver_suspend,
-			    rmi_driver_resume, NULL);
 
 struct rmi_driver rmi_physical_driver = {
 	.driver = {
