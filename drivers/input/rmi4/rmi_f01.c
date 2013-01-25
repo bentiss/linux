@@ -1234,7 +1234,7 @@ int __init rmi_register_f01_handler(void)
 	return rmi_register_function_handler(&rmi_f01_handler);
 }
 
-void __exit rmi_unregister_f01_handler(void)
+void rmi_unregister_f01_handler(void)
 {
 	rmi_unregister_function_handler(&rmi_f01_handler);
 }
