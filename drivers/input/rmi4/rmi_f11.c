@@ -1907,10 +1907,6 @@ static int rmi_f11_register_devices(struct rmi_function *fn)
 	int sensors_itertd = 0;
 	int i;
 	int rc;
-	int board, version;
-
-	board = driver_data->board;
-	version = driver_data->rev;
 
 	for (i = 0; i < (f11->dev_query.nbr_of_sensors + 1); i++) {
 		struct f11_2d_sensor *sensor = &f11->sensors[i];

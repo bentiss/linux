@@ -64,9 +64,6 @@ struct rmi_driver_data {
 	struct pdt_properties pdt_props;
 	u8 bsr;
 
-	int board;
-	int rev;
-
 	bool enabled;
 #ifdef CONFIG_PM
 	bool suspended;
