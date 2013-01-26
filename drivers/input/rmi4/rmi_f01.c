@@ -23,148 +23,91 @@
 #define PRODUCT_ID_OFFSET 0x10
 #define PRODUCT_INFO_OFFSET 0x1E
 
-#define F01_RESET_MASK 0x01
 
-/**
- * @manufacturer_id - reports the identity of the manufacturer of the RMI
- * device. Synaptics RMI devices report a Manufacturer ID of $01.
- * @custom_map - at least one custom, non
- * RMI-compatible register exists in the register address map for this device.
- * @non-compliant - the device implements a register map that is not compliant
- * with the RMI specification.
- * @has_lts - the device uses Synaptics' LTS hardware architecture.
- * @has_sensor_id - the SensorID query register (F01_RMI_Query22) exists.
- * @has_charger_input - the ChargerConnected bit (F01_RMI_Ctrl0, bit 5) is
- * meaningful.
- * @has_adjustable_doze - the doze (power management) control registers exist.
- * @has_adjustable_doze_holdoff - the doze holdoff register exists.
- * @has_product_properties - indicates the presence of F01_RMI_Query42,
- * ProductProperties2.
- * @productinfo_1 - meaning varies from product to product, consult your
- * product spec sheet.
- * @productinfo_2 - meaning varies from product to product, consult your
- * product spec sheet.
- * @year - year of manufacture MOD 2000.
- * @month - month of manufacture
- * @day - day of manufacture
- * @wafer_id1_lsb - The wafer-lot ID registers record the lot number of the
- * wafer from which the module’s touch controller was produced.
- * @wafer_id1_msb - The wafer-lot ID registers record the lot number of the
- * wafer from which the module’s touch controller was produced.
- * @wafer_id2_lsb - The wafer-lot ID registers record the lot number of the
- * wafer from which the module’s touch controller was produced.
- * @wafer_id2_msb - The wafer-lot ID registers record the lot number of the
- * wafer from which the module’s touch controller was produced.
- * @wafer_id3_lsb - The wafer-lot ID registers record the lot number of the
- * wafer from which the module’s touch controller was produced.
- */
-struct f01_basic_queries {
-	u8 manufacturer_id:8;
+/* Force a firmware reset of the sensor */
+#define RMI_F01_CMD_DEVICE_RESET	1
 
-	u8 custom_map:1;
-	u8 non_compliant:1;
-	u8 has_lts:1;
-	u8 has_sensor_id:1;
-	u8 has_charger_input:1;
-	u8 has_adjustable_doze:1;
-	u8 has_adjustable_doze_holdoff:1;
-	u8 has_product_properties_2:1;
+/* Various F01_RMI_QueryX bits */
 
-	u8 productinfo_1:7;
-	u8 q2_bit_7:1;
+#define RMI_F01_QRY1_CUSTOM_MAP		(1 << 0)
+#define RMI_F01_QRY1_NON_COMPLIANT	(1 << 1)
+#define RMI_F01_QRY1_HAS_LTS		(1 << 2)
+#define RMI_F01_QRY1_HAS_SENSOR_ID	(1 << 3)
+#define RMI_F01_QRY1_HAS_CHARGER_INP	(1 << 4)
+#define RMI_F01_QRY1_HAS_ADJ_DOZE	(1 << 5)
+#define RMI_F01_QRY1_HAS_ADJ_DOZE_HOFF	(1 << 6)
+#define RMI_F01_QRY1_HAS_PROPS_2	(1 << 7)
 
-	u8 productinfo_2:7;
-	u8 q3_bit_7:1;
+#define RMI_F01_QRY5_YEAR_MASK		0x1f
+#define RMI_F01_QRY6_MONTH_MASK		0x0f
+#define RMI_F01_QRY7_DAY_MASK		0x1f
 
-	u8 year:5;
-	u8 month:4;
-	u8 day:5;
-	u8 cp1:1;
-	u8 cp2:1;
+#define RMI_F01_QRY2_PRODINFO_MASK	0x7f
 
-	u8 wafer_id1_lsb:8;
-	u8 wafer_id1_msb:8;
-	u8 wafer_id2_lsb:8;
-	u8 wafer_id2_msb:8;
-	u8 wafer_id3_lsb:8;
-} __attribute__((__packed__));
+#define RMI_F01_BASIC_QUERY_LEN		21 /* From Query 00 through 20 */
 
-/** The status code field reports the most recent device status event.
- * @no_error - should be self explanatory.
- * @reset_occurred - no other event was seen since the last reset.
- * @invalid_config - general device configuration has a problem.
- * @device_failure - general device hardware failure.
- * @config_crc - configuration failed memory self check.
- * @firmware_crc - firmware failed memory self check.
- * @crc_in_progress - bootloader is currently testing config and fw areas.
- */
-enum rmi_device_status {
-	no_error = 0x00,
-	reset_occurred = 0x01,
-	invalid_config = 0x02,
-	device_failure = 0x03,
-	config_crc = 0x04,
-	firmware_crc = 0x05,
-	crc_in_progress = 0x06
+struct f01_basic_properties {
+	u8 manufacturer_id;
+	bool has_lts;
+	bool has_adjustable_doze;
+	bool has_adjustable_doze_holdoff;
+	char dom[9]; /* YYYYMMDD + '\0' */
+	u8 product_id[RMI_PRODUCT_ID_LENGTH + 1];
+	u16 productinfo;
 };
 
-/**
- * @status_code - reports the most recent device status event.
- * @flash_prog - if set, this indicates that flash programming is enabled and
- * normal operation is not possible.
- * @unconfigured - the device has lost its configuration for some reason.
- */
-struct f01_device_status {
-	u8 status_code:4;
-	u8 reserved:2;
-	u8 flash_prog:1;
-	u8 unconfigured:1;
-} __attribute__((__packed__));
+/* F01 device status bits */
 
-/* control register bits */
-#define RMI_SLEEP_MODE_NORMAL (0x00)
-#define RMI_SLEEP_MODE_SENSOR_SLEEP (0x01)
-#define RMI_SLEEP_MODE_RESERVED0 (0x02)
-#define RMI_SLEEP_MODE_RESERVED1 (0x03)
+/* Most recent device status event */
+#define RMI_F01_STATUS_CODE(status)		((status) & 0x0f)
+/* Indicates that flash programming is enabled (bootloader mode). */
+#define RMI_F01_STATUS_BOOTLOADER(status)	(!!((status) & 0x40))
+/* The device has lost its configuration for some reason. */
+#define RMI_F01_STATUS_UNCONFIGURED(status)	(!!((status) & 0x80))
+
+/* Control register bits */
+
+/*
+ * Sleep mode controls power management on the device and affects all
+ * functions of the device.
+ */
+#define RMI_F01_CTRL0_SLEEP_MODE_MASK	0x03
+
+#define RMI_SLEEP_MODE_NORMAL		0x00
+#define RMI_SLEEP_MODE_SENSOR_SLEEP	0x01
+#define RMI_SLEEP_MODE_RESERVED0	0x02
+#define RMI_SLEEP_MODE_RESERVED1	0x03
 
 #define RMI_IS_VALID_SLEEPMODE(mode) \
 	(mode >= RMI_SLEEP_MODE_NORMAL && mode <= RMI_SLEEP_MODE_RESERVED1)
 
-/**
- * @sleep_mode - This field controls power management on the device. This
- * field affects all functions of the device together.
- * @nosleep - When set to ‘1’, this bit disables whatever sleep mode may be
- * selected by the sleep_mode field,and forces the device to run at full power
- * without sleeping.
- * @charger_input - When this bit is set to ‘1’, the touch controller employs
- * a noise-filtering algorithm designed for use with a connected battery
- * charger.
- * @report_rate - sets the report rate for the device.  The effect of this
- * setting is highly product dependent.  Check the spec sheet for your
- * particular touch sensor.
- * @configured - written by the host as an indicator that the device has been
- * successfuly configured.
+/*
+ * This bit disables whatever sleep mode may be selected by the sleep_mode
+ * field and forces the device to run at full power without sleeping.
  */
-struct f01_device_control_0 {
-	u8 sleep_mode:2;
-	u8 nosleep:1;
-	u8 reserved:2;
-	u8 charger_input:1;
-	u8 report_rate:1;
-	u8 configured:1;
-} __attribute__((__packed__));
+#define RMI_F01_CRTL0_NOSLEEP_BIT	(1 << 2)
 
-
-/**
- * @reset - set this bit to force a firmware reset of the sensor.
+/*
+ * When this bit is set, the touch controller employs a noise-filtering
+ * algorithm designed for use with a connected battery charger.
  */
-struct f01_device_commands {
-	u8 reset:1;
-	u8 reserved:7;
-};
+#define RMI_F01_CRTL0_CHARGER_BIT	(1 << 5)
+
+/*
+ * Sets the report rate for the device. The effect of this setting is
+ * highly product dependent. Check the spec sheet for your particular
+ * touch sensor.
+ */
+#define RMI_F01_CRTL0_REPORTRATE_BIT	(1 << 6)
+
+/*
+ * Written by the host as an indicator that the device has been
+ * successfully configured.
+ */
+#define RMI_F01_CRTL0_CONFIGURED_BIT	(1 << 7)
 
 /**
- * @ctrl0 - see documentation in rmi_f01.h.
+ * @ctrl0 - see the bit definitions above.
  * @interrupt_enable - A mask of per-function interrupts on the touch sensor.
  * @doze_interval - controls the interval between checks for finger presence
  * when the touch sensor is in doze mode, in units of 10ms.
@@ -174,81 +117,25 @@ struct f01_device_commands {
  * finger lifts before entering the doze state, in units of 100ms.
  */
 struct f01_device_control {
-	struct f01_device_control_0 ctrl0;
+	u8 ctrl0;
 	u8 *interrupt_enable;
 	u8 doze_interval;
 	u8 wakeup_threshold;
 	u8 doze_holdoff;
 };
 
-/**
- * @has_ds4_queries - if true, the query registers relating to Design Studio 4
- * features are present.
- * @has_multi_phy - if true, multiple physical communications interfaces are
- * supported.
- * @has_guest - if true, a "guest" device is supported.
- */
-struct f01_query_42 {
-	u8 has_ds4_queries:1;
-	u8 has_multi_phy:1;
-	u8 has_guest:1;
-	u8 reserved:5;
-} __attribute__((__packed__));
-
-/**
- * @length - the length of the remaining Query43.* register block, not
- * including the first register.
- * @has_package_id_query -  the package ID query data will be accessible from
- * inside the ProductID query registers.
- * @has_packrat_query -  the packrat query data will be accessible from inside
- * the ProductID query registers.
- * @has_reset_query - the reset pin related registers are valid.
- * @has_maskrev_query - the silicon mask revision number will be reported.
- * @has_i2c_control - the register F01_RMI_Ctrl6 will exist.
- * @has_spi_control - the register F01_RMI_Ctrl7 will exist.
- * @has_attn_control - the register F01_RMI_Ctrl8 will exist.
- * @reset_enabled - the hardware reset pin functionality has been enabled
- * for this device.
- * @reset_polarity - If this bit reports as ‘0’, it means that the reset state
- * is active low. A ‘1’ means that the reset state is active high.
- * @pullup_enabled - If set, it indicates that a built-in weak pull up has
- * been enabled on the Reset pin; clear means that no pull-up is present.
- * @reset_pin_number - This field represents which GPIO pin number has been
- * assigned the reset functionality.
- */
-struct f01_ds4_queries {
-	u8 length:4;
-	u8 reserved_1:4;
-
-	u8 has_package_id_query:1;
-	u8 has_packrat_query:1;
-	u8 has_reset_query:1;
-	u8 has_maskrev_query:1;
-	u8 reserved_2:4;
-
-	u8 has_i2c_control:1;
-	u8 has_spi_control:1;
-	u8 has_attn_control:1;
-	u8 reserved_3:5;
-
-	u8 reset_enabled:1;
-	u8 reset_polarity:1;
-	u8 pullup_enabled:1;
-	u8 reserved_4:1;
-	u8 reset_pin_number:4;
-} __attribute__((__packed__));
-
 struct f01_data {
+	struct f01_basic_properties properties;
+
 	struct f01_device_control device_control;
-	struct f01_basic_queries basic_queries;
-	struct f01_device_status device_status;
-	u8 product_id[RMI_PRODUCT_ID_LENGTH + 1];
+	struct mutex control_mutex;
+
+	u8 device_status;
 
 	u16 interrupt_enable_addr;
 	u16 doze_interval_addr;
 	u16 wakeup_threshold_addr;
 	u16 doze_holdoff_addr;
-
 	int irq_count;
 	int num_of_irq_regs;
 
@@ -293,7 +180,7 @@ static ssize_t interrupt_enable_read(struct file *filp, char __user *buffer,
 	int i;
 	int len;
 	int total_len = 0;
-	char local_buf[size];
+	char local_buf[size]; // FIXME!!!! XXX arbitrary size array on stack
 	char *current_buf = local_buf;
 	struct f01_debugfs_data *data = filp->private_data;
 	struct f01_data *f01 = data->fn->data;
@@ -456,9 +343,8 @@ static ssize_t rmi_fn_01_productinfo_show(struct device *dev,
 	struct rmi_function *fn = to_rmi_function(dev);
 	struct f01_data *data = fn->data;
 
-	return snprintf(buf, PAGE_SIZE, "0x%02x 0x%02x\n",
-			data->basic_queries.productinfo_1,
-			data->basic_queries.productinfo_2);
+	return snprintf(buf, PAGE_SIZE, "0x%04x\n",
+			data->properties.productinfo);
 }
 
 static ssize_t rmi_fn_01_productid_show(struct device *dev,
@@ -468,7 +354,7 @@ static ssize_t rmi_fn_01_productid_show(struct device *dev,
 	struct rmi_function *fn = to_rmi_function(dev);
 	struct f01_data *data = fn->data;
 
-	return snprintf(buf, PAGE_SIZE, "%s\n", data->product_id);
+	return snprintf(buf, PAGE_SIZE, "%s\n", data->properties.product_id);
 }
 
 static ssize_t rmi_fn_01_manufacturer_show(struct device *dev,
@@ -479,7 +365,7 @@ static ssize_t rmi_fn_01_manufacturer_show(struct device *dev,
 	struct f01_data *data = fn->data;
 
 	return snprintf(buf, PAGE_SIZE, "0x%02x\n",
-			data->basic_queries.manufacturer_id);
+			data->properties.manufacturer_id);
 }
 
 static ssize_t rmi_fn_01_datecode_show(struct device *dev,
@@ -489,10 +375,7 @@ static ssize_t rmi_fn_01_datecode_show(struct device *dev,
 	struct rmi_function *fn = to_rmi_function(dev);
 	struct f01_data *data = fn->data;
 
-	return snprintf(buf, PAGE_SIZE, "20%02u-%02u-%02u\n",
-			data->basic_queries.year,
-			data->basic_queries.month,
-			data->basic_queries.day);
+	return snprintf(buf, PAGE_SIZE, "%s\n", data->properties.dom);
 }
 
 static ssize_t rmi_fn_01_reset_store(struct device *dev,
@@ -501,8 +384,7 @@ static ssize_t rmi_fn_01_reset_store(struct device *dev,
 {
 	struct rmi_function *fn = to_rmi_function(dev);
 	unsigned int reset;
-	int retval = 0;
-
+	int error;
 
 	if (sscanf(buf, "%u", &reset) != 1)
 		return -EINVAL;
@@ -512,15 +394,14 @@ static ssize_t rmi_fn_01_reset_store(struct device *dev,
 	/* Per spec, 0 has no effect, so we skip it entirely. */
 	if (reset) {
 		/* Command register always reads as 0, so just use a local. */
-		struct f01_device_commands commands = {
-			.reset = 1
-		};
-		retval = rmi_write_block(fn->rmi_dev, fn->fd.command_base_addr,
-				&commands, sizeof(commands));
-		if (retval < 0) {
+		u8 command = RMI_F01_CMD_DEVICE_RESET;
+
+		error = rmi_write_block(fn->rmi_dev, fn->fd.command_base_addr,
+					 &command, sizeof(command));
+		if (error < 0) {
 			dev_err(dev, "Failed to issue reset command, code = %d.",
-						retval);
-			return retval;
+				error);
+			return error;
 		}
 	}
 
@@ -533,9 +414,10 @@ static ssize_t rmi_fn_01_sleepmode_show(struct device *dev,
 {
 	struct rmi_function *fn = to_rmi_function(dev);
 	struct f01_data *data = fn->data;
+	unsigned int value = data->device_control.ctrl0 &
+					RMI_F01_CTRL0_SLEEP_MODE_MASK;
 
-	return snprintf(buf, PAGE_SIZE,
-			"%d\n", data->device_control.ctrl0.sleep_mode);
+	return snprintf(buf, PAGE_SIZE, "%d\n", value);
 }
 
 static ssize_t rmi_fn_01_sleepmode_store(struct device *dev,
@@ -553,8 +435,15 @@ static ssize_t rmi_fn_01_sleepmode_store(struct device *dev,
 		return -EINVAL;
 	}
 
+	retval = mutex_lock_interruptible(&data->control_mutex);
+	if (retval)
+		return retval;
+
 	dev_dbg(dev, "Setting sleep mode to %ld.", new_value);
-	data->device_control.ctrl0.sleep_mode = new_value;
+
+	data->device_control.ctrl0 &= ~RMI_F01_CTRL0_SLEEP_MODE_MASK;
+	data->device_control.ctrl0 |= new_value;
+
 	retval = rmi_write_block(fn->rmi_dev, fn->fd.control_base_addr,
 			&data->device_control.ctrl0,
 			sizeof(data->device_control.ctrl0));
@@ -562,6 +451,8 @@ static ssize_t rmi_fn_01_sleepmode_store(struct device *dev,
 		retval = count;
 	else
 		dev_err(dev, "Failed to write sleep mode, code %d.\n", retval);
+
+	mutex_unlock(&data->control_mutex);
 	return retval;
 }
 
@@ -570,9 +461,10 @@ static ssize_t rmi_fn_01_nosleep_show(struct device *dev,
 {
 	struct rmi_function *fn = to_rmi_function(dev);
 	struct f01_data *data = fn->data;
+	unsigned int value = !!(data->device_control.ctrl0 &
+					RMI_F01_CRTL0_NOSLEEP_BIT);
 
-	return snprintf(buf, PAGE_SIZE, "%d\n",
-			data->device_control.ctrl0.nosleep);
+	return snprintf(buf, PAGE_SIZE, "%d\n", value);
 }
 
 static ssize_t rmi_fn_01_nosleep_store(struct device *dev,
@@ -590,15 +482,24 @@ static ssize_t rmi_fn_01_nosleep_store(struct device *dev,
 		return -EINVAL;
 	}
 
-	data->device_control.ctrl0.nosleep = new_value;
+	retval = mutex_lock_interruptible(&data->control_mutex);
+	if (retval)
+		return retval;
+
+	if (new_value)
+		data->device_control.ctrl0 |= RMI_F01_CRTL0_NOSLEEP_BIT;
+	else
+		data->device_control.ctrl0 &= ~RMI_F01_CRTL0_NOSLEEP_BIT;
+
 	retval = rmi_write_block(fn->rmi_dev, fn->fd.control_base_addr,
-			&data->device_control.ctrl0,
-			sizeof(data->device_control.ctrl0));
+				 &data->device_control.ctrl0,
+				 sizeof(data->device_control.ctrl0));
 	if (retval >= 0)
 		retval = count;
 	else
 		dev_err(dev, "Failed to write nosleep bit.\n");
 
+	mutex_unlock(&data->control_mutex);
 	return retval;
 }
 
@@ -607,9 +508,10 @@ static ssize_t rmi_fn_01_chargerinput_show(struct device *dev,
 {
 	struct rmi_function *fn = to_rmi_function(dev);
 	struct f01_data *data = fn->data;
+	unsigned int value = !!(data->device_control.ctrl0 &
+					RMI_F01_CRTL0_CHARGER_BIT);
 
-	return snprintf(buf, PAGE_SIZE, "%d\n",
-			data->device_control.ctrl0.charger_input);
+	return snprintf(buf, PAGE_SIZE, "%d\n", value);
 }
 
 static ssize_t rmi_fn_01_chargerinput_store(struct device *dev,
@@ -627,15 +529,24 @@ static ssize_t rmi_fn_01_chargerinput_store(struct device *dev,
 		return -EINVAL;
 	}
 
-	data->device_control.ctrl0.charger_input = new_value;
+	retval = mutex_lock_interruptible(&data->control_mutex);
+	if (retval)
+		return retval;
+
+	if (new_value)
+		data->device_control.ctrl0 |= RMI_F01_CRTL0_CHARGER_BIT;
+	else
+		data->device_control.ctrl0 &= ~RMI_F01_CRTL0_CHARGER_BIT;
+
 	retval = rmi_write_block(fn->rmi_dev, fn->fd.control_base_addr,
-			&data->device_control.ctrl0,
-			sizeof(data->device_control.ctrl0));
+				 &data->device_control.ctrl0,
+				 sizeof(data->device_control.ctrl0));
 	if (retval >= 0)
 		retval = count;
 	else
 		dev_err(dev, "Failed to write chargerinput bit.\n");
 
+	mutex_unlock(&data->control_mutex);
 	return retval;
 }
 
@@ -644,9 +555,10 @@ static ssize_t rmi_fn_01_reportrate_show(struct device *dev,
 {
 	struct rmi_function *fn = to_rmi_function(dev);
 	struct f01_data *data = fn->data;
+	int value = !!(data->device_control.ctrl0 &
+				RMI_F01_CRTL0_REPORTRATE_BIT);
 
-	return snprintf(buf, PAGE_SIZE, "%d\n",
-			data->device_control.ctrl0.report_rate);
+	return snprintf(buf, PAGE_SIZE, "%d\n", value);
 }
 
 static ssize_t rmi_fn_01_reportrate_store(struct device *dev,
@@ -664,15 +576,24 @@ static ssize_t rmi_fn_01_reportrate_store(struct device *dev,
 		return -EINVAL;
 	}
 
-	data->device_control.ctrl0.report_rate = new_value;
+	retval = mutex_lock_interruptible(&data->control_mutex);
+	if (retval)
+		return retval;
+
+	if (new_value)
+		data->device_control.ctrl0 |= RMI_F01_CRTL0_REPORTRATE_BIT;
+	else
+		data->device_control.ctrl0 &= ~RMI_F01_CRTL0_REPORTRATE_BIT;
+
 	retval = rmi_write_block(fn->rmi_dev, fn->fd.control_base_addr,
-			&data->device_control.ctrl0,
-			sizeof(data->device_control.ctrl0));
+				 &data->device_control.ctrl0,
+				 sizeof(data->device_control.ctrl0));
 	if (retval >= 0)
 		retval = count;
 	else
 		dev_err(dev, "Failed to write reportrate bit.\n");
 
+	mutex_unlock(&data->control_mutex);
 	return retval;
 }
 
@@ -749,6 +670,10 @@ static ssize_t rmi_fn_01_doze_interval_store(struct device *dev,
 		return -EINVAL;
 	}
 
+	retval = mutex_lock_interruptible(&data->control_mutex);
+	if (retval)
+		return retval;
+
 	data->device_control.doze_interval = new_value;
 	ctrl_base_addr = fn->fd.control_base_addr + sizeof(u8) +
 			(sizeof(u8)*(data->num_of_irq_regs));
@@ -763,8 +688,8 @@ static ssize_t rmi_fn_01_doze_interval_store(struct device *dev,
 	else
 		dev_err(dev, "Failed to write doze interval.\n");
 
+	mutex_unlock(&data->control_mutex);
 	return retval;
-
 }
 
 static ssize_t rmi_fn_01_wakeup_threshold_show(struct device *dev,
@@ -793,6 +718,10 @@ static ssize_t rmi_fn_01_wakeup_threshold_store(struct device *dev,
 		return -EINVAL;
 	}
 
+	retval = mutex_lock_interruptible(&data->control_mutex);
+	if (retval)
+		return retval;
+
 	data->device_control.doze_interval = new_value;
 	retval = rmi_write_block(fn->rmi_dev, data->wakeup_threshold_addr,
 			&data->device_control.wakeup_threshold,
@@ -801,8 +730,9 @@ static ssize_t rmi_fn_01_wakeup_threshold_store(struct device *dev,
 		retval = count;
 	else
 		dev_err(dev, "Failed to write wakeup threshold.\n");
-	return retval;
 
+	mutex_unlock(&data->control_mutex);
+	return retval;
 }
 
 static ssize_t rmi_fn_01_doze_holdoff_show(struct device *dev,
@@ -816,7 +746,6 @@ static ssize_t rmi_fn_01_doze_holdoff_show(struct device *dev,
 			data->device_control.doze_holdoff);
 
 }
-
 
 static ssize_t rmi_fn_01_doze_holdoff_store(struct device *dev,
 					  struct device_attribute *attr,
@@ -833,6 +762,10 @@ static ssize_t rmi_fn_01_doze_holdoff_store(struct device *dev,
 		return -EINVAL;
 	}
 
+	retval = mutex_lock_interruptible(&data->control_mutex);
+	if (retval)
+		return retval;
+
 	data->device_control.doze_interval = new_value;
 	retval = rmi_write_block(fn->rmi_dev, data->doze_holdoff_addr,
 			&data->device_control.doze_holdoff,
@@ -842,8 +775,8 @@ static ssize_t rmi_fn_01_doze_holdoff_store(struct device *dev,
 	else
 		dev_err(dev, "Failed to write doze holdoff.\n");
 
+	mutex_unlock(&data->control_mutex);
 	return retval;
-
 }
 
 static ssize_t rmi_fn_01_configured_show(struct device *dev,
@@ -851,9 +784,10 @@ static ssize_t rmi_fn_01_configured_show(struct device *dev,
 {
 	struct rmi_function *fn = to_rmi_function(dev);
 	struct f01_data *data = fn->data;
+	unsigned int value = !!(data->device_control.ctrl0 &
+					RMI_F01_CRTL0_CONFIGURED_BIT);
 
-	return snprintf(buf, PAGE_SIZE, "%d\n",
-			data->device_control.ctrl0.configured);
+	return snprintf(buf, PAGE_SIZE, "%d\n", value);
 }
 
 static ssize_t rmi_fn_01_unconfigured_show(struct device *dev,
@@ -863,7 +797,7 @@ static ssize_t rmi_fn_01_unconfigured_show(struct device *dev,
 	struct f01_data *data = fn->data;
 
 	return snprintf(buf, PAGE_SIZE, "%d\n",
-			data->device_status.unconfigured);
+			RMI_F01_STATUS_UNCONFIGURED(data->device_status));
 }
 
 static ssize_t rmi_fn_01_flashprog_show(struct device *dev,
@@ -873,7 +807,7 @@ static ssize_t rmi_fn_01_flashprog_show(struct device *dev,
 	struct f01_data *data = fn->data;
 
 	return snprintf(buf, PAGE_SIZE, "%d\n",
-			data->device_status.flash_prog);
+			RMI_F01_STATUS_BOOTLOADER(data->device_status));
 }
 
 static ssize_t rmi_fn_01_statuscode_show(struct device *dev,
@@ -883,7 +817,7 @@ static ssize_t rmi_fn_01_statuscode_show(struct device *dev,
 	struct f01_data *data = fn->data;
 
 	return snprintf(buf, PAGE_SIZE, "0x%02x\n",
-			data->device_status.status_code);
+			RMI_F01_STATUS_CODE(data->device_status));
 }
 
 #define RMI_F01_ATTR(_name)			\
@@ -923,7 +857,7 @@ static RMI_F01_ATTR(wakeup_threshold);
 static RMI_F01_ATTR(doze_holdoff);
 
 /*
- * We make report rate RO, since the driver uses that to look for
+ * We make 'configured' RO, since the driver uses that to look for
  * resets.  We don't want someone faking us out by changing that
  * bit.
  */
@@ -967,13 +901,13 @@ static umode_t rmi_fn_01_attr_visible(struct kobject *kobj,
 	umode_t mode = attr->mode;
 
 	if (attr == &dev_attr_doze_interval.attr) {
-		if (!data->basic_queries.has_lts)
+		if (!data->properties.has_lts)
 			mode = 0;
 	} else if (attr == &dev_attr_wakeup_threshold.attr) {
-		if (!data->basic_queries.has_adjustable_doze)
+		if (!data->properties.has_adjustable_doze)
 			mode = 0;
 	} else if (attr == &dev_attr_doze_holdoff.attr) {
-		if (!data->basic_queries.has_adjustable_doze_holdoff)
+		if (!data->properties.has_adjustable_doze_holdoff)
 			mode = 0;
 	}
 
@@ -1017,9 +951,14 @@ static int rmi_f01_initialize(struct rmi_function *fn)
 	struct rmi_driver_data *driver_data = dev_get_drvdata(&rmi_dev->dev);
 	struct f01_data *data = fn->data;
 	struct rmi_device_platform_data *pdata = to_rmi_platform_data(rmi_dev);
+	u8 basic_query[RMI_F01_BASIC_QUERY_LEN];
 
-	/* Set the configured bit and (optionally) other important stuff
-	 * in the device control register. */
+	mutex_init(&data->control_mutex);
+
+	/*
+	 * Set the configured bit and (optionally) other important stuff
+	 * in the device control register.
+	 */
 	ctrl_base_addr = fn->fd.control_base_addr;
 	error = rmi_read_block(rmi_dev, fn->fd.control_base_addr,
 			&data->device_control.ctrl0,
@@ -1032,26 +971,30 @@ static int rmi_f01_initialize(struct rmi_function *fn)
 	case RMI_F01_NOSLEEP_DEFAULT:
 		break;
 	case RMI_F01_NOSLEEP_OFF:
-		data->device_control.ctrl0.nosleep = 0;
+		data->device_control.ctrl0 &= ~RMI_F01_CRTL0_NOSLEEP_BIT;
 		break;
 	case RMI_F01_NOSLEEP_ON:
-		data->device_control.ctrl0.nosleep = 1;
+		data->device_control.ctrl0 |= RMI_F01_CRTL0_NOSLEEP_BIT;
 		break;
 	}
-	/* Sleep mode might be set as a hangover from a system crash or
+
+	/*
+	 * Sleep mode might be set as a hangover from a system crash or
 	 * reboot without power cycle.  If so, clear it so the sensor
 	 * is certain to function.
 	 */
-	if (data->device_control.ctrl0.sleep_mode != RMI_SLEEP_MODE_NORMAL) {
+	if ((data->device_control.ctrl0 & RMI_F01_CTRL0_SLEEP_MODE_MASK) !=
+			RMI_SLEEP_MODE_NORMAL) {
 		dev_warn(&fn->dev,
 			 "WARNING: Non-zero sleep mode found. Clearing...\n");
-		data->device_control.ctrl0.sleep_mode = RMI_SLEEP_MODE_NORMAL;
+		data->device_control.ctrl0 &= ~RMI_F01_CTRL0_SLEEP_MODE_MASK;
 	}
 
-	data->device_control.ctrl0.configured = 1;
+	data->device_control.ctrl0 |= RMI_F01_CRTL0_CONFIGURED_BIT;
+
 	error = rmi_write_block(rmi_dev, fn->fd.control_base_addr,
-			&data->device_control.ctrl0,
-			sizeof(data->device_control.ctrl0));
+				&data->device_control.ctrl0,
+				sizeof(data->device_control.ctrl0));
 	if (error < 0) {
 		dev_err(&fn->dev, "Failed to write F01 control.\n");
 		return error;
@@ -1059,16 +1002,18 @@ static int rmi_f01_initialize(struct rmi_function *fn)
 
 	data->irq_count = driver_data->irq_count;
 	data->num_of_irq_regs = driver_data->num_of_irq_regs;
-	ctrl_base_addr += sizeof(struct f01_device_control_0);
+	ctrl_base_addr += sizeof(u8);
 
 	data->interrupt_enable_addr = ctrl_base_addr;
 	error = rmi_read_block(rmi_dev, ctrl_base_addr,
-			data->device_control.interrupt_enable,
-			sizeof(u8)*(data->num_of_irq_regs));
+				data->device_control.interrupt_enable,
+				sizeof(u8) * (data->num_of_irq_regs));
 	if (error < 0) {
-		dev_err(&fn->dev, "Failed to read F01 control interrupt enable register.\n");
+		dev_err(&fn->dev,
+			"Failed to read F01 control interrupt enable register.\n");
 		goto error_exit;
 	}
+
 	ctrl_base_addr += data->num_of_irq_regs;
 
 	/* dummy read in order to clear irqs */
@@ -1079,28 +1024,42 @@ static int rmi_f01_initialize(struct rmi_function *fn)
 	}
 
 	error = rmi_read_block(rmi_dev, fn->fd.query_base_addr,
-				&data->basic_queries,
-				sizeof(data->basic_queries));
+			       basic_query, sizeof(basic_query));
 	if (error < 0) {
 		dev_err(&fn->dev, "Failed to read device query registers.\n");
 		return error;
 	}
 
-	error = rmi_read_block(rmi_dev,
-		fn->fd.query_base_addr + sizeof(data->basic_queries),
-		data->product_id, RMI_PRODUCT_ID_LENGTH);
-	if (error < 0) {
-		dev_err(&fn->dev, "Failed to read product ID.\n");
-		return error;
-	}
-	data->product_id[RMI_PRODUCT_ID_LENGTH] = '\0';
+	/* Now parse what we got */
+	data->properties.manufacturer_id = basic_query[0];
+
+	data->properties.has_lts = basic_query[1] & RMI_F01_QRY1_HAS_LTS;
+	data->properties.has_adjustable_doze =
+			basic_query[1] & RMI_F01_QRY1_HAS_ADJ_DOZE;
+	data->properties.has_adjustable_doze_holdoff =
+			basic_query[1] & RMI_F01_QRY1_HAS_ADJ_DOZE_HOFF;
+
+	snprintf(data->properties.dom, sizeof(data->properties.dom),
+		 "20%02x%02x%02x",
+		 basic_query[5] & RMI_F01_QRY5_YEAR_MASK,
+		 basic_query[6] & RMI_F01_QRY6_MONTH_MASK,
+		 basic_query[7] & RMI_F01_QRY7_DAY_MASK);
+
+	memcpy(data->properties.product_id, &basic_query[11],
+		RMI_PRODUCT_ID_LENGTH);
+	data->properties.product_id[RMI_PRODUCT_ID_LENGTH] = '\0';
+
+	data->properties.productinfo =
+			((basic_query[2] & RMI_F01_QRY2_PRODINFO_MASK) << 7) |
+			(basic_query[3] & RMI_F01_QRY2_PRODINFO_MASK);
+
 	dev_info(&fn->dev, "found RMI device, manufacturer: %s, product: %s\n",
-		 data->basic_queries.manufacturer_id == 1 ?
+		 data->properties.manufacturer_id == 1 ?
 							"synaptics" : "unknown",
-		 data->product_id);
+		 data->properties.product_id);
 
 	/* read control register */
-	if (data->basic_queries.has_adjustable_doze) {
+	if (data->properties.has_adjustable_doze) {
 		data->doze_interval_addr = ctrl_base_addr;
 		ctrl_base_addr++;
 
@@ -1144,7 +1103,7 @@ static int rmi_f01_initialize(struct rmi_function *fn)
 		}
 	}
 
-	if (data->basic_queries.has_adjustable_doze_holdoff) {
+	if (data->properties.has_adjustable_doze_holdoff) {
 		data->doze_holdoff_addr = ctrl_base_addr;
 		ctrl_base_addr++;
 
@@ -1174,15 +1133,17 @@ static int rmi_f01_initialize(struct rmi_function *fn)
 		goto error_exit;
 	}
 
-	driver_data->f01_bootloader_mode = data->device_status.flash_prog;
+	driver_data->f01_bootloader_mode =
+			RMI_F01_STATUS_BOOTLOADER(data->device_status);
 	if (driver_data->f01_bootloader_mode)
 		dev_warn(&rmi_dev->dev,
 			 "WARNING: RMI4 device is in bootloader mode!\n");
 
 
-	if (data->device_status.unconfigured) {
-		dev_err(&fn->dev, "Device reset during configuration process, status: %#02x!\n",
-				data->device_status.status_code);
+	if (RMI_F01_STATUS_UNCONFIGURED(data->device_status)) {
+		dev_err(&fn->dev,
+			"Device was reset during configuration process, status: %#02x!\n",
+			RMI_F01_STATUS_CODE(data->device_status));
 		error = -EINVAL;
 		goto error_exit;
 	}
@@ -1205,46 +1166,46 @@ static int rmi_f01_config(struct rmi_function *fn)
 	int retval;
 
 	retval = rmi_write_block(fn->rmi_dev, fn->fd.control_base_addr,
-			&data->device_control.ctrl0,
-			sizeof(data->device_control.ctrl0));
+				 &data->device_control.ctrl0,
+				 sizeof(data->device_control.ctrl0));
 	if (retval < 0) {
 		dev_err(&fn->dev, "Failed to write device_control.reg.\n");
 		return retval;
 	}
 
 	retval = rmi_write_block(fn->rmi_dev, data->interrupt_enable_addr,
-			data->device_control.interrupt_enable,
-			sizeof(u8)*(data->num_of_irq_regs));
+				 data->device_control.interrupt_enable,
+				 sizeof(u8) * data->num_of_irq_regs);
 
 	if (retval < 0) {
 		dev_err(&fn->dev, "Failed to write interrupt enable.\n");
 		return retval;
 	}
-	if (data->basic_queries.has_lts) {
+	if (data->properties.has_lts) {
 		retval = rmi_write_block(fn->rmi_dev, data->doze_interval_addr,
-				&data->device_control.doze_interval,
-				sizeof(u8));
+					 &data->device_control.doze_interval,
+					 sizeof(u8));
 		if (retval < 0) {
 			dev_err(&fn->dev, "Failed to write doze interval.\n");
 			return retval;
 		}
 	}
 
-	if (data->basic_queries.has_adjustable_doze) {
-		retval = rmi_write_block(
-				fn->rmi_dev, data->wakeup_threshold_addr,
-				&data->device_control.wakeup_threshold,
-				sizeof(u8));
+	if (data->properties.has_adjustable_doze) {
+		retval = rmi_write_block(fn->rmi_dev,
+					 data->wakeup_threshold_addr,
+					 &data->device_control.wakeup_threshold,
+					 sizeof(u8));
 		if (retval < 0) {
 			dev_err(&fn->dev, "Failed to write wakeup threshold.\n");
 			return retval;
 		}
 	}
 
-	if (data->basic_queries.has_adjustable_doze_holdoff) {
+	if (data->properties.has_adjustable_doze_holdoff) {
 		retval = rmi_write_block(fn->rmi_dev, data->doze_holdoff_addr,
-				&data->device_control.doze_holdoff,
-				sizeof(u8));
+					 &data->device_control.doze_holdoff,
+					 sizeof(u8));
 		if (retval < 0) {
 			dev_err(&fn->dev, "Failed to write doze holdoff.\n");
 			return retval;
@@ -1288,19 +1249,25 @@ static int rmi_f01_suspend(struct device *dev)
 	struct f01_data *data = fn->data;
 	int error;
 
-	data->old_nosleep = data->device_control.ctrl0.nosleep;
-	data->device_control.ctrl0.nosleep = 0;
-	data->device_control.ctrl0.sleep_mode = RMI_SLEEP_MODE_SENSOR_SLEEP;
+	data->old_nosleep = data->device_control.ctrl0 &
+					RMI_F01_CRTL0_NOSLEEP_BIT;
+	data->device_control.ctrl0 &= ~RMI_F01_CRTL0_NOSLEEP_BIT;
+
+	data->device_control.ctrl0 &= ~RMI_F01_CTRL0_SLEEP_MODE_MASK;
+	data->device_control.ctrl0 |= RMI_SLEEP_MODE_SENSOR_SLEEP;
 
 	error = rmi_write_block(rmi_dev,
-			fn->fd.control_base_addr,
-			&data->device_control.ctrl0,
-			sizeof(data->device_control.ctrl0));
+				fn->fd.control_base_addr,
+				&data->device_control.ctrl0,
+				sizeof(data->device_control.ctrl0));
 	if (error < 0) {
 		dev_err(&fn->dev, "Failed to write sleep mode. Code: %d.\n",
 			error);
-		data->device_control.ctrl0.nosleep = data->old_nosleep;
-		data->device_control.ctrl0.sleep_mode = RMI_SLEEP_MODE_NORMAL;
+		if (data->old_nosleep)
+			data->device_control.ctrl0 |=
+					RMI_F01_CRTL0_NOSLEEP_BIT;
+		data->device_control.ctrl0 &= ~RMI_F01_CTRL0_SLEEP_MODE_MASK;
+		data->device_control.ctrl0 |= RMI_SLEEP_MODE_NORMAL;
 		return error;
 	}
 
@@ -1314,12 +1281,15 @@ static int rmi_f01_resume(struct device *dev)
 	struct f01_data *data = fn->data;
 	int error;
 
-	data->device_control.ctrl0.nosleep = data->old_nosleep;
-	data->device_control.ctrl0.sleep_mode = RMI_SLEEP_MODE_NORMAL;
+	if (data->old_nosleep)
+		data->device_control.ctrl0 |= RMI_F01_CRTL0_NOSLEEP_BIT;
+
+	data->device_control.ctrl0 &= ~RMI_F01_CTRL0_SLEEP_MODE_MASK;
+	data->device_control.ctrl0 |= RMI_SLEEP_MODE_NORMAL;
 
 	error = rmi_write_block(rmi_dev, fn->fd.control_base_addr,
-			&data->device_control.ctrl0,
-			sizeof(data->device_control.ctrl0));
+				&data->device_control.ctrl0,
+				sizeof(data->device_control.ctrl0));
 	if (error < 0) {
 		dev_err(&fn->dev,
 			"Failed to restore normal operation. Code: %d.\n",
@@ -1348,7 +1318,7 @@ static int rmi_f01_attention(struct rmi_function *fn,
 		return retval;
 	}
 
-	if (data->device_status.unconfigured) {
+	if (RMI_F01_STATUS_UNCONFIGURED(data->device_status)) {
 		dev_warn(&fn->dev, "Device reset detected.\n");
 		retval = rmi_dev->driver->reset_handler(rmi_dev);
 		if (retval < 0)
