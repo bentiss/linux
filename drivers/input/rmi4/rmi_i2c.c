@@ -8,7 +8,6 @@
  */
 
 #include <linux/kernel.h>
-#include <linux/debugfs.h>
 #include <linux/delay.h>
 #include <linux/i2c.h>
 #include <linux/interrupt.h>
@@ -61,8 +60,9 @@ static int setup_debugfs(struct rmi_device *rmi_dev, struct rmi_i2c_data *data)
 	if (!rmi_dev->debugfs_root)
 		return -ENODEV;
 
-	data->debugfs_comms = debugfs_create_bool("comms_debug", RMI_RW_ATTR,
-			rmi_dev->debugfs_root, &data->comms_debug);
+	data->debugfs_comms = debugfs_create_bool("comms_debug",
+			(S_IRUGO | S_IWUGO), rmi_dev->debugfs_root,
+			&data->comms_debug);
 	if (!data->debugfs_comms || IS_ERR(data->debugfs_comms)) {
 		dev_warn(&rmi_dev->dev,
 			 "Failed to create debugfs comms_debug.\n");

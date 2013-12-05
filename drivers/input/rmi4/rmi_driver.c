@@ -4,9 +4,10 @@
  *
  * This driver provides the core support for a single RMI4-based device.
  *
- * The RMI4 specification can be found here:
+ * The RMI4 specification can be found here (URL split for line length):
  *
- * http://www.synaptics.com/sites/default/files/511-000136-01-Rev-E-RMI4%20Intrfacing%20Guide.pdf
+ * http://www.synaptics.com/sites/default/files/
+ *      511-000136-01-Rev-E-RMI4%20Intrfacing%20Guide.pdf
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License version 2 as published by
@@ -41,48 +42,6 @@
 #define DEFAULT_POLL_INTERVAL_MS	13
 
 #define IRQ_DEBUG(data) (IS_ENABLED(CONFIG_RMI4_DEBUG) && data->irq_debug)
-
-#ifdef	CONFIG_RMI4_DEBUG
-static void rmi_driver_setup_debugfs(struct rmi_device *rmi_dev)
-{
-	struct rmi_driver_data *data = dev_get_drvdata(&rmi_dev->dev);
-	struct rmi_phys_info *info = &rmi_dev->phys->info;
-
-	if (!rmi_dev->debugfs_root)
-		return;
-
-	if (!debugfs_create_u32_array("transport_stats", RMI_RO_ATTR,
-				      rmi_dev->debugfs_root,
-				      (u32 *)&info->tx_count, 6))
-		dev_warn(&rmi_dev->dev,
-			 "Failed to create debugfs transport_stats\n");
-
-	if (!debugfs_create_bool("irq_debug", RMI_RW_ATTR,
-				 rmi_dev->debugfs_root,
-				 &data->irq_debug))
-		dev_warn(&rmi_dev->dev, "Failed to create debugfs irq_debug\n");
-
-	if (!debugfs_create_u32("attn_count", RMI_RO_ATTR,
-				rmi_dev->debugfs_root,
-				&data->attn_count))
-		dev_warn(&rmi_dev->dev,
-			 "Failed to create debugfs attn_count\n");
-}
-
-static void rmi_driver_teardown_debugfs(struct rmi_device *rmi_dev)
-{
-	debugfs_remove_recursive(rmi_dev->debugfs_root);
-}
-
-#else
-static inline void rmi_driver_setup_debugfs(struct rmi_device *rmi_dev)
-{
-}
-
-static inline rmi_driver_teardown_debugfs(struct rmi_device *rmi_dev)
-{
-}
-#endif
 
 static irqreturn_t rmi_irq_thread(int irq, void *p)
 {
@@ -216,122 +175,6 @@ static int enable_sensor(struct rmi_device *rmi_dev)
 
 	return retval;
 }
-
-/* sysfs show and store fns for driver attributes */
-
-static ssize_t rmi_driver_bsr_show(struct device *dev,
-				   struct device_attribute *attr, char *buf)
-{
-	struct rmi_device *rmi_dev;
-	struct rmi_driver_data *data;
-	rmi_dev = to_rmi_device(dev);
-	data = dev_get_drvdata(&rmi_dev->dev);
-
-	return snprintf(buf, PAGE_SIZE, "%u\n", data->bsr);
-}
-
-static ssize_t rmi_driver_bsr_store(struct device *dev,
-				    struct device_attribute *attr,
-				    const char *buf, size_t count)
-{
-	int retval;
-	unsigned long val;
-	struct rmi_device *rmi_dev;
-	struct rmi_driver_data *data;
-
-	rmi_dev = to_rmi_device(dev);
-	data = dev_get_drvdata(&rmi_dev->dev);
-
-	/* need to convert the string data to an actual value */
-	retval = strict_strtoul(buf, 10, &val);
-	if (retval < 0 || val > 255) {
-		dev_err(dev, "Invalid value '%s' written to BSR.\n", buf);
-		return -EINVAL;
-	}
-
-	retval = rmi_write(rmi_dev, BSR_LOCATION, (u8)val);
-	if (retval < 0) {
-		dev_err(dev, "%s : failed to write bsr %lu to %#06x\n",
-			__func__, val, BSR_LOCATION);
-		return retval;
-	}
-
-	data->bsr = val;
-
-	return count;
-}
-
-static DEVICE_ATTR(bsr, RMI_RW_ATTR, rmi_driver_bsr_show, rmi_driver_bsr_store);
-
-static ssize_t rmi_driver_enabled_show(struct device *dev,
-				       struct device_attribute *attr, char *buf)
-{
-	struct rmi_device *rmi_dev = to_rmi_device(dev);
-	struct rmi_driver_data *data = dev_get_drvdata(&rmi_dev->dev);
-
-	return snprintf(buf, PAGE_SIZE, "%u\n", data->enabled);
-}
-
-static ssize_t rmi_driver_enabled_store(struct device *dev,
-					struct device_attribute *attr,
-					const char *buf, size_t count)
-{
-	struct rmi_device *rmi_dev = to_rmi_device(dev);
-	int retval;
-	int new_value;
-
-	if (sysfs_streq(buf, "0"))
-		new_value = false;
-	else if (sysfs_streq(buf, "1"))
-		new_value = true;
-	else
-		return -EINVAL;
-
-	if (new_value) {
-		retval = enable_sensor(rmi_dev);
-		if (retval) {
-			dev_err(dev, "Failed to enable sensor, code=%d.\n",
-				retval);
-			return -EIO;
-		}
-	} else {
-		disable_sensor(rmi_dev);
-	}
-
-	return count;
-}
-
-/** This sysfs attribute is deprecated, and will be removed in a future release.
- */
-static DEVICE_ATTR(enabled, RMI_RW_ATTR,
-		   rmi_driver_enabled_show, rmi_driver_enabled_store);
-
-static umode_t rmi_driver_attr_visible(struct kobject *kobj,
-				       struct attribute *attr, int n)
-{
-	struct device *dev = kobj_to_dev(kobj);
-	struct rmi_device *rmi_dev = to_rmi_device(dev);
-	struct rmi_driver_data *data = dev_get_drvdata(&rmi_dev->dev);
-	umode_t mode = attr->mode;
-
-	if (attr == &dev_attr_bsr.attr) {
-		if (!data->pdt_props.has_bsr)
-			mode = 0;
-	}
-
-	return mode;
-}
-
-static struct attribute *rmi_driver_attrs[] = {
-	&dev_attr_bsr.attr,
-	&dev_attr_enabled.attr,
-	NULL
-};
-
-static struct attribute_group rmi_driver_attr_group = {
-	.is_visible	= rmi_driver_attr_visible,
-	.attrs		= rmi_driver_attrs,
-};
 
 static void rmi_free_function_list(struct rmi_device *rmi_dev)
 {
@@ -718,7 +561,8 @@ static int reset_and_reflash(struct rmi_device *rmi_dev)
 	bool has_f01 = false;
 	int i;
 	int retval;
-	const struct rmi_device_platform_data *pdata = to_rmi_platform_data(rmi_dev);
+	const struct rmi_device_platform_data *pdata =
+			to_rmi_platform_data(rmi_dev);
 
 	dev_dbg(dev, "Initial reset.\n");
 
@@ -940,9 +784,6 @@ static int rmi_driver_remove(struct device *dev)
 {
 	struct rmi_device *rmi_dev = to_rmi_device(dev);
 
-	rmi_driver_teardown_debugfs(rmi_dev);
-	sysfs_remove_group(&dev->kobj, &rmi_driver_attr_group);
-
 	disable_sensor(rmi_dev);
 	rmi_free_function_list(rmi_dev);
 
@@ -1078,14 +919,6 @@ static int rmi_driver_probe(struct device *dev)
 
 		mutex_init(&data->suspend_mutex);
 	}
-
-	retval = sysfs_create_group(&dev->kobj, &rmi_driver_attr_group);
-	if (retval < 0) {
-		dev_err(dev, "%s: Failed to create sysfs group\n", __func__);
-		goto err_free_data;
-	}
-
-	rmi_driver_setup_debugfs(rmi_dev);
 
 	if (pdata->attn_gpio) {
 		data->irq = gpio_to_irq(pdata->attn_gpio);

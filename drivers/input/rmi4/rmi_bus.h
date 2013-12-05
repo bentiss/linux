@@ -22,17 +22,6 @@
 #include <linux/debugfs.h>
 #include <linux/rmi.h>
 
-
-/* Permissions for sysfs attributes.  Since the permissions policy will change
- * on a global basis in the future, rather than edit all sysfs attrs everywhere
- * in the driver (and risk screwing that up in the process), we use this handy
- * set of #defines.  That way when we change the policy for sysfs permissions,
- * we only need to change them here.
- */
-#define RMI_RO_ATTR S_IRUGO
-#define RMI_RW_ATTR (S_IRUGO | S_IWUGO)
-#define RMI_WO_ATTR S_IWUGO
-
 struct rmi_device;
 
 /**
