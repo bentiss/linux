@@ -10,7 +10,6 @@
 #define FUNCTION_DATA f11_data
 
 #include <linux/kernel.h>
-#include <linux/debugfs.h>
 #include <linux/delay.h>
 #include <linux/device.h>
 #include <linux/input.h>
@@ -821,177 +820,6 @@ enum finger_state_values {
 	F11_INACCURATE	= 0x02,
 	F11_RESERVED	= 0x03
 };
-
-static ssize_t rmi_f11_rezero_store(struct device *dev,
-				    struct device_attribute *attr,
-				    const char *buf, size_t count)
-{
-	struct rmi_function *fn = to_rmi_function(dev);
-	unsigned int rezero;
-	int error;
-
-	error = kstrtouint(buf, 0, &rezero);
-	if (error)
-		return error;
-
-	if (rezero > 1)
-		return -ERANGE;
-
-	/* Per spec, 0 has no effect, so we skip it entirely. */
-	if (rezero) {
-		/* Command register always reads as 0, so just use a local. */
-		struct f11_2d_commands commands = {
-			.rezero = true,
-		};
-
-		error = rmi_write_block(fn->rmi_dev, fn->fd.command_base_addr,
-					&commands, sizeof(commands));
-		if (error < 0) {
-			dev_err(dev,
-				"%s: failed to issue rezero command, error = %d.",
-				__func__, error);
-			return error;
-		}
-	}
-
-	return count;
-}
-
-static DEVICE_ATTR(rezero, RMI_WO_ATTR, NULL, rmi_f11_rezero_store);
-
-static struct attribute *rmi_f11_attrs[] = {
-	&dev_attr_rezero.attr,
-	NULL
-};
-
-static struct attribute_group rmi_f11_attr_group = {
-	.attrs = rmi_f11_attrs,
-};
-
-#ifdef CONFIG_RMI4_DEBUG
-static void rmi_f11_setup_sensor_debugfs(struct f11_2d_sensor *sensor)
-{
-	struct rmi_function *fn = sensor->fn;
-	struct dentry *sensor_root;
-	char dirname[sizeof("sensorNNN")];
-
-	if (!fn->debugfs_root)
-		return;
-
-	snprintf(dirname, sizeof(dirname), "input%3u", sensor->sensor_index);
-	sensor_root = debugfs_create_dir(dirname, fn->debugfs_root);
-	if (!sensor_root) {
-		dev_warn(&fn->dev,
-			 "Failed to create debugfs directory %s for sensor %d\n",
-			 dirname, sensor->sensor_index);
-		return;
-	}
-
-	if (!debugfs_create_bool("type_a", RMI_RW_ATTR, sensor_root,
-				 &sensor->type_a))
-		dev_warn(&fn->dev,
-			 "Failed to create debugfs type_a for sensor %d.\n",
-			 sensor->sensor_index);
-
-	if (!debugfs_create_u16("max_x", RMI_RW_ATTR, sensor_root,
-				&sensor->max_x))
-		dev_warn(&fn->dev,
-			 "Failed to create debugfs max_x for sensor %d.\n",
-			 sensor->sensor_index);
-
-	if (!debugfs_create_u16("max_xy", RMI_RW_ATTR, sensor_root,
-				&sensor->max_y))
-		dev_warn(&fn->dev,
-			 "Failed to create debugfs max_y for sensor %d.\n",
-			 sensor->sensor_index);
-
-	if (!debugfs_create_bool("flip_x", RMI_RW_ATTR, sensor_root,
-				 &sensor->axis_align.flip_x))
-		dev_warn(&fn->dev,
-			 "Failed to create debugfs flip_x for sensor %d.\n",
-			 sensor->sensor_index);
-
-	if (!debugfs_create_bool("flip_y", RMI_RW_ATTR, sensor_root,
-				 &sensor->axis_align.flip_y))
-		dev_warn(&fn->dev,
-			 "Failed to create debugfs flip_y for sensor %d.\n",
-			 sensor->sensor_index);
-
-	if (!debugfs_create_u16("clip_x_low", RMI_RW_ATTR, sensor_root,
-				&sensor->axis_align.clip_x_low))
-		dev_warn(&fn->dev,
-			 "Failed to create debugfs clip_x_low for sensor %d.\n",
-			 sensor->sensor_index);
-
-	if (!debugfs_create_u16("clip_x_high", RMI_RW_ATTR, sensor_root,
-				&sensor->axis_align.clip_x_high))
-		dev_warn(&fn->dev,
-			 "Failed to create debugfs clip_x_high for sensor %d.\n",
-			 sensor->sensor_index);
-
-	if (!debugfs_create_u16("clip_y_low", RMI_RW_ATTR, sensor_root,
-				 &sensor->axis_align.clip_y_low))
-		dev_warn(&fn->dev,
-			 "Failed to create debugfs clip_y_low for sensor %d.\n",
-			 sensor->sensor_index);
-
-	if (!debugfs_create_u16("clip_y_high", RMI_RW_ATTR, sensor_root,
-				 &sensor->axis_align.clip_y_high))
-		dev_warn(&fn->dev,
-			 "Failed to create debugfs clip_y_high for sensor %d.\n",
-			 sensor->sensor_index);
-
-	if (!debugfs_create_u8("delta_x_threshold", RMI_RW_ATTR, sensor_root,
-				&sensor->axis_align.delta_x_threshold))
-		dev_warn(&fn->dev,
-			 "Failed to create debugfs delta_x_threshold for sensor %d.\n",
-			 sensor->sensor_index);
-
-	if (!debugfs_create_u8("delta_y_threshold", RMI_RW_ATTR, sensor_root,
-				&sensor->axis_align.delta_y_threshold))
-		dev_warn(&fn->dev,
-			 "Failed to create debugfs delta_y_threshold for sensor %d.\n",
-			 sensor->sensor_index);
-
-	if (!debugfs_create_u16("offset_x", RMI_RW_ATTR, sensor_root,
-				 &sensor->axis_align.offset_x))
-		dev_warn(&fn->dev,
-			 "Failed to create debugfs offset_x for sensor %d.\n",
-			 sensor->sensor_index);
-
-	if (!debugfs_create_u16("offset_x", RMI_RW_ATTR, sensor_root,
-				 &sensor->axis_align.offset_x))
-		dev_warn(&fn->dev,
-			 "Failed to create debugfs offset_y for sensor %d.\n",
-			 sensor->sensor_index);
-
-	if (!debugfs_create_bool("swap", RMI_RW_ATTR, sensor_root,
-				 &sensor->axis_align.swap_axes))
-		dev_warn(&fn->dev,
-			 "Failed to create debugfs swap for sensor %d.\n",
-			 sensor->sensor_index);
-}
-
-static void rmi_f11_setup_debugfs(struct rmi_function *fn)
-{
-	struct f11_data *f11 = fn->data;
-
-	if (fn->debugfs_root)
-		if (!debugfs_create_u16("rezero_wait", RMI_RW_ATTR,
-					fn->debugfs_root,
-					&f11->rezero_wait_ms))
-			dev_warn(&fn->dev,
-				 "Failed to create debugfs rezero_wait.\n");
-}
-#else
-static inline void rmi_f11_setup_sensor_debugfs(struct f11_2d_sensor *sensor)
-{
-}
-static inline void rmi_f11_setup_debugfs(struct rmi_function *fn)
-{
-}
-#endif
-/* End adding debugfs */
 
 /** F11_INACCURATE state is overloaded to indicate pen present. */
 #define F11_PEN F11_INACCURATE
@@ -1886,11 +1714,7 @@ static int rmi_f11_initialize(struct rmi_function *fn)
 				dev_warn(&fn->dev, "Failed to write to delta_y_threshold %d. Code: %d.\n",
 					i, rc);
 		}
-
-		rmi_f11_setup_sensor_debugfs(sensor);
 	}
-
-	rmi_f11_setup_debugfs(fn);
 
 	mutex_init(&f11->dev_controls_mutex);
 	return 0;
@@ -2112,18 +1936,11 @@ static int rmi_f11_probe(struct rmi_function *fn)
 	if (error)
 		return error;
 
-	error = sysfs_create_group(&fn->dev.kobj, &rmi_f11_attr_group);
-	if (error)
-		return error;
-
 	return 0;
 }
 
 static void rmi_f11_remove(struct rmi_function *fn)
 {
-	debugfs_remove_recursive(fn->debugfs_root);
-	sysfs_remove_group(&fn->dev.kobj, &rmi_f11_attr_group);
-
 	rmi_f11_free_devices(fn);
 }
 
