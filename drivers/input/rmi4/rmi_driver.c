@@ -934,7 +934,7 @@ static int rmi_driver_probe(struct device *dev)
 	} else
 		data->poll_interval = ktime_set(0,
 			(pdata->poll_interval_ms ? pdata->poll_interval_ms :
-			DEFAULT_POLL_INTERVAL_MS) * 1000);
+			DEFAULT_POLL_INTERVAL_MS) * 1000 * 1000);
 
 	if (data->f01_container->dev.driver) {
 		/* Driver already bound, so enable ATTN now. */
