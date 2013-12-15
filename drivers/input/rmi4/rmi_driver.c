@@ -483,6 +483,31 @@ int rmi_driver_irq_get_mask(struct rmi_device *rmi_dev,
 		return -ENOMEM;
 }
 
+int rmi_read_pdt_entry(struct rmi_device *rmi_dev, struct pdt_entry *entry,
+			u16 pdt_address)
+{
+	u8 buf[RMI_PDT_ENTRY_SIZE];
+	int error;
+
+	error = rmi_read_block(rmi_dev, pdt_address, buf, RMI_PDT_ENTRY_SIZE);
+	if (error < 0) {
+		dev_err(&rmi_dev->dev, "Read PDT entry at %#06x failed, code: %d.\n",
+				pdt_address, error);
+		return error;
+	}
+
+	entry->query_base_addr = buf[0];
+	entry->command_base_addr = buf[1];
+	entry->control_base_addr = buf[2];
+	entry->data_base_addr = buf[3];
+	entry->interrupt_source_count = buf[4] & RMI_PDT_INT_SOURCE_COUNT_MASK;
+	entry->function_version = (buf[4] & RMI_PDT_FUNCTION_VERSION_MASK) >> 5;
+	entry->function_number = buf[5];
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(rmi_read_pdt_entry);
+
 static void rmi_driver_copy_pdt_to_fd(struct pdt_entry *pdt,
 				      struct rmi_function_descriptor *fd,
 				      u16 page_start)
@@ -572,14 +597,10 @@ static int reset_and_reflash(struct rmi_device *rmi_dev)
 		u16 pdt_end = page_start + PDT_END_SCAN_LOCATION;
 
 		done = true;
-		for (i = pdt_start; i >= pdt_end; i -= sizeof(pdt_entry)) {
-			retval = rmi_read_block(rmi_dev, i, &pdt_entry,
-					       sizeof(pdt_entry));
-			if (retval != sizeof(pdt_entry)) {
-				dev_err(dev, "Read PDT entry at %#06x failed, code = %d.\n",
-						i, retval);
+		for (i = pdt_start; i >= pdt_end; i -= RMI_PDT_ENTRY_SIZE) {
+			retval = rmi_read_pdt_entry(rmi_dev, &pdt_entry, i);
+			if (retval < 0)
 				return retval;
-			}
 
 			if (RMI4_END_OF_PDT(pdt_entry.function_number))
 				break;
@@ -634,14 +655,10 @@ static int rmi_scan_pdt(struct rmi_device *rmi_dev)
 		u16 pdt_end = page_start + PDT_END_SCAN_LOCATION;
 
 		done = true;
-		for (i = pdt_start; i >= pdt_end; i -= sizeof(pdt_entry)) {
-			retval = rmi_read_block(rmi_dev, i, &pdt_entry,
-					       sizeof(pdt_entry));
-			if (retval != sizeof(pdt_entry)) {
-				dev_err(dev, "Read of PDT entry at %#06x failed.\n",
-					i);
+		for (i = pdt_start; i >= pdt_end; i -= RMI_PDT_ENTRY_SIZE) {
+			retval = rmi_read_pdt_entry(rmi_dev, &pdt_entry, i);
+			if (retval < 0)
 				goto error_exit;
-			}
 
 			if (RMI4_END_OF_PDT(pdt_entry.function_number))
 				break;
