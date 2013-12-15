@@ -47,7 +47,7 @@ bool rmi_is_physical_device(struct device *dev)
 	return dev->type == &rmi_device_type;
 }
 
-#if CONFIG_RMI4_DEBUG
+#ifdef CONFIG_RMI4_DEBUG
 
 static void rmi_physical_setup_debugfs(struct rmi_device *rmi_dev)
 {
@@ -109,11 +109,11 @@ int rmi_register_physical_device(struct rmi_phys_device *phys)
 
 	phys->rmi_dev = rmi_dev;
 
+	rmi_physical_setup_debugfs(rmi_dev);
+
 	error = device_register(&rmi_dev->dev);
 	if (error)
 		return error;
-
-	rmi_physical_setup_debugfs(rmi_dev);
 
 	dev_dbg(phys->dev, "%s: Registered %s as %s.\n", __func__,
 		pdata->sensor_name, dev_name(&rmi_dev->dev));
@@ -155,7 +155,7 @@ bool rmi_is_function_device(struct device *dev)
 	return dev->type == &rmi_function_type;
 }
 
-#if CONFIG_RMI4_DEBUG
+#ifdef CONFIG_RMI4_DEBUG
 
 static void rmi_function_setup_debugfs(struct rmi_function *fn)
 {
@@ -233,18 +233,23 @@ int rmi_register_function(struct rmi_function *fn)
 	fn->dev.type = &rmi_function_type;
 	fn->dev.bus = &rmi_bus_type;
 
+	rmi_function_setup_debugfs(fn);
+
 	error = device_register(&fn->dev);
 	if (error) {
 		dev_err(&rmi_dev->dev,
 			"Failed device_register function device %s\n",
 			dev_name(&fn->dev));
-		return error;
+		goto error_exit;
 	}
 
 	dev_dbg(&rmi_dev->dev, "Registered F%02X.\n", fn->fd.function_number);
 
-	rmi_function_setup_debugfs(fn);
 	return 0;
+
+error_exit:
+	rmi_function_teardown_debugfs(fn);
+	return error;
 }
 
 void rmi_unregister_function(struct rmi_function *fn)
@@ -357,6 +362,8 @@ static int __init rmi_bus_init(void)
 		return error;
 	}
 
+	rmi_bus_setup_debugfs();
+
 	error = rmi_register_f01_handler();
 	if (error) {
 		pr_err("%s: error registering the RMI F01 handler: %d\n",
@@ -371,13 +378,12 @@ static int __init rmi_bus_init(void)
 		goto err_unregister_f01;
 	}
 
-	rmi_bus_setup_debugfs();
-
 	return 0;
 
 err_unregister_f01:
 	rmi_unregister_f01_handler();
 err_unregister_bus:
+	rmi_bus_teardown_debugfs();
 	bus_unregister(&rmi_bus_type);
 	return error;
 }
@@ -390,9 +396,9 @@ static void __exit rmi_bus_exit(void)
 	 * all we have to do at this point is unregister ourselves.
 	 */
 
-	rmi_bus_teardown_debugfs();
 	rmi_unregister_physical_driver();
 	rmi_unregister_f01_handler();
+	rmi_bus_teardown_debugfs();
 	bus_unregister(&rmi_bus_type);
 }
 module_exit(rmi_bus_exit);
