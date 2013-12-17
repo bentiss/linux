@@ -1289,7 +1289,6 @@ static int rmi_f11_register_devices(struct rmi_function *fn)
 	struct f11_data *f11 = fn->data;
 	struct input_dev *input_dev;
 	struct input_dev *input_dev_mouse;
-	struct rmi_driver_data *driver_data = dev_get_drvdata(&rmi_dev->dev);
 	struct rmi_driver *driver = rmi_dev->driver;
 	struct f11_2d_sensor *sensor = &f11->sensor;
 	int rc;
