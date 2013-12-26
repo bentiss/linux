@@ -74,7 +74,7 @@ struct rmi_driver_data {
 
 #ifdef CONFIG_RMI4_DEBUG
 	struct dentry *debugfs_delay;
-	struct dentry *debugfs_phys;
+	struct dentry *debugfs_xport;
 	struct dentry *debugfs_reg_ctl;
 	struct dentry *debugfs_reg;
 	struct dentry *debugfs_irq;

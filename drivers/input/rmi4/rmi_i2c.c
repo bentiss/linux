@@ -27,7 +27,7 @@
  *
  * @page_mutex: Locks current page to avoid changing pages in unexpected ways.
  * @page: Keeps track of the current virtual page
- * @phys: Pointer to the physical interface
+ * @xport: Pointer to the transport interface
  *
  * @tx_buf: Buffer used for transmitting data to the sensor over i2c.
  * @tx_buf_size: Size of the buffer
@@ -40,7 +40,7 @@
 struct rmi_i2c_data {
 	struct mutex page_mutex;
 	int page;
-	struct rmi_phys_device *phys;
+	struct rmi_transport_dev *xport;
 
 	u8 *tx_buf;
 	int tx_buf_size;
@@ -97,14 +97,14 @@ static inline void teardown_debugfs(struct rmi_i2c_data *data)
 #define RMI_PAGE_SELECT_REGISTER 0xff
 #define RMI_I2C_PAGE(addr) (((addr) >> 8) & 0xff)
 
-static char *phys_proto_name = "i2c";
+static char *xport_proto_name = "i2c";
 
 /*
  * rmi_set_page - Set RMI page
- * @phys: The pointer to the rmi_phys_device struct
+ * @xport: The pointer to the rmi_transport_dev struct
  * @page: The new page address.
  *
- * RMI devices have 16-bit addressing, but some of the physical
+ * RMI devices have 16-bit addressing, but some of the transport
  * implementations (like SMBus) only have 8-bit addressing. So RMI implements
  * a page address at 0xff of every page so we can reliable page addresses
  * every 256 registers.
@@ -113,21 +113,21 @@ static char *phys_proto_name = "i2c";
  *
  * Returns zero on success, non-zero on failure.
  */
-static int rmi_set_page(struct rmi_phys_device *phys, u8 page)
+static int rmi_set_page(struct rmi_transport_dev *xport, u8 page)
 {
-	struct i2c_client *client = to_i2c_client(phys->dev);
-	struct rmi_i2c_data *data = phys->data;
+	struct i2c_client *client = to_i2c_client(xport->dev);
+	struct rmi_i2c_data *data = xport->data;
 	u8 txbuf[2] = {RMI_PAGE_SELECT_REGISTER, page};
 	int retval;
 
 	if (COMMS_DEBUG(data))
 		dev_dbg(&client->dev, "writes 3 bytes: %02x %02x\n",
 			txbuf[0], txbuf[1]);
-	phys->info.tx_count++;
-	phys->info.tx_bytes += sizeof(txbuf);
+	xport->info.tx_count++;
+	xport->info.tx_bytes += sizeof(txbuf);
 	retval = i2c_master_send(client, txbuf, sizeof(txbuf));
 	if (retval != sizeof(txbuf)) {
-		phys->info.tx_errs++;
+		xport->info.tx_errs++;
 		dev_err(&client->dev,
 			"%s: set page failed: %d.", __func__, retval);
 		return (retval < 0) ? retval : -EIO;
@@ -164,11 +164,11 @@ static int copy_to_debug_buf(struct device *dev, struct rmi_i2c_data *data,
 	return 0;
 }
 
-static int rmi_i2c_write_block(struct rmi_phys_device *phys, u16 addr,
+static int rmi_i2c_write_block(struct rmi_transport_dev *xport, u16 addr,
 			       const void *buf, const int len)
 {
-	struct i2c_client *client = to_i2c_client(phys->dev);
-	struct rmi_i2c_data *data = phys->data;
+	struct i2c_client *client = to_i2c_client(xport->dev);
+	struct rmi_i2c_data *data = xport->data;
 	int retval;
 	int tx_size = len + 1;
 
@@ -190,7 +190,7 @@ static int rmi_i2c_write_block(struct rmi_phys_device *phys, u16 addr,
 	memcpy(data->tx_buf + 1, buf, len);
 
 	if (RMI_I2C_PAGE(addr) != data->page) {
-		retval = rmi_set_page(phys, RMI_I2C_PAGE(addr));
+		retval = rmi_set_page(xport, RMI_I2C_PAGE(addr));
 		if (retval < 0)
 			goto exit;
 	}
@@ -202,11 +202,11 @@ static int rmi_i2c_write_block(struct rmi_phys_device *phys, u16 addr,
 				len, addr, data->debug_buf);
 	}
 
-	phys->info.tx_count++;
-	phys->info.tx_bytes += tx_size;
+	xport->info.tx_count++;
+	xport->info.tx_bytes += tx_size;
 	retval = i2c_master_send(client, data->tx_buf, tx_size);
 	if (retval < 0)
-		phys->info.tx_errs++;
+		xport->info.tx_errs++;
 	else
 		retval--; /* don't count the address byte */
 
@@ -216,18 +216,18 @@ exit:
 }
 
 
-static int rmi_i2c_read_block(struct rmi_phys_device *phys, u16 addr,
+static int rmi_i2c_read_block(struct rmi_transport_dev *xport, u16 addr,
 			      void *buf, const int len)
 {
-	struct i2c_client *client = to_i2c_client(phys->dev);
-	struct rmi_i2c_data *data = phys->data;
+	struct i2c_client *client = to_i2c_client(xport->dev);
+	struct rmi_i2c_data *data = xport->data;
 	u8 txbuf[1] = {addr & 0xff};
 	int retval;
 
 	mutex_lock(&data->page_mutex);
 
 	if (RMI_I2C_PAGE(addr) != data->page) {
-		retval = rmi_set_page(phys, RMI_I2C_PAGE(addr));
+		retval = rmi_set_page(xport, RMI_I2C_PAGE(addr));
 		if (retval < 0)
 			goto exit;
 	}
@@ -235,21 +235,21 @@ static int rmi_i2c_read_block(struct rmi_phys_device *phys, u16 addr,
 	if (COMMS_DEBUG(data))
 		dev_dbg(&client->dev, "writes 1 bytes: %02x\n", txbuf[0]);
 
-	phys->info.tx_count++;
-	phys->info.tx_bytes += sizeof(txbuf);
+	xport->info.tx_count++;
+	xport->info.tx_bytes += sizeof(txbuf);
 	retval = i2c_master_send(client, txbuf, sizeof(txbuf));
 	if (retval != sizeof(txbuf)) {
-		phys->info.tx_errs++;
+		xport->info.tx_errs++;
 		retval = (retval < 0) ? retval : -EIO;
 		goto exit;
 	}
 
 	retval = i2c_master_recv(client, (u8 *) buf, len);
 
-	phys->info.rx_count++;
-	phys->info.rx_bytes += len;
+	xport->info.rx_count++;
+	xport->info.rx_bytes += len;
 	if (retval < 0)
-		phys->info.rx_errs++;
+		xport->info.rx_errs++;
 	else if (COMMS_DEBUG(data)) {
 		int rc = copy_to_debug_buf(&client->dev, data, (u8 *) buf, len);
 		if (!rc)
@@ -265,7 +265,7 @@ exit:
 static int rmi_i2c_probe(struct i2c_client *client,
 			 const struct i2c_device_id *id)
 {
-	struct rmi_phys_device *rmi_phys;
+	struct rmi_transport_dev *xport;
 	struct rmi_i2c_data *data;
 	struct rmi_device_platform_data *pdata = client->dev.platform_data;
 	int retval;
@@ -296,10 +296,10 @@ static int rmi_i2c_probe(struct i2c_client *client,
 		return retval;
 	}
 
-	rmi_phys = devm_kzalloc(&client->dev, sizeof(struct rmi_phys_device),
+	xport = devm_kzalloc(&client->dev, sizeof(struct rmi_transport_dev),
 				GFP_KERNEL);
 
-	if (!rmi_phys)
+	if (!xport)
 		return -ENOMEM;
 
 	data = devm_kzalloc(&client->dev, sizeof(struct rmi_i2c_data),
@@ -307,35 +307,35 @@ static int rmi_i2c_probe(struct i2c_client *client,
 	if (!data)
 		return -ENOMEM;
 
-	data->phys = rmi_phys;
+	data->xport = xport;
 
-	rmi_phys->data = data;
-	rmi_phys->dev = &client->dev;
+	xport->data = data;
+	xport->dev = &client->dev;
 
-	rmi_phys->write_block = rmi_i2c_write_block;
-	rmi_phys->read_block = rmi_i2c_read_block;
-	rmi_phys->info.proto = phys_proto_name;
+	xport->write_block = rmi_i2c_write_block;
+	xport->read_block = rmi_i2c_read_block;
+	xport->info.proto = xport_proto_name;
 
 	mutex_init(&data->page_mutex);
 
 	/* Setting the page to zero will (a) make sure the PSR is in a
 	 * known state, and (b) make sure we can talk to the device.
 	 */
-	retval = rmi_set_page(rmi_phys, 0);
+	retval = rmi_set_page(xport, 0);
 	if (retval) {
 		dev_err(&client->dev, "Failed to set page select to 0.\n");
 		return retval;
 	}
 
-	retval = rmi_register_physical_device(rmi_phys);
+	retval = rmi_register_transport_device(xport);
 	if (retval) {
-		dev_err(&client->dev, "Failed to register physical driver at 0x%.2X.\n",
+		dev_err(&client->dev, "Failed to register transport driver at 0x%.2X.\n",
 			client->addr);
 		goto err_gpio;
 	}
-	i2c_set_clientdata(client, rmi_phys);
+	i2c_set_clientdata(client, xport);
 
-	retval = setup_debugfs(rmi_phys->rmi_dev, data);
+	retval = setup_debugfs(xport->rmi_dev, data);
 	if (retval < 0)
 		dev_warn(&client->dev, "Failed to setup debugfs. Code: %d.\n",
 			 retval);
@@ -352,12 +352,12 @@ err_gpio:
 
 static int rmi_i2c_remove(struct i2c_client *client)
 {
-	struct rmi_phys_device *phys = i2c_get_clientdata(client);
+	struct rmi_transport_dev *xport = i2c_get_clientdata(client);
 	struct rmi_device_platform_data *pd = client->dev.platform_data;
 
-	teardown_debugfs(phys->data);
+	teardown_debugfs(xport->data);
 
-	rmi_unregister_physical_device(phys);
+	rmi_unregister_transport_device(xport);
 
 	if (pd->gpio_config)
 		pd->gpio_config(&pd->gpio_data, false);

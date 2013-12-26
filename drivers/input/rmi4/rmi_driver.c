@@ -45,16 +45,16 @@
 
 static irqreturn_t rmi_irq_thread(int irq, void *p)
 {
-	struct rmi_phys_device *phys = p;
-	struct rmi_device *rmi_dev = phys->rmi_dev;
+	struct rmi_transport_dev *xport = p;
+	struct rmi_device *rmi_dev = xport->rmi_dev;
 	struct rmi_driver *driver = rmi_dev->driver;
-	struct rmi_device_platform_data *pdata = phys->dev->platform_data;
+	struct rmi_device_platform_data *pdata = xport->dev->platform_data;
 	struct rmi_driver_data *data;
 
 	data = dev_get_drvdata(&rmi_dev->dev);
 
 	if (IRQ_DEBUG(data))
-		dev_dbg(phys->dev, "ATTN gpio, value: %d.\n",
+		dev_dbg(xport->dev, "ATTN gpio, value: %d.\n",
 				gpio_get_value(pdata->attn_gpio));
 
 	if (gpio_get_value(pdata->attn_gpio) == pdata->attn_polarity) {
@@ -124,12 +124,12 @@ static void disable_sensor(struct rmi_device *rmi_dev)
 	if (!data->irq)
 		disable_polling(rmi_dev);
 
-	if (rmi_dev->phys->disable_device)
-		rmi_dev->phys->disable_device(rmi_dev->phys);
+	if (rmi_dev->xport->disable_device)
+		rmi_dev->xport->disable_device(rmi_dev->xport);
 
 	if (data->irq) {
 		disable_irq(data->irq);
-		free_irq(data->irq, rmi_dev->phys);
+		free_irq(data->irq, rmi_dev->xport);
 	}
 
 	data->enabled = false;
@@ -138,27 +138,27 @@ static void disable_sensor(struct rmi_device *rmi_dev)
 static int enable_sensor(struct rmi_device *rmi_dev)
 {
 	struct rmi_driver_data *data = dev_get_drvdata(&rmi_dev->dev);
-	struct rmi_phys_device *rmi_phys;
+	struct rmi_transport_dev *xport;
 	int retval = 0;
 	struct rmi_device_platform_data *pdata = to_rmi_platform_data(rmi_dev);
 
 	if (data->enabled)
 		return 0;
 
-	if (rmi_dev->phys->enable_device) {
-		retval = rmi_dev->phys->enable_device(rmi_dev->phys);
+	if (rmi_dev->xport->enable_device) {
+		retval = rmi_dev->xport->enable_device(rmi_dev->xport);
 		if (retval)
 			return retval;
 	}
 
-	rmi_phys = rmi_dev->phys;
+	xport = rmi_dev->xport;
 	if (data->irq) {
 		retval = request_threaded_irq(data->irq,
-				rmi_phys->hard_irq ? rmi_phys->hard_irq : NULL,
-				rmi_phys->irq_thread ?
-					rmi_phys->irq_thread : rmi_irq_thread,
+				xport->hard_irq ? xport->hard_irq : NULL,
+				xport->irq_thread ?
+					xport->irq_thread : rmi_irq_thread,
 				data->irq_flags,
-				dev_name(&rmi_dev->dev), rmi_phys);
+				dev_name(&rmi_dev->dev), xport);
 		if (retval)
 			return retval;
 	} else {
@@ -819,7 +819,7 @@ static int rmi_driver_probe(struct device *dev)
 	dev_dbg(dev, "%s: Starting probe.\n", __func__);
 
 	if (!rmi_is_physical_device(dev)) {
-		dev_dbg(dev, "Not a sensor device.\n");
+		dev_dbg(dev, "Not a physical device.\n");
 		return -ENODEV;
 	}
 

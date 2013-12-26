@@ -76,38 +76,38 @@ static void rmi_physical_teardown_debugfs(struct rmi_device *rmi_dev)
 #endif
 
 /**
- * rmi_register_physical_device - register a physical device connection on the RMI
- * bus.  Physical drivers provide communication from the devices on the bus to
- * the RMI4 sensor on a bus such as SPI, I2C, and so on.
+ * rmi_register_transport_device - register a transport device connection
+ * on the RMI bus.  Transport drivers provide communication from the devices
+ * on a bus (such as SPI, I2C, and so on) to the RMI4 sensor.
  *
- * @phys: the physical device to register
+ * @xport: the transport device to register
  */
-int rmi_register_physical_device(struct rmi_phys_device *phys)
+int rmi_register_transport_device(struct rmi_transport_dev *xport)
 {
-	static atomic_t physical_device_count = ATOMIC_INIT(0);
-	struct rmi_device_platform_data *pdata = phys->dev->platform_data;
+	static atomic_t transport_device_count = ATOMIC_INIT(0);
+	struct rmi_device_platform_data *pdata = xport->dev->platform_data;
 	struct rmi_device *rmi_dev;
 	int error;
 
 	if (!pdata) {
-		dev_err(phys->dev, "no platform data!\n");
+		dev_err(xport->dev, "no platform data!\n");
 		return -EINVAL;
 	}
 
-	rmi_dev = devm_kzalloc(phys->dev,
+	rmi_dev = devm_kzalloc(xport->dev,
 				sizeof(struct rmi_device), GFP_KERNEL);
 	if (!rmi_dev)
 		return -ENOMEM;
 
-	rmi_dev->phys = phys;
-	rmi_dev->number = atomic_inc_return(&physical_device_count) - 1;
+	rmi_dev->xport = xport;
+	rmi_dev->number = atomic_inc_return(&transport_device_count) - 1;
 
 	dev_set_name(&rmi_dev->dev, "sensor%02d", rmi_dev->number);
 
 	rmi_dev->dev.bus = &rmi_bus_type;
 	rmi_dev->dev.type = &rmi_device_type;
 
-	phys->rmi_dev = rmi_dev;
+	xport->rmi_dev = rmi_dev;
 
 	rmi_physical_setup_debugfs(rmi_dev);
 
@@ -115,26 +115,26 @@ int rmi_register_physical_device(struct rmi_phys_device *phys)
 	if (error)
 		return error;
 
-	dev_dbg(phys->dev, "%s: Registered %s as %s.\n", __func__,
+	dev_dbg(xport->dev, "%s: Registered %s as %s.\n", __func__,
 		pdata->sensor_name, dev_name(&rmi_dev->dev));
 
 	return 0;
 }
-EXPORT_SYMBOL_GPL(rmi_register_physical_device);
+EXPORT_SYMBOL_GPL(rmi_register_transport_device);
 
 /**
- * rmi_unregister_physical_device - unregister a physical device connection
- * @phys: the physical driver to unregister
+ * rmi_unregister_transport_device - unregister a transport device connection
+ * @xport: the transport driver to unregister
  *
  */
-void rmi_unregister_physical_device(struct rmi_phys_device *phys)
+void rmi_unregister_transport_device(struct rmi_transport_dev *xport)
 {
-	struct rmi_device *rmi_dev = phys->rmi_dev;
+	struct rmi_device *rmi_dev = xport->rmi_dev;
 
 	rmi_physical_teardown_debugfs(rmi_dev);
 	device_unregister(&rmi_dev->dev);
 }
-EXPORT_SYMBOL(rmi_unregister_physical_device);
+EXPORT_SYMBOL(rmi_unregister_transport_device);
 
 
 /* Function specific stuff */
