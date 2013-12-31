@@ -77,8 +77,10 @@ static void rmi_poll_work(struct work_struct *work)
 	process_interrupt_requests(rmi_dev);
 }
 
-/* This is the timer function for polling - it simply has to schedule work
- * and restart the timer. */
+/*
+ * This is the timer function for polling - it simply has to schedule work
+ * and restart the timer.
+ */
 static enum hrtimer_restart rmi_poll_timer(struct hrtimer *timer)
 {
 	struct rmi_driver_data *data =
@@ -290,12 +292,14 @@ static int process_interrupt_requests(struct rmi_device *rmi_dev)
 	mutex_lock(&data->irq_mutex);
 	bitmap_and(data->irq_status, data->irq_status, data->current_irq_mask,
 	       data->irq_count);
-	/* At this point, irq_status has all bits that are set in the
+	/*
+	 * At this point, irq_status has all bits that are set in the
 	 * interrupt status register and are enabled.
 	 */
 	mutex_unlock(&data->irq_mutex);
 
-	/* It would be nice to be able to use irq_chip to handle these
+	/*
+	 * It would be nice to be able to use irq_chip to handle these
 	 * nested IRQs.  Unfortunately, most of the current customers for
 	 * this driver are using older kernels (3.0.x) that don't support
 	 * the features required for that.  Once they've shifted to more
@@ -413,7 +417,8 @@ static int rmi_driver_irq_handler(struct rmi_device *rmi_dev, int irq)
 	struct rmi_driver_data *data = dev_get_drvdata(&rmi_dev->dev);
 
 	might_sleep();
-	/* Can get called before the driver is fully ready to deal with
+	/*
+	 * Can get called before the driver is fully ready to deal with
 	 * interrupts.
 	 */
 	if (!data || !data->f01_container) {
@@ -430,7 +435,8 @@ static int rmi_driver_reset_handler(struct rmi_device *rmi_dev)
 	struct rmi_driver_data *data = dev_get_drvdata(&rmi_dev->dev);
 	int error;
 
-	/* Can get called before the driver is fully ready to deal with
+	/*
+	 * Can get called before the driver is fully ready to deal with
 	 * this situation.
 	 */
 	if (!data || !data->f01_container) {
@@ -566,13 +572,10 @@ err_free_mem:
  * forces application of any pending updates from reflashing the
  * firmware or configuration.
  *
- * At this time, we also reflash the device if (a) in kernel reflashing is
- * enabled, and (b) the reflash module decides it requires reflashing.
- *
  * We have to do this before actually building the PDT because the reflash
- * might cause various registers to move around.
+ * updates (if any) might cause various registers to move around.
  */
-static int reset_and_reflash(struct rmi_device *rmi_dev)
+static int rmi_initial_reset(struct rmi_device *rmi_dev)
 {
 	struct pdt_entry pdt_entry;
 	int page;
@@ -740,7 +743,7 @@ exit:
 	return retval;
 }
 
-#endif /* CONFIG_PM */
+#endif /* CONFIG_PM_SLEEP */
 
 static SIMPLE_DEV_PM_OPS(rmi_driver_pm, rmi_driver_suspend, rmi_driver_resume);
 
@@ -792,7 +795,8 @@ static int rmi_driver_probe(struct device *dev)
 	dev_set_drvdata(&rmi_dev->dev, data);
 	mutex_init(&data->pdt_mutex);
 
-	/* Right before a warm boot, the sensor might be in some unusual state,
+	/*
+	 * Right before a warm boot, the sensor might be in some unusual state,
 	 * such as F54 diagnostics, or F34 bootloader mode.  In order to clear
 	 * the sensor to a known state, we issue a initial reset to clear any
 	 * previous settings and force it into normal operation.
@@ -809,7 +813,7 @@ static int rmi_driver_probe(struct device *dev)
 	 */
 	if (!pdata->reset_delay_ms)
 		pdata->reset_delay_ms = DEFAULT_RESET_DELAY_MS;
-	retval = reset_and_reflash(rmi_dev);
+	retval = rmi_initial_reset(rmi_dev);
 	if (retval)
 		dev_warn(dev, "RMI initial reset failed! Continuing in spite of this.\n");
 
@@ -837,7 +841,8 @@ static int rmi_driver_probe(struct device *dev)
 
 	retval = rmi_read(rmi_dev, PDT_PROPERTIES_LOCATION, &data->pdt_props);
 	if (retval < 0) {
-		/* we'll print out a warning and continue since
+		/*
+		 * we'll print out a warning and continue since
 		 * failure to get the PDT properties is not a cause to fail
 		 */
 		dev_warn(dev, "Could not read PDT properties from %#06x. Assuming 0x00.\n",
