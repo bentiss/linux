@@ -140,7 +140,6 @@ static int enable_sensor(struct rmi_device *rmi_dev)
 	struct rmi_driver_data *data = dev_get_drvdata(&rmi_dev->dev);
 	struct rmi_transport_dev *xport;
 	int retval = 0;
-	struct rmi_device_platform_data *pdata = to_rmi_platform_data(rmi_dev);
 
 	if (data->enabled)
 		return 0;
@@ -169,11 +168,7 @@ static int enable_sensor(struct rmi_device *rmi_dev)
 
 	data->enabled = true;
 
-	if (!pdata->level_triggered &&
-		    gpio_get_value(pdata->attn_gpio) == pdata->attn_polarity)
-		retval = process_interrupt_requests(rmi_dev);
-
-	return retval;
+	return process_interrupt_requests(rmi_dev);
 }
 
 static void rmi_free_function_list(struct rmi_device *rmi_dev)
@@ -752,9 +747,15 @@ static SIMPLE_DEV_PM_OPS(rmi_driver_pm, rmi_driver_suspend, rmi_driver_resume);
 static int rmi_driver_remove(struct device *dev)
 {
 	struct rmi_device *rmi_dev = to_rmi_device(dev);
+	const struct rmi_device_platform_data *pdata =
+					to_rmi_platform_data(rmi_dev);
+	const struct rmi_driver_data *data = dev_get_drvdata(&rmi_dev->dev);
 
 	disable_sensor(rmi_dev);
 	rmi_free_function_list(rmi_dev);
+
+	if (data->gpio_held)
+		gpio_free(pdata->attn_gpio);
 
 	return 0;
 }
@@ -889,7 +890,10 @@ static int rmi_driver_probe(struct device *dev)
 		mutex_init(&data->suspend_mutex);
 	}
 
-	if (pdata->attn_gpio) {
+	if (gpio_is_valid(pdata->attn_gpio)) {
+		static const char GPIO_LABEL[] = "attn";
+		unsigned long gpio_flags = GPIOF_DIR_IN;
+
 		data->irq = gpio_to_irq(pdata->attn_gpio);
 		if (pdata->level_triggered) {
 			data->irq_flags = IRQF_ONESHOT |
@@ -900,33 +904,42 @@ static int rmi_driver_probe(struct device *dev)
 				(pdata->attn_polarity == RMI_ATTN_ACTIVE_HIGH)
 				? IRQF_TRIGGER_RISING : IRQF_TRIGGER_FALLING;
 		}
-	} else
+
+		if (IS_ENABLED(CONFIG_RMI4_DEV))
+			gpio_flags |= GPIOF_EXPORT;
+
+		retval = gpio_request_one(pdata->attn_gpio, gpio_flags,
+					  GPIO_LABEL);
+		if (retval) {
+			dev_warn(dev, "WARNING: Failed to request ATTN gpio %d, code=%d.\n",
+				 pdata->attn_gpio, retval);
+			retval = 0;
+		} else {
+			dev_info(dev, "Obtained ATTN gpio %d.\n",
+					pdata->attn_gpio);
+			data->gpio_held = true;
+			if (IS_ENABLED(CONFIG_RMI4_DEV)) {
+				retval = gpio_export_link(dev,
+						GPIO_LABEL, pdata->attn_gpio);
+				if (retval) {
+					dev_warn(dev,
+						"WARNING: Failed to symlink ATTN gpio!\n");
+					retval = 0;
+				} else {
+					dev_info(dev, "Exported ATTN gpio %d.",
+						pdata->attn_gpio);
+				}
+			}
+		}
+	} else {
 		data->poll_interval = ktime_set(0,
 			(pdata->poll_interval_ms ? pdata->poll_interval_ms :
 			DEFAULT_POLL_INTERVAL_MS) * 1000 * 1000);
+	}
 
 	if (data->f01_container->dev.driver) {
 		/* Driver already bound, so enable ATTN now. */
 		enable_sensor(rmi_dev);
-	}
-
-	if (IS_ENABLED(CONFIG_RMI4_DEV) && pdata->attn_gpio) {
-		retval = gpio_export(pdata->attn_gpio, false);
-		if (retval) {
-			dev_warn(dev, "WARNING: Failed to export ATTN gpio!\n");
-			retval = 0;
-		} else {
-			retval = gpio_export_link(dev,
-						  "attn", pdata->attn_gpio);
-			if (retval) {
-				dev_warn(dev,
-					"WARNING: Failed to symlink ATTN gpio!\n");
-				retval = 0;
-			} else {
-				dev_info(dev, "Exported ATTN GPIO %d.",
-					pdata->attn_gpio);
-			}
-		}
 	}
 
 	return 0;
