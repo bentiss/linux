@@ -41,6 +41,7 @@ struct rmi_driver_data {
 
 	u32 attn_count;
 	u32 irq_debug;	/* Should be bool, but debugfs wants u32 */
+	bool gpio_held;
 	int irq;
 	int irq_flags;
 	int num_of_irq_regs;
