@@ -156,7 +156,7 @@ static int rmi_f01_alloc_memory(struct rmi_function *fn,
 	}
 
 	f01->device_control.interrupt_enable = devm_kzalloc(&fn->dev,
-			sizeof(u8)*(num_of_irq_regs),
+			sizeof(u8) * (num_of_irq_regs),
 			GFP_KERNEL);
 	if (!f01->device_control.interrupt_enable) {
 		dev_err(&fn->dev, "Failed to allocate interrupt enable.\n");
@@ -280,7 +280,7 @@ static int rmi_f01_initialize(struct rmi_function *fn)
 
 	dev_info(&fn->dev, "found RMI device, manufacturer: %s, product: %s\n",
 		 data->properties.manufacturer_id == 1 ?
-							"synaptics" : "unknown",
+							"Synaptics" : "unknown",
 		 data->properties.product_id);
 
 	/* read control register */
