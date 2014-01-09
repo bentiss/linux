@@ -38,8 +38,6 @@ struct rmi_i2c_data {
 #define RMI_PAGE_SELECT_REGISTER 0xff
 #define RMI_I2C_PAGE(addr) (((addr) >> 8) & 0xff)
 
-static char *xport_proto_name = "i2c";
-
 /*
  * rmi_set_page - Set RMI page
  * @xport: The pointer to the rmi_transport_dev struct
@@ -217,7 +215,7 @@ static int rmi_i2c_probe(struct i2c_client *client,
 
 	xport->write_block = rmi_i2c_write_block;
 	xport->read_block = rmi_i2c_read_block;
-	xport->info.proto = xport_proto_name;
+	xport->info.proto = "i2c";
 
 	mutex_init(&data->page_mutex);
 

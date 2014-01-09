@@ -148,7 +148,7 @@ struct rmi_driver {
  * @att_count Number of times ATTN assertions have been handled.
  */
 struct rmi_transport_info {
-	char *proto;
+	const char *proto;
 	long tx_count;
 	long tx_bytes;
 	long tx_errs;
