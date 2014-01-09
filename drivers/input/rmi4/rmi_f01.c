@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011-2012 Synaptics Incorporated
+ * Copyright (c) 2011-2014 Synaptics Incorporated
  * Copyright (c) 2011 Unixphere
  *
  * This program is free software; you can redistribute it and/or modify it
@@ -138,7 +138,7 @@ struct f01_data {
 	int irq_count;
 	int num_of_irq_regs;
 
-#ifdef CONFIG_PM
+#ifdef CONFIG_PM_SLEEP
 	bool suspended;
 	bool old_nosleep;
 #endif
