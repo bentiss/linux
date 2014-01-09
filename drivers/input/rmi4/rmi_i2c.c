@@ -168,7 +168,8 @@ exit:
 static int rmi_i2c_probe(struct i2c_client *client,
 			 const struct i2c_device_id *id)
 {
-	const struct rmi_device_platform_data *pdata = dev_get_platdata(&client->dev);
+	const struct rmi_device_platform_data *pdata =
+				dev_get_platdata(&client->dev);
 	struct rmi_transport_dev *xport;
 	struct rmi_i2c_data *data;
 	int retval;
@@ -250,12 +251,13 @@ err_gpio:
 static int rmi_i2c_remove(struct i2c_client *client)
 {
 	struct rmi_transport_dev *xport = i2c_get_clientdata(client);
-	struct rmi_device_platform_data *pdata = dev_get_platdata(&client->dev);
+	const struct rmi_device_platform_data *pdata =
+				dev_get_platdata(&client->dev);
 
 	rmi_unregister_transport_device(xport);
 
 	if (pdata->gpio_config)
-		pdata->gpio_config(&pdata->gpio_data, false);
+		pdata->gpio_config(pdata->gpio_data, false);
 
 	return 0;
 }
