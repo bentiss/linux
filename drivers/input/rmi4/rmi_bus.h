@@ -165,7 +165,6 @@ struct rmi_transport_stats {
  * default irq_thread implementation.
  * @hard_irq: if not NULL, the sensor driver will use this for the hard IRQ
  * handling
- * @data: Private data pointer
  * @proto_name: name of the transport protocol (SPI, i2c, etc)
  * @ops: pointer to transport operations implementation
  * @stats: transport statistics
@@ -180,8 +179,6 @@ struct rmi_transport_dev {
 
 	irqreturn_t (*irq_thread)(int irq, void *p);
 	irqreturn_t (*hard_irq)(int irq, void *p);
-
-	void *data;
 
 	const char *proto_name;
 	const struct rmi_transport_ops *ops;
