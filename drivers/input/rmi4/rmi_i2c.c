@@ -274,26 +274,24 @@ static int rmi_i2c_probe(struct i2c_client *client,
 		dev_err(&client->dev, "no platform data\n");
 		return -EINVAL;
 	}
-	dev_info(&client->dev, "Probing %s at %#02x (IRQ %d).\n",
+	dev_dbg(&client->dev, "Probing %s at %#02x (GPIO %d).\n",
 		pdata->sensor_name ? pdata->sensor_name : "-no name-",
 		client->addr, pdata->attn_gpio);
-
-	if (pdata->gpio_config) {
-		dev_dbg(&client->dev, "Configuring GPIOs.\n");
-		retval = pdata->gpio_config(pdata->gpio_data, true);
-		if (retval < 0) {
-			dev_err(&client->dev, "Failed to configure GPIOs, code: %d.\n",
-				retval);
-			return retval;
-		}
-		dev_info(&client->dev, "Done with GPIO configuration.\n");
-	}
 
 	retval = i2c_check_functionality(client->adapter, I2C_FUNC_I2C);
 	if (!retval) {
 		dev_err(&client->dev, "i2c_check_functionality error %d.\n",
 			retval);
 		return retval;
+	}
+
+	if (pdata->gpio_config) {
+		retval = pdata->gpio_config(pdata->gpio_data, true);
+		if (retval < 0) {
+			dev_err(&client->dev, "Failed to configure GPIOs, code: %d.\n",
+				retval);
+			return retval;
+		}
 	}
 
 	xport = devm_kzalloc(&client->dev, sizeof(struct rmi_transport_dev),
