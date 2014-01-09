@@ -126,8 +126,8 @@ static void disable_sensor(struct rmi_device *rmi_dev)
 	if (!data->irq)
 		disable_polling(rmi_dev);
 
-	if (rmi_dev->xport->disable_device)
-		rmi_dev->xport->disable_device(rmi_dev->xport);
+	if (rmi_dev->xport->ops->disable_device)
+		rmi_dev->xport->ops->disable_device(rmi_dev->xport);
 
 	if (data->irq) {
 		disable_irq(data->irq);
@@ -146,8 +146,8 @@ static int enable_sensor(struct rmi_device *rmi_dev)
 	if (data->enabled)
 		return 0;
 
-	if (rmi_dev->xport->enable_device) {
-		retval = rmi_dev->xport->enable_device(rmi_dev->xport);
+	if (rmi_dev->xport->ops->enable_device) {
+		retval = rmi_dev->xport->ops->enable_device(rmi_dev->xport);
 		if (retval)
 			return retval;
 	}

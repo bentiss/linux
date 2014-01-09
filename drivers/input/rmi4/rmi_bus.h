@@ -135,26 +135,25 @@ struct rmi_driver {
 #define to_rmi_driver(d) \
 	container_of(d, struct rmi_driver, driver);
 
-/** struct rmi_transport_info - diagnostic information about the RMI transport
+/**
+ * struct rmi_transport_stats - diagnostic information about the RMI transport
  * device, used in the xport_info debugfs file.
  *
  * @proto String indicating the protocol being used.
  * @tx_count Number of transmit operations.
- * @tx_bytes Number of bytes transmitted.
  * @tx_errs  Number of errors encountered during transmit operations.
+ * @tx_bytes Number of bytes transmitted.
  * @rx_count Number of receive operations.
- * @rx_bytes Number of bytes received.
  * @rx_errs  Number of errors encountered during receive operations.
- * @att_count Number of times ATTN assertions have been handled.
+ * @rx_bytes Number of bytes received.
  */
-struct rmi_transport_info {
-	const char *proto;
-	long tx_count;
-	long tx_bytes;
-	long tx_errs;
-	long rx_count;
-	long rx_bytes;
-	long rx_errs;
+struct rmi_transport_stats {
+	unsigned long tx_count;
+	unsigned long tx_errs;
+	size_t tx_bytes;
+	unsigned long rx_count;
+	unsigned long rx_errs;
+	size_t rx_bytes;
 };
 
 /**
@@ -162,13 +161,14 @@ struct rmi_transport_info {
  *
  * @dev: Pointer to the communication device, e.g. i2c or spi
  * @rmi_dev: Pointer to the RMI device
- * @write_block: Writing a block of data to the specified address
- * @read_block: Read a block of data from the specified address.
  * @irq_thread: if not NULL, the sensor driver will use this instead of the
  * default irq_thread implementation.
  * @hard_irq: if not NULL, the sensor driver will use this for the hard IRQ
  * handling
  * @data: Private data pointer
+ * @proto_name: name of the transport protocol (SPI, i2c, etc)
+ * @ops: pointer to transport operations implementation
+ * @stats: transport statistics
  *
  * The RMI transport device implements the glue between different communication
  * buses such as I2C and SPI.
@@ -178,20 +178,30 @@ struct rmi_transport_dev {
 	struct device *dev;
 	struct rmi_device *rmi_dev;
 
-	int (*write_block)(struct rmi_transport_dev *xport, u16 addr,
-			   const void *buf, const int len);
-	int (*read_block)(struct rmi_transport_dev *xport, u16 addr,
-			  void *buf, const int len);
-
-	int (*enable_device) (struct rmi_transport_dev *xport);
-	void (*disable_device) (struct rmi_transport_dev *xport);
-
 	irqreturn_t (*irq_thread)(int irq, void *p);
 	irqreturn_t (*hard_irq)(int irq, void *p);
 
 	void *data;
 
-	struct rmi_transport_info info;
+	const char *proto_name;
+	const struct rmi_transport_ops *ops;
+	struct rmi_transport_stats stats;
+};
+
+/**
+ * struct rmi_transport_ops - defines transport protocol operations.
+ *
+ * @write_block: Writing a block of data to the specified address
+ * @read_block: Read a block of data from the specified address.
+ */
+struct rmi_transport_ops {
+	int (*write_block)(struct rmi_transport_dev *xport, u16 addr,
+			   const void *buf, size_t len);
+	int (*read_block)(struct rmi_transport_dev *xport, u16 addr,
+			  void *buf, size_t len);
+
+	int (*enable_device) (struct rmi_transport_dev *xport);
+	void (*disable_device) (struct rmi_transport_dev *xport);
 };
 
 /**
@@ -232,7 +242,7 @@ bool rmi_is_physical_device(struct device *dev);
  */
 static inline int rmi_read(struct rmi_device *d, u16 addr, void *buf)
 {
-	return d->xport->read_block(d->xport, addr, buf, 1);
+	return d->xport->ops->read_block(d->xport, addr, buf, 1);
 }
 
 /**
@@ -248,7 +258,7 @@ static inline int rmi_read(struct rmi_device *d, u16 addr, void *buf)
 static inline int rmi_read_block(struct rmi_device *d, u16 addr, void *buf,
 				 const int len)
 {
-	return d->xport->read_block(d->xport, addr, buf, len);
+	return d->xport->ops->read_block(d->xport, addr, buf, len);
 }
 
 /**
@@ -262,7 +272,7 @@ static inline int rmi_read_block(struct rmi_device *d, u16 addr, void *buf,
  */
 static inline int rmi_write(struct rmi_device *d, u16 addr, const u8 data)
 {
-	return d->xport->write_block(d->xport, addr, &data, 1);
+	return d->xport->ops->write_block(d->xport, addr, &data, 1);
 }
 
 /**
@@ -278,7 +288,7 @@ static inline int rmi_write(struct rmi_device *d, u16 addr, const u8 data)
 static inline int rmi_write_block(struct rmi_device *d, u16 addr,
 				  const void *buf, const int len)
 {
-	return d->xport->write_block(d->xport, addr, buf, len);
+	return d->xport->ops->write_block(d->xport, addr, buf, len);
 }
 
 int rmi_register_transport_device(struct rmi_transport_dev *xport);
