@@ -24,8 +24,6 @@
 	.attrs = _attrs,  \
 }
 
-#define attrify(nm) (&dev_attr_##nm.attr)
-
 #define PDT_PROPERTIES_LOCATION 0x00EF
 #define BSR_LOCATION 0x00FE
 
@@ -62,7 +60,7 @@ struct rmi_driver_data {
 	u8 bsr;
 
 	bool enabled;
-#ifdef CONFIG_PM
+#ifdef CONFIG_PM_SLEEP
 	bool suspended;
 	struct mutex suspend_mutex;
 
