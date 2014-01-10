@@ -50,7 +50,7 @@ struct f01_basic_properties {
 	bool has_lts;
 	bool has_adjustable_doze;
 	bool has_adjustable_doze_holdoff;
-	char dom[9]; /* YYYYMMDD + '\0' */
+	char dom[11]; /* YYYY/MM/DD + '\0' */
 	u8 product_id[RMI_PRODUCT_ID_LENGTH + 1];
 	u16 productinfo;
 };
@@ -190,8 +190,7 @@ static int rmi_f01_read_properties(struct rmi_device *rmi_dev,
 	props->has_adjustable_doze_holdoff =
 			basic_query[1] & RMI_F01_QRY1_HAS_ADJ_DOZE_HOFF;
 
-	snprintf(props->dom, sizeof(props->dom),
-		 "20%02x%02x%02x",
+	snprintf(props->dom, sizeof(props->dom), "20%02d/%02d/%02d",
 		 basic_query[5] & RMI_F01_QRY5_YEAR_MASK,
 		 basic_query[6] & RMI_F01_QRY6_MONTH_MASK,
 		 basic_query[7] & RMI_F01_QRY7_DAY_MASK);
