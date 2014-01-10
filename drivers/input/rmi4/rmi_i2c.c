@@ -57,22 +57,17 @@ struct rmi_i2c_xport {
  */
 static int rmi_set_page(struct rmi_i2c_xport *rmi_i2c, u8 page)
 {
-	struct rmi_transport_dev *xport = &rmi_i2c->xport;
 	struct i2c_client *client = rmi_i2c->client;
 	u8 txbuf[2] = {RMI_PAGE_SELECT_REGISTER, page};
 	int retval;
 
-	dev_dbg(&client->dev, "writes 3 bytes: %02x %02x\n",
-			txbuf[0], txbuf[1]);
-	xport->stats.tx_count++;
-	xport->stats.tx_bytes += sizeof(txbuf);
 	retval = i2c_master_send(client, txbuf, sizeof(txbuf));
 	if (retval != sizeof(txbuf)) {
-		xport->stats.tx_errs++;
 		dev_err(&client->dev,
 			"%s: set page failed: %d.", __func__, retval);
 		return (retval < 0) ? retval : -EIO;
 	}
+
 	rmi_i2c->page = page;
 	return 0;
 }
@@ -107,22 +102,27 @@ static int rmi_i2c_write_block(struct rmi_transport_dev *xport, u16 addr,
 
 	if (RMI_I2C_PAGE(addr) != rmi_i2c->page) {
 		retval = rmi_set_page(rmi_i2c, RMI_I2C_PAGE(addr));
-		if (retval < 0)
+		if (retval)
 			goto exit;
 	}
 
-	dev_dbg(&client->dev,
-		"writes %zd bytes at %#06x: %*ph\n", len, addr, (int)len, buf);
-
-	xport->stats.tx_count++;
-	xport->stats.tx_bytes += tx_size;
 	retval = i2c_master_send(client, rmi_i2c->tx_buf, tx_size);
-	if (retval < 0)
-		xport->stats.tx_errs++;
-	else
-		retval--; /* don't count the address byte */
+	if (retval == tx_size)
+		retval = 0;
+	else if (retval >= 0)
+		retval = -EIO;
 
 exit:
+	dev_dbg(&client->dev,
+		"write %zd bytes at %#06x: %d (%*ph)\n",
+		len, addr, retval, (int)len, buf);
+
+	xport->stats.tx_count++;
+	if (retval)
+		xport->stats.tx_errs++;
+	else
+		xport->stats.tx_bytes += len;
+
 	mutex_unlock(&rmi_i2c->page_mutex);
 	return retval;
 }
@@ -133,40 +133,47 @@ static int rmi_i2c_read_block(struct rmi_transport_dev *xport, u16 addr,
 	struct rmi_i2c_xport *rmi_i2c =
 		container_of(xport, struct rmi_i2c_xport, xport);
 	struct i2c_client *client = rmi_i2c->client;
-	u8 txbuf[1] = {addr & 0xff};
+	u8 addr_offset = addr & 0xff;
 	int retval;
+	struct i2c_msg msgs[] = {
+		{
+			.addr	= client->addr,
+			.len	= sizeof(addr_offset),
+			.buf	= &addr_offset,
+		},
+		{
+			.addr	= client->addr,
+			.flags	= I2C_M_RD,
+			.len	= len,
+			.buf	= buf,
+		},
+	};
 
 	mutex_lock(&rmi_i2c->page_mutex);
 
 	if (RMI_I2C_PAGE(addr) != rmi_i2c->page) {
 		retval = rmi_set_page(rmi_i2c, RMI_I2C_PAGE(addr));
-		if (retval < 0)
+		if (retval)
 			goto exit;
 	}
 
-	dev_dbg(&client->dev, "writes 1 bytes: %02x\n", txbuf[0]);
-
-	xport->stats.tx_count++;
-	xport->stats.tx_bytes += sizeof(txbuf);
-	retval = i2c_master_send(client, txbuf, sizeof(txbuf));
-	if (retval != sizeof(txbuf)) {
-		xport->stats.tx_errs++;
-		retval = (retval < 0) ? retval : -EIO;
-		goto exit;
-	}
-
-	xport->stats.rx_count++;
-	xport->stats.rx_bytes += len;
-
-	retval = i2c_master_recv(client, buf, len);
-	if (retval < 0)
-		xport->stats.rx_errs++;
-	else
-		dev_dbg(&client->dev,
-			"read %zd bytes at %#06x: %*ph\n",
-			len, addr, (int)len, buf);
+	retval = i2c_transfer(client->adapter, msgs, sizeof(msgs));
+	if (retval == sizeof(msgs))
+		retval = 0; /* success */
+	else if (retval >= 0)
+		retval = -EIO;
 
 exit:
+	dev_dbg(&client->dev,
+		"read %zd bytes at %#06x: %d (%*ph)\n",
+		len, addr, retval, (int)len, buf);
+
+	xport->stats.rx_count++;
+	if (retval)
+		xport->stats.rx_errs++;
+	else
+		xport->stats.rx_bytes += len;
+
 	mutex_unlock(&rmi_i2c->page_mutex);
 	return retval;
 }
