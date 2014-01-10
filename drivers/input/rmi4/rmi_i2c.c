@@ -193,11 +193,10 @@ static int rmi_i2c_probe(struct i2c_client *client,
 		pdata->sensor_name ? pdata->sensor_name : "-no name-",
 		client->addr, pdata->attn_gpio);
 
-	retval = i2c_check_functionality(client->adapter, I2C_FUNC_I2C);
-	if (!retval) {
-		dev_err(&client->dev, "i2c_check_functionality error %d.\n",
-			retval);
-		return retval;
+	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C)) {
+		dev_err(&client->dev,
+			"adapter does not support required functionality.\n");
+		return -ENODEV;
 	}
 
 	if (pdata->gpio_config) {
