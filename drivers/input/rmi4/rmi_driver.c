@@ -325,7 +325,7 @@ static int process_interrupt_requests(struct rmi_device *rmi_dev)
 static int rmi_driver_set_input_params(struct rmi_device *rmi_dev,
 				struct input_dev *input)
 {
-	// FIXME: set up parent
+	input->dev.parent = &rmi_dev->dev;
 	input->name = SYNAPTICS_INPUT_DEVICE_NAME;
 	input->id.vendor  = SYNAPTICS_VENDOR_ID;
 	input->id.bustype = BUS_RMI;
