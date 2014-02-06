@@ -56,7 +56,6 @@ struct rmi_driver_data {
 	struct work_struct poll_work;
 	ktime_t poll_interval;
 
-	struct mutex pdt_mutex;
 	u8 pdt_props;
 	u8 bsr;
 

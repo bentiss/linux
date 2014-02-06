@@ -347,21 +347,15 @@ static int rmi_driver_irq_save(struct rmi_device *rmi_dev,
 	if (!data->irq_stored) {
 		/* Save current enabled interrupts */
 		retval = rmi_read_block(rmi_dev,
-				data->f01_container->fd.control_base_addr+1,
+				data->f01_container->fd.control_base_addr + 1,
 				data->irq_mask_store, data->num_of_irq_regs);
 		if (retval < 0) {
 			dev_err(dev, "%s: Failed to read enabled interrupts!",
 								__func__);
 			goto error_unlock;
 		}
-		/*
-		 * Disable every interrupt except for function 54
-		 * TODO:Will also want to not disable function 1-like functions.
-		 * No need to take care of this now, since there's no good way
-		 * to identify them.
-		 */
 		retval = rmi_write_block(rmi_dev,
-				data->f01_container->fd.control_base_addr+1,
+				data->f01_container->fd.control_base_addr + 1,
 				new_ints, data->num_of_irq_regs);
 		if (retval < 0) {
 			dev_err(dev, "%s: Failed to change enabled interrupts!",
@@ -562,23 +556,14 @@ static int rmi_scan_pdt(struct rmi_device *rmi_dev, void *ctx,
 					void *ctx,
 					const struct pdt_entry *entry))
 {
-	struct rmi_driver_data *data = dev_get_drvdata(&rmi_dev->dev);
 	int page;
 	int retval = RMI_SCAN_DONE;
-
-	/*
-	 * TODO: With F01 and reflash as part of the core now, is this
-	 * lock still required?
-	 */
-	mutex_lock(&data->pdt_mutex);
 
 	for (page = 0; page <= RMI4_MAX_PAGE; page++) {
 		retval = rmi_scan_pdt_page(rmi_dev, page, ctx, callback);
 		if (retval != RMI_SCAN_CONTINUE)
 			break;
 	}
-
-	mutex_unlock(&data->pdt_mutex);
 
 	return retval < 0 ? retval : 0;
 }
@@ -829,7 +814,6 @@ static int rmi_driver_probe(struct device *dev)
 	INIT_LIST_HEAD(&data->function_list);
 	data->rmi_dev = rmi_dev;
 	dev_set_drvdata(&rmi_dev->dev, data);
-	mutex_init(&data->pdt_mutex);
 
 	/*
 	 * Right before a warm boot, the sensor might be in some unusual state,
@@ -897,10 +881,6 @@ static int rmi_driver_probe(struct device *dev)
 	data->current_irq_mask	= irq_memory + size * 2;
 	data->irq_mask_store	= irq_memory + size * 3;
 
-	/*
-	 * XXX need to make sure we create F01 first...
-	 * XXX or do we?  It might not be required in the updated structure.
-	 */
 	irq_count = 0;
 	dev_dbg(dev, "Creating functions.");
 	retval = rmi_scan_pdt(rmi_dev, &irq_count, rmi_create_function);
