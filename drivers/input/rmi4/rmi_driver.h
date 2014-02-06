@@ -45,6 +45,7 @@ struct rmi_driver_data {
 	int num_of_irq_regs;
 	int irq_count;
 	unsigned long *irq_status;
+	unsigned long *fn_irq_bits;
 	unsigned long *current_irq_mask;
 	unsigned long *irq_mask_store;
 	bool irq_stored;
