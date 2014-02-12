@@ -125,7 +125,6 @@ struct f01_data {
 	struct f01_basic_properties properties;
 
 	struct f01_device_control device_control;
-	struct mutex control_mutex;
 
 	u8 device_status;
 
@@ -213,8 +212,6 @@ static int rmi_f01_initialize(struct rmi_function *fn)
 	struct rmi_driver_data *driver_data = dev_get_drvdata(&rmi_dev->dev);
 	struct f01_data *data = fn->data;
 	struct rmi_device_platform_data *pdata = to_rmi_platform_data(rmi_dev);
-
-	mutex_init(&data->control_mutex);
 
 	/*
 	 * Set the configured bit and (optionally) other important stuff
