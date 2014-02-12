@@ -272,7 +272,7 @@ static int rmi_f01_initialize(struct rmi_function *fn)
 	if (error < 0) {
 		dev_err(&fn->dev,
 			"Failed to read F01 control interrupt enable register.\n");
-		goto error_exit;
+		return error;
 	}
 
 	ctrl_base_addr += data->num_of_irq_regs;
@@ -307,14 +307,14 @@ static int rmi_f01_initialize(struct rmi_function *fn)
 					data->device_control.doze_interval);
 			if (error < 0) {
 				dev_err(&fn->dev, "Failed to configure F01 doze interval register.\n");
-				goto error_exit;
+				return error;
 			}
 		} else {
 			error = rmi_read(rmi_dev, data->doze_interval_addr,
 					&data->device_control.doze_interval);
 			if (error < 0) {
 				dev_err(&fn->dev, "Failed to read F01 doze interval register.\n");
-				goto error_exit;
+				return error;
 			}
 		}
 
@@ -328,14 +328,14 @@ static int rmi_f01_initialize(struct rmi_function *fn)
 					data->device_control.wakeup_threshold);
 			if (error < 0) {
 				dev_err(&fn->dev, "Failed to configure F01 wakeup threshold register.\n");
-				goto error_exit;
+				return error;
 			}
 		} else {
 			error = rmi_read(rmi_dev, data->wakeup_threshold_addr,
 					&data->device_control.wakeup_threshold);
 			if (error < 0) {
 				dev_err(&fn->dev, "Failed to read F01 wakeup threshold register.\n");
-				goto error_exit;
+				return error;
 			}
 		}
 	}
@@ -351,14 +351,14 @@ static int rmi_f01_initialize(struct rmi_function *fn)
 					data->device_control.doze_holdoff);
 			if (error < 0) {
 				dev_err(&fn->dev, "Failed to configure F01 doze holdoff register.\n");
-				goto error_exit;
+				return error;
 			}
 		} else {
 			error = rmi_read(rmi_dev, data->doze_holdoff_addr,
 					&data->device_control.doze_holdoff);
 			if (error < 0) {
 				dev_err(&fn->dev, "Failed to read F01 doze holdoff register.\n");
-				goto error_exit;
+				return error;
 			}
 		}
 	}
@@ -367,22 +367,17 @@ static int rmi_f01_initialize(struct rmi_function *fn)
 		&data->device_status, sizeof(data->device_status));
 	if (error < 0) {
 		dev_err(&fn->dev, "Failed to read device status.\n");
-		goto error_exit;
+		return error;
 	}
 
 	if (RMI_F01_STATUS_UNCONFIGURED(data->device_status)) {
 		dev_err(&fn->dev,
 			"Device was reset during configuration process, status: %#02x!\n",
 			RMI_F01_STATUS_CODE(data->device_status));
-		error = -EINVAL;
-		goto error_exit;
+		return -EINVAL;
 	}
 
 	return 0;
-
- error_exit:
-	kfree(data);
-	return error;
 }
 
 static int rmi_f01_config(struct rmi_function *fn)
