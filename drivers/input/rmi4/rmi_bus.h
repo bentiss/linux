@@ -234,10 +234,11 @@ bool rmi_is_physical_device(struct device *dev);
  * @addr: The address to read from
  * @buf: The read buffer
  *
- * Reads a byte of data using the underlaying transport protocol in to buf. It
- * returns zero or a negative error code.
+ * Reads a single byte of data using the underlying transport protocol
+ * into memory pointed by @buf. It returns 0 on success or a negative
+ * error code.
  */
-static inline int rmi_read(struct rmi_device *d, u16 addr, void *buf)
+static inline int rmi_read(struct rmi_device *d, u16 addr, u8 *buf)
 {
 	return d->xport->ops->read_block(d->xport, addr, buf, 1);
 }
@@ -249,11 +250,12 @@ static inline int rmi_read(struct rmi_device *d, u16 addr, void *buf)
  * @buf: The read buffer
  * @len: Length of the read buffer
  *
- * Reads a block of byte data using the underlaying transport protocol in
- * to buf.  It returns the amount of bytes read or a negative error code.
+ * Reads a block of byte data using the underlying transport protocol
+ * into memory pointed by @buf. It returns 0 on success or a negative
+ * error code.
  */
-static inline int rmi_read_block(struct rmi_device *d, u16 addr, void *buf,
-				 const int len)
+static inline int rmi_read_block(struct rmi_device *d, u16 addr,
+				 void *buf, size_t len)
 {
 	return d->xport->ops->read_block(d->xport, addr, buf, len);
 }
@@ -264,10 +266,10 @@ static inline int rmi_read_block(struct rmi_device *d, u16 addr, void *buf,
  * @addr: The address to write to
  * @data: The data to write
  *
- * Writes a byte from buf using the underlaying transport protocol. It
- * returns zero or a negative error code.
+ * Writes a single byte using the underlying transport protocol. It
+ * returns zero on success or a negative error code.
  */
-static inline int rmi_write(struct rmi_device *d, u16 addr, const u8 data)
+static inline int rmi_write(struct rmi_device *d, u16 addr, u8 data)
 {
 	return d->xport->ops->write_block(d->xport, addr, &data, 1);
 }
@@ -283,7 +285,7 @@ static inline int rmi_write(struct rmi_device *d, u16 addr, const u8 data)
  * protocol.  It returns the amount of bytes written or a negative error code.
  */
 static inline int rmi_write_block(struct rmi_device *d, u16 addr,
-				  const void *buf, const int len)
+				  const void *buf, size_t len)
 {
 	return d->xport->ops->write_block(d->xport, addr, buf, len);
 }
