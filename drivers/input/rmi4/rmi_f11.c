@@ -1413,8 +1413,7 @@ static int rmi_f11_config(struct rmi_function *fn)
 	return 0;
 }
 
-int rmi_f11_attention(struct rmi_function *fn,
-						unsigned long *irq_bits)
+static int rmi_f11_attention(struct rmi_function *fn, unsigned long *irq_bits)
 {
 	struct rmi_device *rmi_dev = fn->rmi_dev;
 	struct f11_data *f11 = fn->data;
