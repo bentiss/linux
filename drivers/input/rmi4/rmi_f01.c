@@ -336,6 +336,9 @@ static int rmi_f01_initialize(struct rmi_function *fn)
 		}
 	}
 
+	if (data->properties.has_lts)
+		ctrl_base_addr++;
+
 	if (data->properties.has_adjustable_doze_holdoff) {
 		data->doze_holdoff_addr = ctrl_base_addr;
 		ctrl_base_addr++;
@@ -397,7 +400,7 @@ static int rmi_f01_config(struct rmi_function *fn)
 		dev_err(&fn->dev, "Failed to write interrupt enable.\n");
 		return retval;
 	}
-	if (data->properties.has_lts) {
+	if (data->properties.has_adjustable_doze) {
 		retval = rmi_write_block(fn->rmi_dev, data->doze_interval_addr,
 					 &data->device_control.doze_interval,
 					 sizeof(u8));
@@ -405,9 +408,7 @@ static int rmi_f01_config(struct rmi_function *fn)
 			dev_err(&fn->dev, "Failed to write doze interval.\n");
 			return retval;
 		}
-	}
 
-	if (data->properties.has_adjustable_doze) {
 		retval = rmi_write_block(fn->rmi_dev,
 					 data->wakeup_threshold_addr,
 					 &data->device_control.wakeup_threshold,
