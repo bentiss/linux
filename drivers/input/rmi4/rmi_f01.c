@@ -451,11 +451,6 @@ static int rmi_f01_probe(struct rmi_function *fn)
 	return 0;
 }
 
-static void rmi_f01_remove(struct rmi_function *fn)
-{
-	/* Placeholder for now. */
-}
-
 #ifdef CONFIG_PM_SLEEP
 static int rmi_f01_suspend(struct device *dev)
 {
@@ -554,7 +549,6 @@ static struct rmi_function_handler rmi_f01_handler = {
 	},
 	.func		= 0x01,
 	.probe		= rmi_f01_probe,
-	.remove		= rmi_f01_remove,
 	.config		= rmi_f01_config,
 	.attention	= rmi_f01_attention,
 };
