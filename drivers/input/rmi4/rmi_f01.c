@@ -378,14 +378,14 @@ static int rmi_f01_probe(struct rmi_function *fn)
 		return -EINVAL;
 	}
 
-	fn->data = f01;
+	dev_set_drvdata(&fn->dev, f01);
 
 	return 0;
 }
 
 static int rmi_f01_config(struct rmi_function *fn)
 {
-	struct f01_data *f01 = fn->data;
+	struct f01_data *f01 = dev_get_drvdata(&fn->dev);
 	int error;
 
 	error = rmi_write(fn->rmi_dev, fn->fd.control_base_addr,
@@ -443,8 +443,7 @@ static int rmi_f01_config(struct rmi_function *fn)
 static int rmi_f01_suspend(struct device *dev)
 {
 	struct rmi_function *fn = to_rmi_function(dev);
-	struct rmi_device *rmi_dev = fn->rmi_dev;
-	struct f01_data *f01 = fn->data;
+	struct f01_data *f01 = dev_get_drvdata(&fn->dev);
 	int error;
 
 	f01->old_nosleep =
@@ -454,7 +453,7 @@ static int rmi_f01_suspend(struct device *dev)
 	f01->device_control.ctrl0 &= ~RMI_F01_CTRL0_SLEEP_MODE_MASK;
 	f01->device_control.ctrl0 |= RMI_SLEEP_MODE_SENSOR_SLEEP;
 
-	error = rmi_write(rmi_dev, fn->fd.control_base_addr,
+	error = rmi_write(fn->rmi_dev, fn->fd.control_base_addr,
 			  f01->device_control.ctrl0);
 	if (error) {
 		dev_err(&fn->dev, "Failed to write sleep mode: %d.\n", error);
@@ -471,8 +470,7 @@ static int rmi_f01_suspend(struct device *dev)
 static int rmi_f01_resume(struct device *dev)
 {
 	struct rmi_function *fn = to_rmi_function(dev);
-	struct rmi_device *rmi_dev = fn->rmi_dev;
-	struct f01_data *f01 = fn->data;
+	struct f01_data *f01 = dev_get_drvdata(&fn->dev);
 	int error;
 
 	if (f01->old_nosleep)
@@ -481,7 +479,7 @@ static int rmi_f01_resume(struct device *dev)
 	f01->device_control.ctrl0 &= ~RMI_F01_CTRL0_SLEEP_MODE_MASK;
 	f01->device_control.ctrl0 |= RMI_SLEEP_MODE_NORMAL;
 
-	error = rmi_write(rmi_dev, fn->fd.control_base_addr,
+	error = rmi_write(fn->rmi_dev, fn->fd.control_base_addr,
 			  f01->device_control.ctrl0);
 	if (error) {
 		dev_err(&fn->dev,

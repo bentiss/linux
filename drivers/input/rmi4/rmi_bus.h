@@ -48,7 +48,6 @@ struct rmi_function {
 	int num_of_irqs;
 	int irq_pos;
 	unsigned long *irq_mask;
-	void *data;
 	struct list_head node;
 
 #ifdef CONFIG_RMI4_DEBUG
