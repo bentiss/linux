@@ -185,7 +185,6 @@ static void rmi_free_function_list(struct rmi_device *rmi_dev)
 	list_for_each_entry_safe_reverse(fn, tmp,
 					 &data->function_list, node) {
 		list_del(&fn->node);
-		kfree(fn->irq_mask);
 		rmi_unregister_function(fn);
 	}
 }
@@ -617,7 +616,7 @@ static int rmi_initial_reset(struct rmi_device *rmi_dev,
 }
 
 static int rmi_create_function(struct rmi_device *rmi_dev,
-			      void *ctx, const struct pdt_entry *pdt)
+			       void *ctx, const struct pdt_entry *pdt)
 {
 	struct device *dev = &rmi_dev->dev;
 	struct rmi_driver_data *data = dev_get_drvdata(&rmi_dev->dev);
@@ -630,7 +629,9 @@ static int rmi_create_function(struct rmi_device *rmi_dev,
 	dev_dbg(dev, "Initializing F%02X for %s.\n",
 		pdt->function_number, pdata->sensor_name);
 
-	fn = kzalloc(sizeof(struct rmi_function), GFP_KERNEL);
+	fn = kzalloc(sizeof(struct rmi_function) +
+			BITS_TO_LONGS(data->irq_count) * sizeof(unsigned long),
+		     GFP_KERNEL);
 	if (!fn) {
 		dev_err(dev, "Failed to allocate memory for F%02X\n",
 			pdt->function_number);
@@ -646,22 +647,12 @@ static int rmi_create_function(struct rmi_device *rmi_dev,
 	fn->irq_pos = *current_irq_count;
 	*current_irq_count += fn->num_of_irqs;
 
-	fn->irq_mask = kzalloc(
-		BITS_TO_LONGS(data->irq_count) * sizeof(unsigned long),
-		GFP_KERNEL);
-	if (!fn->irq_mask) {
-		dev_err(dev, "%s: Failed to create irq_mask for F%02X.\n",
-			__func__, pdt->function_number);
-		error = -ENOMEM;
-		goto err_free_mem;
-	}
-
 	for (i = 0; i < fn->num_of_irqs; i++)
 		set_bit(fn->irq_pos + i, fn->irq_mask);
 
 	error = rmi_register_function(fn);
 	if (error)
-		goto err_free_irq_mask;
+		goto err_put_fn;
 
 	if (pdt->function_number == 0x01)
 		data->f01_container = fn;
@@ -670,10 +661,8 @@ static int rmi_create_function(struct rmi_device *rmi_dev,
 
 	return RMI_SCAN_CONTINUE;
 
-err_free_irq_mask:
-	kfree(fn->irq_mask);
-err_free_mem:
-	kfree(fn);
+err_put_fn:
+	put_device(&fn->dev);
 	return error;
 }
 

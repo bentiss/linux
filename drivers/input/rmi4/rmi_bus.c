@@ -34,6 +34,7 @@ static struct dentry *rmi_debugfs_root;
 static void rmi_release_device(struct device *dev)
 {
 	struct rmi_device *rmi_dev = to_rmi_device(dev);
+
 	kfree(rmi_dev);
 }
 
@@ -94,10 +95,11 @@ int rmi_register_transport_device(struct rmi_transport_dev *xport)
 		return -EINVAL;
 	}
 
-	rmi_dev = devm_kzalloc(xport->dev,
-				sizeof(struct rmi_device), GFP_KERNEL);
+	rmi_dev = kzalloc(sizeof(struct rmi_device), GFP_KERNEL);
 	if (!rmi_dev)
 		return -ENOMEM;
+
+	device_initialize(&rmi_dev->dev);
 
 	rmi_dev->xport = xport;
 	rmi_dev->number = atomic_inc_return(&transport_device_count) - 1;
@@ -111,14 +113,19 @@ int rmi_register_transport_device(struct rmi_transport_dev *xport)
 
 	rmi_physical_setup_debugfs(rmi_dev);
 
-	error = device_register(&rmi_dev->dev);
+	error = device_add(&rmi_dev->dev);
 	if (error)
-		return error;
+		goto err_put_device;
 
 	dev_dbg(xport->dev, "%s: Registered %s as %s.\n", __func__,
 		pdata->sensor_name, dev_name(&rmi_dev->dev));
 
 	return 0;
+
+err_put_device:
+	rmi_physical_teardown_debugfs(rmi_dev);
+	put_device(&rmi_dev->dev);
+	return error;
 }
 EXPORT_SYMBOL_GPL(rmi_register_transport_device);
 
@@ -131,8 +138,9 @@ void rmi_unregister_transport_device(struct rmi_transport_dev *xport)
 {
 	struct rmi_device *rmi_dev = xport->rmi_dev;
 
+	device_del(&rmi_dev->dev);
 	rmi_physical_teardown_debugfs(rmi_dev);
-	device_unregister(&rmi_dev->dev);
+	put_device(&rmi_dev->dev);
 }
 EXPORT_SYMBOL(rmi_unregister_transport_device);
 
@@ -142,6 +150,7 @@ EXPORT_SYMBOL(rmi_unregister_transport_device);
 static void rmi_release_function(struct device *dev)
 {
 	struct rmi_function *fn = to_rmi_function(dev);
+
 	kfree(fn);
 }
 
@@ -226,6 +235,8 @@ int rmi_register_function(struct rmi_function *fn)
 	struct rmi_device *rmi_dev = fn->rmi_dev;
 	int error;
 
+	device_initialize(&fn->dev);
+
 	dev_set_name(&fn->dev, "%s.fn%02x",
 		     dev_name(&rmi_dev->dev), fn->fd.function_number);
 
@@ -235,27 +246,28 @@ int rmi_register_function(struct rmi_function *fn)
 
 	rmi_function_setup_debugfs(fn);
 
-	error = device_register(&fn->dev);
+	error = device_add(&fn->dev);
 	if (error) {
 		dev_err(&rmi_dev->dev,
 			"Failed device_register function device %s\n",
 			dev_name(&fn->dev));
-		goto error_exit;
+		goto err_teardown_debugfs;
 	}
 
 	dev_dbg(&rmi_dev->dev, "Registered F%02X.\n", fn->fd.function_number);
 
 	return 0;
 
-error_exit:
+err_teardown_debugfs:
 	rmi_function_teardown_debugfs(fn);
 	return error;
 }
 
 void rmi_unregister_function(struct rmi_function *fn)
 {
+	device_del(&fn->dev);
 	rmi_function_teardown_debugfs(fn);
-	device_unregister(&fn->dev);
+	put_device(&fn->dev);
 }
 
 /**

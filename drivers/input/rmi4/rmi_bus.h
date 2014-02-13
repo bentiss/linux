@@ -45,14 +45,15 @@ struct rmi_function {
 	struct rmi_function_descriptor fd;
 	struct rmi_device *rmi_dev;
 	struct device dev;
-	int num_of_irqs;
-	int irq_pos;
-	unsigned long *irq_mask;
 	struct list_head node;
 
 #ifdef CONFIG_RMI4_DEBUG
 	struct dentry *debugfs_root;
 #endif
+
+	unsigned int num_of_irqs;
+	unsigned int irq_pos;
+	unsigned long irq_mask[];
 };
 
 #define to_rmi_function(d)	container_of(d, struct rmi_function, dev)
