@@ -130,37 +130,15 @@ struct f01_data {
 	u16 doze_interval_addr;
 	u16 wakeup_threshold_addr;
 	u16 doze_holdoff_addr;
-	int irq_count;
-	int num_of_irq_regs;
 
 #ifdef CONFIG_PM_SLEEP
 	bool suspended;
 	bool old_nosleep;
 #endif
+
+	unsigned int num_of_irq_regs;
+	u8 interrupt_enable[];
 };
-
-static int rmi_f01_alloc_memory(struct rmi_function *fn,
-				int num_of_irq_regs)
-{
-	struct f01_data *f01;
-
-	f01 = devm_kzalloc(&fn->dev, sizeof(struct f01_data), GFP_KERNEL);
-	if (!f01) {
-		dev_err(&fn->dev, "Failed to allocate fn_01_data.\n");
-		return -ENOMEM;
-	}
-
-	f01->device_control.interrupt_enable = devm_kzalloc(&fn->dev,
-			sizeof(u8) * (num_of_irq_regs),
-			GFP_KERNEL);
-	if (!f01->device_control.interrupt_enable) {
-		dev_err(&fn->dev, "Failed to allocate interrupt enable.\n");
-		return -ENOMEM;
-	}
-	fn->data = f01;
-
-	return 0;
-}
 
 static int rmi_f01_read_properties(struct rmi_device *rmi_dev,
 				   u16 query_base_addr,
@@ -202,16 +180,28 @@ static int rmi_f01_read_properties(struct rmi_device *rmi_dev,
 	return 0;
 }
 
-static int rmi_f01_initialize(struct rmi_function *fn)
+static int rmi_f01_probe(struct rmi_function *fn)
 {
-	u8 temp;
-	int error;
 	struct rmi_device *rmi_dev = fn->rmi_dev;
 	struct rmi_driver_data *driver_data = dev_get_drvdata(&rmi_dev->dev);
-	struct f01_data *f01 = fn->data;
 	const struct rmi_device_platform_data *pdata = to_rmi_platform_data(rmi_dev);
+	struct f01_data *f01;
+	size_t f01_size;
+	int error;
 	u16 ctrl_base_addr = fn->fd.control_base_addr;
 	u8 device_status;
+	u8 temp;
+
+	f01_size = sizeof(struct f01_data) +
+				sizeof(u8) * driver_data->num_of_irq_regs;
+	f01 = devm_kzalloc(&fn->dev, f01_size, GFP_KERNEL);
+	if (!f01) {
+		dev_err(&fn->dev, "Failed to allocate fn01_data.\n");
+		return -ENOMEM;
+	}
+
+	f01->num_of_irq_regs = driver_data->num_of_irq_regs;
+	f01->device_control.interrupt_enable = f01->interrupt_enable;
 
 	/*
 	 * Set the configured bit and (optionally) other important stuff
@@ -257,12 +247,11 @@ static int rmi_f01_initialize(struct rmi_function *fn)
 		return error;
 	}
 
-	f01->irq_count = driver_data->irq_count;
-	f01->num_of_irq_regs = driver_data->num_of_irq_regs;
-	ctrl_base_addr += sizeof(u8);
-
+	/* Advance to interrupt control registers */
+	ctrl_base_addr++;
 	f01->interrupt_enable_addr = ctrl_base_addr;
-	error = rmi_read_block(rmi_dev, ctrl_base_addr,
+
+	error = rmi_read_block(rmi_dev, f01->interrupt_enable_addr,
 				f01->device_control.interrupt_enable,
 				sizeof(u8) * (f01->num_of_irq_regs));
 	if (error) {
@@ -272,9 +261,7 @@ static int rmi_f01_initialize(struct rmi_function *fn)
 		return error;
 	}
 
-	ctrl_base_addr += f01->num_of_irq_regs;
-
-	/* dummy read in order to clear irqs */
+	/* Dummy read in order to clear irqs */
 	error = rmi_read(rmi_dev, fn->fd.data_base_addr + 1, &temp);
 	if (error < 0) {
 		dev_err(&fn->dev, "Failed to read Interrupt Status.\n");
@@ -287,10 +274,12 @@ static int rmi_f01_initialize(struct rmi_function *fn)
 		dev_err(&fn->dev, "Failed to read F01 properties.\n");
 		return error;
 	}
+
 	dev_info(&fn->dev, "found RMI device, manufacturer: %s, product: %s\n",
-		 f01->properties.manufacturer_id == 1 ?
-							"Synaptics" : "unknown",
+		 f01->properties.manufacturer_id == 1 ? "Synaptics" : "unknown",
 		 f01->properties.product_id);
+
+	ctrl_base_addr += f01->num_of_irq_regs;
 
 	/* read control register */
 	if (f01->properties.has_adjustable_doze) {
@@ -389,6 +378,8 @@ static int rmi_f01_initialize(struct rmi_function *fn)
 		return -EINVAL;
 	}
 
+	fn->data = f01;
+
 	return 0;
 }
 
@@ -444,23 +435,6 @@ static int rmi_f01_config(struct rmi_function *fn)
 			return error;
 		}
 	}
-
-	return 0;
-}
-
-static int rmi_f01_probe(struct rmi_function *fn)
-{
-	struct rmi_driver_data *driver_data =
-			dev_get_drvdata(&fn->rmi_dev->dev);
-	int error;
-
-	error = rmi_f01_alloc_memory(fn, driver_data->num_of_irq_regs);
-	if (error)
-		return error;
-
-	error = rmi_f01_initialize(fn);
-	if (error)
-		return error;
 
 	return 0;
 }
