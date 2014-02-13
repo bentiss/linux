@@ -37,7 +37,7 @@ static void rmi_release_device(struct device *dev)
 	kfree(rmi_dev);
 }
 
-struct device_type rmi_device_type = {
+static struct device_type rmi_device_type = {
 	.name		= "rmi_sensor",
 	.release	= rmi_release_device,
 };
@@ -145,7 +145,7 @@ static void rmi_release_function(struct device *dev)
 	kfree(fn);
 }
 
-struct device_type rmi_function_type = {
+static struct device_type rmi_function_type = {
 	.name		= "rmi_function",
 	.release	= rmi_release_function,
 };

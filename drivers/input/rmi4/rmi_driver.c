@@ -957,7 +957,7 @@ err_free_mem:
 	return retval < 0 ? retval : 0;
 }
 
-struct rmi_driver rmi_physical_driver = {
+static struct rmi_driver rmi_physical_driver = {
 	.driver = {
 		.owner	= THIS_MODULE,
 		.name	= "rmi_physical",
