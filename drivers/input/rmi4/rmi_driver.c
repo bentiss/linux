@@ -456,28 +456,6 @@ static int rmi_driver_reset_handler(struct rmi_device *rmi_dev)
 	return 0;
 }
 
-/*
- * Construct a function's IRQ mask. This should be called once and stored.
- */
-int rmi_driver_irq_get_mask(struct rmi_device *rmi_dev,
-			   struct rmi_function *fn)
-{
-	struct rmi_driver_data *data = dev_get_drvdata(&rmi_dev->dev);
-	int i;
-
-	/* call devm_kcalloc when it will be defined in kernel in future */
-	fn->irq_mask = devm_kzalloc(&rmi_dev->dev,
-			BITS_TO_LONGS(data->irq_count) * sizeof(unsigned long),
-			GFP_KERNEL);
-
-	if (fn->irq_mask) {
-		for (i = 0; i < fn->num_of_irqs; i++)
-			set_bit(fn->irq_pos+i, fn->irq_mask);
-		return 0;
-	} else
-		return -ENOMEM;
-}
-
 int rmi_read_pdt_entry(struct rmi_device *rmi_dev, struct pdt_entry *entry,
 			u16 pdt_address)
 {
