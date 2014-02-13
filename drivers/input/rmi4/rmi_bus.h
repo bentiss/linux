@@ -224,7 +224,12 @@ struct rmi_device {
 };
 
 #define to_rmi_device(d) container_of(d, struct rmi_device, dev)
-#define to_rmi_platform_data(d) ((d)->xport->dev->platform_data)
+
+static inline const struct rmi_device_platform_data *
+rmi_get_platform_data(struct rmi_device *d)
+{
+	return dev_get_platdata(d->xport->dev);
+}
 
 bool rmi_is_physical_device(struct device *dev);
 

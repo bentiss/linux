@@ -598,7 +598,7 @@ static int rmi_initial_reset(struct rmi_device *rmi_dev,
 		u16 cmd_addr = pdt->page_start + pdt->command_base_addr;
 		u8 cmd_buf = RMI_DEVICE_RESET_CMD;
 		const struct rmi_device_platform_data *pdata =
-				to_rmi_platform_data(rmi_dev);
+				rmi_get_platform_data(rmi_dev);
 
 		error = rmi_write_block(rmi_dev, cmd_addr, &cmd_buf, 1);
 		if (error) {
@@ -621,7 +621,7 @@ static int rmi_create_function(struct rmi_device *rmi_dev,
 {
 	struct device *dev = &rmi_dev->dev;
 	struct rmi_driver_data *data = dev_get_drvdata(&rmi_dev->dev);
-	struct rmi_device_platform_data *pdata = to_rmi_platform_data(rmi_dev);
+	const struct rmi_device_platform_data *pdata = rmi_get_platform_data(rmi_dev);
 	int *current_irq_count = ctx;
 	struct rmi_function *fn;
 	int i;
@@ -745,7 +745,7 @@ static int rmi_driver_remove(struct device *dev)
 	struct rmi_device *rmi_dev = to_rmi_device(dev);
 	struct rmi_driver_data *data = dev_get_drvdata(&rmi_dev->dev);
 	const struct rmi_device_platform_data *pdata =
-					to_rmi_platform_data(rmi_dev);
+					rmi_get_platform_data(rmi_dev);
 
 	disable_sensor(rmi_dev);
 	rmi_free_function_list(rmi_dev);
@@ -781,7 +781,7 @@ static int rmi_driver_probe(struct device *dev)
 	rmi_driver = to_rmi_driver(dev->driver);
 	rmi_dev->driver = rmi_driver;
 
-	pdata = to_rmi_platform_data(rmi_dev);
+	pdata = rmi_get_platform_data(rmi_dev);
 
 	data = devm_kzalloc(dev, sizeof(struct rmi_driver_data), GFP_KERNEL);
 	if (!data) {
