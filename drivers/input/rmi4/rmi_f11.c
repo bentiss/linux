@@ -1087,9 +1087,8 @@ static int rmi_f11_get_query_parameters(struct rmi_device *rmi_dev,
 /* This operation is done in a number of places, so we have a handy routine
  * for it.
  */
-static void f11_set_abs_params(struct rmi_function *fn)
+static void f11_set_abs_params(struct rmi_function *fn, struct f11_data *f11)
 {
-	struct f11_data *f11 = fn->data;
 	struct f11_2d_sensor *sensor = &f11->sensor;
 	struct input_dev *input = sensor->input;
 	/* These two lines are not doing what we want them to.  So we use
@@ -1190,7 +1189,6 @@ static int rmi_f11_initialize(struct rmi_function *fn)
 	if (!f11)
 		return -ENOMEM;
 
-	fn->data = f11;
 	f11->rezero_wait_ms = pdata->f11_rezero_wait;
 
 	query_base_addr = fn->fd.query_base_addr;
@@ -1280,13 +1278,16 @@ static int rmi_f11_initialize(struct rmi_function *fn)
 	}
 
 	mutex_init(&f11->dev_controls_mutex);
+
+	dev_set_drvdata(&fn->dev, f11);
+
 	return 0;
 }
 
 static int rmi_f11_register_devices(struct rmi_function *fn)
 {
 	struct rmi_device *rmi_dev = fn->rmi_dev;
-	struct f11_data *f11 = fn->data;
+	struct f11_data *f11 = dev_get_drvdata(&fn->dev);
 	struct input_dev *input_dev;
 	struct input_dev *input_dev_mouse;
 	struct rmi_driver *driver = rmi_dev->driver;
@@ -1304,8 +1305,8 @@ static int rmi_f11_register_devices(struct rmi_function *fn)
 		rc = driver->set_input_params(rmi_dev, input_dev);
 		if (rc < 0) {
 			dev_err(&fn->dev,
-			"%s: Error in setting input device.\n",
-			__func__);
+				"%s: Error in setting input device.\n",
+				__func__);
 			goto error_unregister;
 		}
 	}
@@ -1319,7 +1320,7 @@ static int rmi_f11_register_devices(struct rmi_function *fn)
 	set_bit(EV_ABS, input_dev->evbit);
 	input_set_capability(input_dev, EV_KEY, BTN_TOUCH);
 
-	f11_set_abs_params(fn);
+	f11_set_abs_params(fn, f11);
 
 	if (sensor->sens_query.has_rel) {
 		set_bit(EV_REL, input_dev->evbit);
@@ -1327,7 +1328,7 @@ static int rmi_f11_register_devices(struct rmi_function *fn)
 		set_bit(REL_Y, input_dev->relbit);
 	}
 	rc = input_register_device(input_dev);
-	if (rc < 0) {
+	if (rc) {
 		input_free_device(input_dev);
 		sensor->input = NULL;
 		goto error_unregister;
@@ -1347,8 +1348,8 @@ static int rmi_f11_register_devices(struct rmi_function *fn)
 				input_dev_mouse);
 			if (rc < 0) {
 				dev_err(&fn->dev,
-				"%s: Error in setting input device.\n",
-				__func__);
+					"%s: Error in setting input device.\n",
+					__func__);
 				goto error_unregister;
 			}
 		}
@@ -1366,7 +1367,7 @@ static int rmi_f11_register_devices(struct rmi_function *fn)
 		set_bit(BTN_RIGHT, input_dev_mouse->keybit);
 
 		rc = input_register_device(input_dev_mouse);
-		if (rc < 0) {
+		if (rc) {
 			input_free_device(input_dev_mouse);
 			sensor->mouse_input = NULL;
 			goto error_unregister;
@@ -1390,19 +1391,9 @@ error_unregister:
 	return rc;
 }
 
-static void rmi_f11_free_devices(struct rmi_function *fn)
-{
-	struct f11_data *f11 = fn->data;
-
-	if (f11->sensor.input)
-		input_unregister_device(f11->sensor.input);
-	if (f11->sensor.mouse_input)
-		input_unregister_device(f11->sensor.mouse_input);
-}
-
 static int rmi_f11_config(struct rmi_function *fn)
 {
-	struct f11_data *f11 = fn->data;
+	struct f11_data *f11 = dev_get_drvdata(&fn->dev);
 	int rc;
 
 	rc = f11_write_control_regs(fn, &f11->sensor.sens_query,
@@ -1416,7 +1407,7 @@ static int rmi_f11_config(struct rmi_function *fn)
 static int rmi_f11_attention(struct rmi_function *fn, unsigned long *irq_bits)
 {
 	struct rmi_device *rmi_dev = fn->rmi_dev;
-	struct f11_data *f11 = fn->data;
+	struct f11_data *f11 = dev_get_drvdata(&fn->dev);
 	u16 data_base_addr = fn->fd.data_base_addr;
 	u16 data_base_addr_offset = 0;
 	int error;
@@ -1425,7 +1416,7 @@ static int rmi_f11_attention(struct rmi_function *fn, unsigned long *irq_bits)
 			data_base_addr + data_base_addr_offset,
 			f11->sensor.data_pkt,
 			f11->sensor.pkt_size);
-	if (error < 0)
+	if (error)
 		return error;
 
 	rmi_f11_finger_handler(f11, &f11->sensor);
@@ -1438,18 +1429,17 @@ static int rmi_f11_attention(struct rmi_function *fn, unsigned long *irq_bits)
 static int rmi_f11_resume(struct device *dev)
 {
 	struct rmi_function *fn = to_rmi_function(dev);
-	struct rmi_device *rmi_dev = fn->rmi_dev;
-	struct f11_data *data = fn->data;
+	struct f11_data *f11 = dev_get_drvdata(&fn->dev);
 	int error;
 
 	dev_dbg(&fn->dev, "Resuming...\n");
-	if (!data->rezero_wait_ms)
+	if (!f11->rezero_wait_ms)
 		return 0;
 
-	mdelay(data->rezero_wait_ms);
+	mdelay(f11->rezero_wait_ms);
 
-	error = rmi_write(rmi_dev, fn->fd.command_base_addr, RMI_F11_REZERO);
-	if (error < 0) {
+	error = rmi_write(fn->rmi_dev, fn->fd.command_base_addr, RMI_F11_REZERO);
+	if (error) {
 		dev_err(&fn->dev,
 			"%s: failed to issue rezero command, error = %d.",
 			__func__, error);
@@ -1479,7 +1469,12 @@ static int rmi_f11_probe(struct rmi_function *fn)
 
 static void rmi_f11_remove(struct rmi_function *fn)
 {
-	rmi_f11_free_devices(fn);
+	struct f11_data *f11 = dev_get_drvdata(&fn->dev);
+
+	if (f11->sensor.input)
+		input_unregister_device(f11->sensor.input);
+	if (f11->sensor.mouse_input)
+		input_unregister_device(f11->sensor.mouse_input);
 }
 
 static struct rmi_function_handler rmi_f11_handler = {
