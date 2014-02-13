@@ -1176,7 +1176,7 @@ static int rmi_f11_initialize(struct rmi_function *fn)
 	u16 control_base_addr;
 	u16 max_x_pos, max_y_pos, temp;
 	int rc;
-	struct rmi_device_platform_data *pdata = to_rmi_platform_data(rmi_dev);
+	const struct rmi_device_platform_data *pdata = rmi_get_platform_data(rmi_dev);
 	struct f11_2d_sensor *sensor;
 	u8 buf;
 
