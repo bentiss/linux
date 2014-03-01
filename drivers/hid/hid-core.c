@@ -780,6 +780,13 @@ static int hid_scan_report(struct hid_device *hid)
 	    (hid->group == HID_GROUP_MULTITOUCH))
 		hid->group = HID_GROUP_MULTITOUCH_WIN_8;
 
+	/*
+	 * Handle vendor specific handlings
+	 */
+	if ((hid->vendor == USB_VENDOR_ID_WACOM) &&
+	    (hid->group == HID_GROUP_GENERIC))
+		hid->group = HID_GROUP_IGNORE;
+
 	vfree(parser);
 	return 0;
 }
@@ -2317,7 +2324,6 @@ static const struct hid_device_id hid_ignore_list[] = {
 	{ HID_USB_DEVICE(USB_VENDOR_ID_VERNIER, USB_DEVICE_ID_VERNIER_SKIP) },
 	{ HID_USB_DEVICE(USB_VENDOR_ID_VERNIER, USB_DEVICE_ID_VERNIER_CYCLOPS) },
 	{ HID_USB_DEVICE(USB_VENDOR_ID_VERNIER, USB_DEVICE_ID_VERNIER_LCSPEC) },
-	{ HID_USB_DEVICE(USB_VENDOR_ID_WACOM, HID_ANY_ID) },
 	{ HID_USB_DEVICE(USB_VENDOR_ID_WISEGROUP, USB_DEVICE_ID_4_PHIDGETSERVO_20) },
 	{ HID_USB_DEVICE(USB_VENDOR_ID_WISEGROUP, USB_DEVICE_ID_1_PHIDGETSERVO_20) },
 	{ HID_USB_DEVICE(USB_VENDOR_ID_WISEGROUP, USB_DEVICE_ID_8_8_4_IF_KIT) },
@@ -2602,6 +2608,9 @@ int hid_add_device(struct hid_device *hdev)
 		if (ret)
 			hid_warn(hdev, "bad device descriptor (%d)\n", ret);
 	}
+
+	if (hdev->group == HID_GROUP_IGNORE)
+		return -ENODEV;
 
 	/* XXX hack, any other cleaner solution after the driver core
 	 * is converted to allow more than 20 bytes as the device name? */
