@@ -772,7 +772,7 @@ static int rmi_driver_probe(struct device *dev)
 
 	pdata = rmi_get_platform_data(rmi_dev);
 
-	data = devm_kzalloc(dev, sizeof(struct rmi_driver_data), GFP_KERNEL);
+	data = kzalloc(sizeof(struct rmi_driver_data), GFP_KERNEL);
 	if (!data) {
 		dev_err(dev, "%s: Failed to allocate driver data.\n", __func__);
 		return -ENOMEM;
