@@ -26,6 +26,7 @@
 #include <linux/leds.h>
 #include <linux/slab.h>
 #include <linux/power_supply.h>
+#include <asm/unaligned.h>
 
 #include "hid-ids.h"
 
@@ -34,6 +35,16 @@
 #define WAC_CMD_LED_CONTROL     0x20
 #define WAC_CMD_ICON_START_STOP     0x21
 #define WAC_CMD_ICON_TRANSFER       0x26
+
+#define HID_UP_OFFSET			0xbe000000
+#define HID_MASK_UP_OFFSET		0xff000000
+#define HID_MASK_USAGE_OFFSET		0x0000ff00
+
+#define HID_UP_WACOM			0x00be0000
+#define HID_WAC_GLOBAL_SUB_REPORT_ID	0x00be0001
+#define HID_WAC_LOCAL_SUB_REPORT_ID	0x00be0002
+#define HID_WAC_SERIAL			0x00be0003
+#define HID_WAC_TOOL_ID			0x00be0004
 
 struct wacom_data {
 	__u16 tool;
@@ -51,6 +62,11 @@ struct wacom_data {
 	struct power_supply ac;
 	__u8 led_selector;
 	struct led_classdev *leds[4];
+	struct input_dev *input;
+	s32 x, y, z, p, x_tilt, y_tilt, in_range, hserial, tool_id, tool_type;
+	s32 pad_id;
+	__s16 inputmode;	/* InputMode HID feature, -1 if non-existent */
+	__s16 inputmode_index;	/* InputMode HID feature index in the report */
 };
 
 /*percent of battery capacity for Graphire
@@ -332,8 +348,19 @@ static int wacom_ac_get_property(struct power_supply *psy,
 static void wacom_set_features(struct hid_device *hdev, u8 speed)
 {
 	struct wacom_data *wdata = hid_get_drvdata(hdev);
+	struct hid_report *r;
+	struct hid_report_enum *re;
 	int limit, ret;
 	__u8 rep_data[2];
+
+	if (wdata->inputmode >= 0) {
+		re = &(hdev->report_enum[HID_FEATURE_REPORT]);
+		r = re->report_id_hash[wdata->inputmode];
+		if (r) {
+			r->field[0]->value[wdata->inputmode_index] = 2;
+			hid_hw_request(hdev, r, HID_REQ_SET_REPORT);
+		}
+	}
 
 	switch (hdev->product) {
 	case USB_DEVICE_ID_WACOM_GRAPHIRE_BLUETOOTH:
@@ -698,6 +725,21 @@ static void wacom_i4_parse_report(struct hid_device *hdev,
 	}
 }
 
+static __u32 extract(const struct hid_device *hid, __u8 *report,
+		     unsigned offset, unsigned n)
+{
+	u64 x;
+
+	if (n > 32)
+		hid_warn(hid, "extract() called with n (%d) > 32!\n", n);
+
+	report += offset >> 3;  /* adjust byte index */
+	offset &= 7;            /* now only need bit offset into one byte */
+	x = get_unaligned_le64(report);
+	x = (x >> offset) & ((1ULL << n) - 1);  /* extract bit field */
+	return (u32) x;
+}
+
 static int wacom_raw_event(struct hid_device *hdev, struct hid_report *report,
 		u8 *raw_data, int size)
 {
@@ -710,6 +752,22 @@ static int wacom_raw_event(struct hid_device *hdev, struct hid_report *report,
 
 	if (!(hdev->claimed & HID_CLAIMED_INPUT))
 		return 0;
+
+	for (i = 0; i < report->maxfield; i++) {
+		struct hid_field *field = report->field[i];
+		unsigned usage = field->usage->hid;
+		unsigned offset = field->report_offset;
+		unsigned rsize = field->report_size;
+		if (usage == HID_WAC_GLOBAL_SUB_REPORT_ID) {
+			u8 value = (u8) extract(hdev, raw_data + 1, offset,
+						rsize);
+			raw_data[0] = value;
+		}
+	}
+
+	if ((hdev->product != USB_DEVICE_ID_WACOM_GRAPHIRE_BLUETOOTH) &&
+	    (hdev->product != USB_DEVICE_ID_WACOM_INTUOS4_BLUETOOTH))
+		return 1;
 
 	hidinput = list_entry(hdev->inputs.next, struct hid_input, list);
 	input = hidinput->input;
@@ -754,11 +812,349 @@ static int wacom_raw_event(struct hid_device *hdev, struct hid_report *report,
 	return 1;
 }
 
+static s32 wacom_replace_bits(s32 data, s32 bits, unsigned shift, unsigned size)
+{
+	u32 mask = GENMASK(size + shift - 1, shift);
+	data &= ~mask;
+	data |=  bits << shift;
+	return data;
+}
+
+static int wacom_input_event(struct hid_device *hdev, struct hid_field *field,
+				struct hid_usage *usage, __s32 value)
+{
+	struct wacom_data *wdata = hid_get_drvdata(hdev);
+	unsigned usage_code = usage->hid;
+	unsigned code;
+	unsigned shift = 0;
+	unsigned size = field->report_size;
+
+	if ((hdev->product == USB_DEVICE_ID_WACOM_GRAPHIRE_BLUETOOTH) ||
+	    (hdev->product == USB_DEVICE_ID_WACOM_INTUOS4_BLUETOOTH))
+		return 0;
+
+	if (!(hdev->claimed & HID_CLAIMED_INPUT))
+		return -1;
+
+	if ((usage_code & HID_MASK_UP_OFFSET) &&
+	    ((usage_code & HID_MASK_UP_OFFSET) != HID_UP_OFFSET))
+		return 0;
+
+	/* remove leading 0xbe and included offset */
+	usage_code &= ~(HID_MASK_UP_OFFSET | HID_MASK_USAGE_OFFSET);
+
+	shift = (usage->hid & HID_MASK_USAGE_OFFSET) >> 8;
+	switch (usage_code & HID_USAGE_PAGE) {
+	case HID_UP_GENDESK:
+		switch (usage_code) {
+		case HID_GD_X:
+			wdata->x = wacom_replace_bits(wdata->x, value, shift, size);
+			break;
+		case HID_GD_Y:
+			wdata->y = wacom_replace_bits(wdata->y, value, shift, size);
+			break;
+		}
+		break;
+	case HID_UP_DIGITIZER:
+		switch (usage_code) {
+		case HID_DG_TIPPRESSURE:
+			wdata->p = wacom_replace_bits(wdata->p, value, shift, size);
+			break;
+		case HID_DG_X_TILT:
+			wdata->x_tilt = wacom_replace_bits(wdata->x_tilt, value, shift,
+							   size);
+			break;
+		case HID_DG_Y_TILT:
+			wdata->y_tilt = wacom_replace_bits(wdata->y_tilt, value, shift,
+							   size);
+			break;
+		case HID_DG_ALTITUDE:
+			wdata->z = wacom_replace_bits(wdata->z, value, shift, size);
+			break;
+		case HID_DG_INRANGE:
+			wdata->in_range = wacom_replace_bits(wdata->in_range, value,
+							     shift, size);
+			break;
+		}
+		break;
+	case HID_UP_WACOM:
+		switch (usage_code) {
+		case HID_WAC_SERIAL:
+			wdata->hserial = wacom_replace_bits(wdata->hserial, value,
+							    shift, size);
+			break;
+		case HID_WAC_TOOL_ID:
+			wdata->tool_id = wacom_replace_bits(wdata->tool_id, value,
+							    shift, size);
+			break;
+		}
+		break;
+	case HID_UP_BUTTON:
+		code = usage->hid & HID_USAGE;
+		if (!(usage->hid & HID_MASK_UP_OFFSET))
+			code = BTN_0 + code - 1;
+		input_report_key(wdata->input, code, value);
+		if (field->report->id == 0x0c && value && code > 0xff)
+			wdata->pad_id = PAD_DEVICE_ID;
+		break;
+	}
+	return 1;
+}
+
+static void wacom_input_report(struct hid_device *hdev,
+		struct hid_report *report)
+{
+	struct wacom_data *wdata = hid_get_drvdata(hdev);
+
+	if ((hdev->product == USB_DEVICE_ID_WACOM_GRAPHIRE_BLUETOOTH) ||
+	    (hdev->product == USB_DEVICE_ID_WACOM_INTUOS4_BLUETOOTH))
+		return;
+
+	if (!(hdev->claimed & HID_CLAIMED_INPUT))
+		return;
+
+	if (report->id == 0x06) {
+		switch (wdata->tool_id) {
+		case 0x812: /* Inking pen */
+		case 0x801: /* Intuos3 Inking pen */
+		case 0x120802: /* Intuos4/5 Inking Pen */
+		case 0x012:
+			wdata->tool_type = BTN_TOOL_PENCIL;
+			break;
+
+		case 0x822: /* Pen */
+		case 0x842:
+		case 0x852:
+		case 0x823: /* Intuos3 Grip Pen */
+		case 0x813: /* Intuos3 Classic Pen */
+		case 0x885: /* Intuos3 Marker Pen */
+		case 0x802: /* Intuos4/5 13HD/24HD General Pen */
+		case 0x804: /* Intuos4/5 13HD/24HD Marker Pen */
+		case 0x022:
+		case 0x100804: /* Intuos4/5 13HD/24HD Art Pen */
+		case 0x140802: /* Intuos4/5 13HD/24HD Classic Pen */
+		case 0x160802: /* Cintiq 13HD Pro Pen */
+		case 0x180802: /* DTH2242 Pen */
+		case 0x100802: /* Intuos4/5 13HD/24HD General Pen */
+			wdata->tool_type = BTN_TOOL_PEN;
+			break;
+
+		case 0x832: /* Stroke pen */
+		case 0x032:
+			wdata->tool_type = BTN_TOOL_BRUSH;
+			break;
+
+		case 0x007: /* Mouse 4D and 2D */
+		case 0x09c:
+		case 0x094:
+		case 0x017: /* Intuos3 2D Mouse */
+		case 0x806: /* Intuos4 Mouse */
+			wdata->tool_type = BTN_TOOL_MOUSE;
+			break;
+
+		case 0x096: /* Lens cursor */
+		case 0x097: /* Intuos3 Lens cursor */
+		case 0x006: /* Intuos4 Lens cursor */
+			wdata->tool_type = BTN_TOOL_LENS;
+			break;
+
+		case 0x82a: /* Eraser */
+		case 0x85a:
+		case 0x91a:
+		case 0xd1a:
+		case 0x0fa:
+		case 0x82b: /* Intuos3 Grip Pen Eraser */
+		case 0x81b: /* Intuos3 Classic Pen Eraser */
+		case 0x91b: /* Intuos3 Airbrush Eraser */
+		case 0x80c: /* Intuos4/5 13HD/24HD Marker Pen Eraser */
+		case 0x80a: /* Intuos4/5 13HD/24HD General Pen Eraser */
+		case 0x90a: /* Intuos4/5 13HD/24HD Airbrush Eraser */
+		case 0x14080a: /* Intuos4/5 13HD/24HD Classic Pen Eraser */
+		case 0x10090a: /* Intuos4/5 13HD/24HD Airbrush Eraser */
+		case 0x10080c: /* Intuos4/5 13HD/24HD Art Pen Eraser */
+		case 0x16080a: /* Cintiq 13HD Pro Pen Eraser */
+		case 0x18080a: /* DTH2242 Eraser */
+		case 0x10080a: /* Intuos4/5 13HD/24HD General Pen Eraser */
+			wdata->tool_type = BTN_TOOL_RUBBER;
+			break;
+
+		case 0xd12:
+		case 0x912:
+		case 0x112:
+		case 0x913: /* Intuos3 Airbrush */
+		case 0x902: /* Intuos4/5 13HD/24HD Airbrush */
+		case 0x100902: /* Intuos4/5 13HD/24HD Airbrush */
+			wdata->tool_type = BTN_TOOL_AIRBRUSH;
+			break;
+
+		default: /* Unknown tool */
+			wdata->tool_type = BTN_TOOL_PEN;
+			break;
+		}
+		return;
+	}
+
+	if (!wdata->in_range) {
+		wdata->x = 0;
+		wdata->y = 0;
+		wdata->z = 0;
+		wdata->p = 0;
+		wdata->x_tilt = 0;
+		wdata->y_tilt = 0;
+		wdata->tool_id = 0;
+		wdata->p = 0;
+	}
+
+	input_report_abs(wdata->input, ABS_X, wdata->x);
+	input_report_abs(wdata->input, ABS_Y, wdata->y);
+	input_report_abs(wdata->input, ABS_DISTANCE, wdata->z);
+	input_report_abs(wdata->input, ABS_PRESSURE, wdata->p);
+	input_report_abs(wdata->input, ABS_TILT_X, wdata->x_tilt);
+	input_report_abs(wdata->input, ABS_TILT_Y, wdata->y_tilt);
+	if (wdata->pad_id)
+		input_report_abs(wdata->input, ABS_MISC, wdata->pad_id);
+	else
+		input_report_abs(wdata->input, ABS_MISC, wdata->tool_id);
+	input_report_key(wdata->input, wdata->tool_type, !!wdata->in_range);
+	input_report_key(wdata->input, BTN_TOUCH, wdata->p > 1);
+
+	input_event(wdata->input, EV_MSC, MSC_SERIAL, wdata->hserial);
+	if (!wdata->in_range)
+		wdata->hserial = -1;
+	wdata->pad_id = 0;
+}
+
+static void set_abs(struct input_dev *input, unsigned int code,
+		struct hid_field *field, int fuzz)
+{
+	int fmin = field->logical_minimum;
+	int fmax = field->logical_maximum;
+	input_set_abs_params(input, code, fmin, fmax, fuzz, 0);
+	input_abs_set_res(input, code, hidinput_calc_abs_res(field, code));
+}
+
+static void wacom_feature_mapping(struct hid_device *hdev,
+		struct hid_field *field, struct hid_usage *usage)
+{
+	struct wacom_data *wdata = hid_get_drvdata(hdev);
+
+	switch (usage->hid) {
+	case HID_DG_INPUTMODE:
+		/* Ignore if value index is out of bounds. */
+		if (usage->usage_index >= field->report_count) {
+			dev_err(&hdev->dev, "HID_DG_INPUTMODE out of range\n");
+			break;
+		}
+
+		wdata->inputmode = field->report->id;
+		wdata->inputmode_index = usage->usage_index;
+
+		break;
+	}
+}
+
+static int wacom_input_mapping(struct hid_device *hdev, struct hid_input *hi,
+		struct hid_field *field, struct hid_usage *usage,
+		unsigned long **bit, int *max)
+{
+	unsigned usage_code = usage->hid;
+	unsigned code;
+
+	if ((hdev->product == USB_DEVICE_ID_WACOM_GRAPHIRE_BLUETOOTH) ||
+	    (hdev->product == USB_DEVICE_ID_WACOM_INTUOS4_BLUETOOTH))
+		return 0;
+
+	if ((usage_code & HID_MASK_UP_OFFSET) &&
+	    ((usage_code & HID_MASK_UP_OFFSET) != HID_UP_OFFSET))
+		return 0;
+
+	/* remove leading 0xbe and included offset */
+	usage_code &= ~(HID_MASK_UP_OFFSET | HID_MASK_USAGE_OFFSET);
+
+	switch (usage_code & HID_USAGE_PAGE) {
+	case HID_UP_GENDESK:
+		switch (usage_code) {
+		case HID_GD_X:
+			hid_map_usage(hi, usage, bit, max, EV_ABS, ABS_X);
+			set_abs(hi->input, ABS_X, field, 4);
+			return 1;
+		case HID_GD_Y:
+			hid_map_usage(hi, usage, bit, max, EV_ABS, ABS_Y);
+			set_abs(hi->input, ABS_Y, field, 4);
+			return 1;
+		case HID_GD_RX:
+			hid_map_usage(hi, usage, bit, max, EV_ABS, ABS_RX);
+			set_abs(hi->input, ABS_RX, field, 0);
+			return 1;
+		case HID_GD_RY:
+			hid_map_usage(hi, usage, bit, max, EV_ABS, ABS_RY);
+			set_abs(hi->input, ABS_RY, field, 0);
+			return 1;
+		}
+		return 1;
+
+	case HID_UP_DIGITIZER:
+		switch (usage_code) {
+		case HID_DG_TIPPRESSURE:
+			hid_map_usage(hi, usage, bit, max, EV_ABS,
+					ABS_PRESSURE);
+			set_abs(hi->input, ABS_PRESSURE, field, 0);
+			return 1;
+		case HID_DG_X_TILT:
+			hid_map_usage(hi, usage, bit, max, EV_ABS, ABS_TILT_X);
+			set_abs(hi->input, ABS_TILT_X, field, 0);
+			return 1;
+		case HID_DG_Y_TILT:
+			hid_map_usage(hi, usage, bit, max, EV_ABS, ABS_TILT_Y);
+			set_abs(hi->input, ABS_TILT_Y, field, 0);
+			return 1;
+		case HID_DG_ALTITUDE:
+			hid_map_usage(hi, usage, bit, max, EV_ABS,
+					ABS_DISTANCE);
+			set_abs(hi->input, ABS_DISTANCE, field, 0);
+			return 1;
+		}
+		return 1;
+
+	case HID_UP_BUTTON:
+		code = usage->hid & HID_USAGE;
+		if (!(usage->hid & HID_MASK_UP_OFFSET))
+			code = BTN_0 + code - 1;
+		hid_map_usage(hi, usage, bit, max, EV_KEY, code);
+		input_set_capability(hi->input, EV_KEY, code);
+		return 1;
+
+	case HID_UP_WACOM:
+		switch (usage_code) {
+		case HID_WAC_SERIAL:
+			hid_map_usage(hi, usage, bit, max, EV_MSC, MSC_SERIAL);
+			input_set_capability(hi->input, EV_MSC, MSC_SERIAL);
+			return 1;
+		case HID_WAC_TOOL_ID:
+			hid_map_usage(hi, usage, bit, max, EV_ABS, ABS_MISC);
+			input_set_abs_params(hi->input, ABS_MISC, 0, 0, 0, 0);
+			return 1;
+		}
+		return 1;
+	}
+
+	return 1;
+}
+
 static int wacom_input_mapped(struct hid_device *hdev, struct hid_input *hi,
 	struct hid_field *field, struct hid_usage *usage, unsigned long **bit,
 								int *max)
 {
 	struct input_dev *input = hi->input;
+
+	if (usage->type == EV_KEY ||
+	    usage->type == EV_ABS ||
+	    usage->type == EV_MSC)
+		set_bit(usage->type, hi->input->evbit);
+
+	if ((hdev->product != USB_DEVICE_ID_WACOM_GRAPHIRE_BLUETOOTH) &&
+	    (hdev->product != USB_DEVICE_ID_WACOM_INTUOS4_BLUETOOTH))
+		return -1;
 
 	__set_bit(INPUT_PROP_POINTER, input->propbit);
 
@@ -816,6 +1212,32 @@ static int wacom_input_mapped(struct hid_device *hdev, struct hid_input *hi,
 	return 0;
 }
 
+static void wacom_input_configured(struct hid_device *hdev,
+		struct hid_input *hi)
+{
+	struct wacom_data *wdata = hid_get_drvdata(hdev);
+	wdata->input = hi->input;
+
+	if ((hdev->product == USB_DEVICE_ID_WACOM_GRAPHIRE_BLUETOOTH) ||
+	    (hdev->product == USB_DEVICE_ID_WACOM_INTUOS4_BLUETOOTH))
+		return;
+
+	__set_bit(BTN_TOOL_PEN, wdata->input->keybit);
+	__set_bit(BTN_TOOL_RUBBER, wdata->input->keybit);
+	__set_bit(BTN_TOOL_BRUSH, wdata->input->keybit);
+	__set_bit(BTN_TOOL_PENCIL, wdata->input->keybit);
+	__set_bit(BTN_TOOL_AIRBRUSH, wdata->input->keybit);
+	__set_bit(BTN_TOUCH, wdata->input->keybit);
+	__set_bit(BTN_STYLUS, wdata->input->keybit);
+	__set_bit(BTN_STYLUS2, wdata->input->keybit);
+	__set_bit(ABS_WHEEL, wdata->input->absbit);
+	input_set_abs_params(wdata->input, ABS_WHEEL, 0, 1023, 0, 0);
+	__set_bit(ABS_Z, wdata->input->absbit);
+	input_set_abs_params(wdata->input, ABS_Z, -900, 899, 0, 0);
+
+	__set_bit(INPUT_PROP_DIRECT, wdata->input->propbit);
+}
+
 static int wacom_probe(struct hid_device *hdev,
 		const struct hid_device_id *id)
 {
@@ -827,6 +1249,8 @@ static int wacom_probe(struct hid_device *hdev,
 		hid_err(hdev, "can't alloc wacom descriptor\n");
 		return -ENOMEM;
 	}
+
+	wdata->inputmode = -1;
 
 	hid_set_drvdata(hdev, wdata);
 
@@ -954,6 +1378,7 @@ static void wacom_remove(struct hid_device *hdev)
 static const struct hid_device_id wacom_devices[] = {
 	{ HID_BLUETOOTH_DEVICE(USB_VENDOR_ID_WACOM, USB_DEVICE_ID_WACOM_GRAPHIRE_BLUETOOTH) },
 	{ HID_BLUETOOTH_DEVICE(USB_VENDOR_ID_WACOM, USB_DEVICE_ID_WACOM_INTUOS4_BLUETOOTH) },
+	{ HID_DEVICE(HID_BUS_ANY, HID_GROUP_WACOM, HID_ANY_ID, HID_ANY_ID) },
 
 	{ }
 };
@@ -965,7 +1390,12 @@ static struct hid_driver wacom_driver = {
 	.probe = wacom_probe,
 	.remove = wacom_remove,
 	.raw_event = wacom_raw_event,
+	.event = wacom_input_event,
+	.report = wacom_input_report,
+	.feature_mapping = wacom_feature_mapping,
+	.input_mapping = wacom_input_mapping,
 	.input_mapped = wacom_input_mapped,
+	.input_configured = wacom_input_configured,
 };
 module_hid_driver(wacom_driver);
 

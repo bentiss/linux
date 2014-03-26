@@ -228,6 +228,9 @@ struct hid_item {
 #define HID_DG_TABLETFUNCTIONKEY	0x000d0039
 #define HID_DG_PROGRAMCHANGEKEY	0x000d003a
 #define HID_DG_INVERT		0x000d003c
+#define HID_DG_X_TILT		0x000d003d
+#define HID_DG_Y_TILT		0x000d003e
+#define HID_DG_ALTITUDE		0x000d0040
 #define HID_DG_TIPSWITCH	0x000d0042
 #define HID_DG_TIPSWITCH2	0x000d0043
 #define HID_DG_BARRELSWITCH	0x000d0044
@@ -305,6 +308,7 @@ struct hid_item {
 #define HID_GROUP_SENSOR_HUB			0x0003
 #define HID_GROUP_MULTITOUCH_WIN_8		0x0004
 #define HID_GROUP_IGNORE			0x0005
+#define HID_GROUP_WACOM				0x0006
 
 /*
  * This is the global environment of the parser. This information is
