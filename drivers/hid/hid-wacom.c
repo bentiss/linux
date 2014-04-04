@@ -1111,6 +1111,7 @@ static int wacom_input_mapping(struct hid_device *hdev, struct hid_input *hi,
 			hid_map_usage(hi, usage, bit, max, EV_ABS,
 					ABS_PRESSURE);
 			set_abs(hi->input, ABS_PRESSURE, field, 0);
+			input_set_capability(hi->input, EV_KEY, BTN_TOUCH);
 			return 1;
 		case HID_DG_X_TILT:
 			hid_map_usage(hi, usage, bit, max, EV_ABS, ABS_TILT_X);
@@ -1124,6 +1125,12 @@ static int wacom_input_mapping(struct hid_device *hdev, struct hid_input *hi,
 			hid_map_usage(hi, usage, bit, max, EV_ABS,
 					ABS_DISTANCE);
 			set_abs(hi->input, ABS_DISTANCE, field, 0);
+			return 1;
+		case HID_DG_ERASER:
+			hid_map_usage(hi, usage, bit, max, EV_KEY, BTN_TOOL_RUBBER);
+			input_set_capability(hi->input, EV_KEY, BTN_TOOL_RUBBER);
+			hid_map_usage(hi, usage, bit, max, EV_KEY, BTN_TOOL_PEN);
+			input_set_capability(hi->input, EV_KEY, BTN_TOOL_PEN);
 			return 1;
 		}
 		return 1;
@@ -1145,6 +1152,11 @@ static int wacom_input_mapping(struct hid_device *hdev, struct hid_input *hi,
 		case HID_WAC_TOOL_ID:
 			hid_map_usage(hi, usage, bit, max, EV_ABS, ABS_MISC);
 			input_set_abs_params(hi->input, ABS_MISC, 0, 0, 0, 0);
+			input_set_capability(hi->input, EV_KEY, BTN_TOOL_PEN);
+			input_set_capability(hi->input, EV_KEY, BTN_TOOL_RUBBER);
+			input_set_capability(hi->input, EV_KEY, BTN_TOOL_BRUSH);
+			input_set_capability(hi->input, EV_KEY, BTN_TOOL_PENCIL);
+			input_set_capability(hi->input, EV_KEY, BTN_TOOL_AIRBRUSH);
 			return 1;
 		}
 		return 1;
@@ -1234,14 +1246,6 @@ static void wacom_input_configured(struct hid_device *hdev,
 	    (hdev->product == USB_DEVICE_ID_WACOM_INTUOS4_BLUETOOTH))
 		return;
 
-	__set_bit(BTN_TOOL_PEN, wdata->input->keybit);
-	__set_bit(BTN_TOOL_RUBBER, wdata->input->keybit);
-	__set_bit(BTN_TOOL_BRUSH, wdata->input->keybit);
-	__set_bit(BTN_TOOL_PENCIL, wdata->input->keybit);
-	__set_bit(BTN_TOOL_AIRBRUSH, wdata->input->keybit);
-	__set_bit(BTN_TOUCH, wdata->input->keybit);
-	__set_bit(BTN_STYLUS, wdata->input->keybit);
-	__set_bit(BTN_STYLUS2, wdata->input->keybit);
 	__set_bit(ABS_WHEEL, wdata->input->absbit);
 	input_set_abs_params(wdata->input, ABS_WHEEL, 0, 1023, 0, 0);
 	__set_bit(ABS_Z, wdata->input->absbit);
