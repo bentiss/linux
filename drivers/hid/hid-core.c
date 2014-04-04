@@ -30,6 +30,7 @@
 #include <linux/vmalloc.h>
 #include <linux/sched.h>
 #include <linux/semaphore.h>
+#include <linux/firmware.h>
 
 #include <linux/hid.h>
 #include <linux/hiddev.h>
@@ -2463,6 +2464,101 @@ bool hid_ignore(struct hid_device *hdev)
 }
 EXPORT_SYMBOL_GPL(hid_ignore);
 
+static void hid_fw_loaded(const struct firmware *fw, void *context)
+{
+	struct hid_device *hdev = context;
+	hdev->fw = fw;
+	hdev->fw_waiting = 0;
+	wake_up(&hdev->fw_wait);
+}
+
+static void hid_fw_get_rdesc(struct hid_device *hdev, char *name)
+{
+	const struct firmware *fw = hdev->fw;
+	u32 rdesc_size;
+	u32 size;
+	const u8 *data;
+	char type;
+	u8 *rdesc;
+	int ret;
+	size_t index = 0;
+	bool valid = true;
+	bool found = false;
+
+	hid_info(hdev, "loaded fw file: %s\n", name);
+
+	while (index < fw->size) {
+		data = &fw->data[index];
+
+		type = data[0];
+		data += 1;
+		index += 1;
+
+		size = get_unaligned_le32(data);
+		data += 4;
+		index += 4 + size;
+
+		if ((type != 'O' && type != 'R') || index > fw->size) {
+			hid_err(hdev, "fw '%s' is corrupted.\n", name);
+			ret = -ENODATA;
+			goto out_fw;
+		}
+
+		if (type == 'O') {
+			/* match against current report descriptor */
+			valid = (hdev->dev_rsize == size) &&
+				!memcmp(data, hdev->dev_rdesc, size);
+		} else if (valid && !found) {
+			rdesc_size = size;
+			rdesc = kmemdup(data, size, GFP_KERNEL);
+			if (!rdesc) {
+				ret = -ENOMEM;
+				goto out_fw;
+			}
+			found = true;
+		}
+	}
+
+	if (found) {
+		hid_info(hdev, "using report decsriptor in %s\n", name);
+		kfree(hdev->dev_rdesc);
+		hdev->dev_rdesc = rdesc;
+		hdev->dev_rsize = rdesc_size;
+	}
+
+out_fw:
+	release_firmware(fw);
+	hdev->fw = NULL;
+	return;
+}
+
+static int hid_load_external_rdesc(struct hid_device *hdev)
+{
+	char name[32];
+	int ret;
+
+	snprintf(name, sizeof(name) - 1,
+		 "hid/%04x_%04x_%04x.bin",
+		 hdev->bus, hdev->vendor, hdev->product);
+
+	hdev->fw_waiting = 1;
+
+	/* we can't afford having a uevent here, so use request_firmware_nowait */
+	ret = request_firmware_nowait(THIS_MODULE, 0, name, &hdev->dev,
+			GFP_KERNEL, hdev, hid_fw_loaded);
+	if (ret) {
+		pr_err("%s ret: %d %s:%d\n", __func__, ret, __FILE__, __LINE__);
+		return ret;
+	}
+
+	wait_event(hdev->fw_wait, !hdev->fw_waiting);
+
+	if (hdev->fw)
+		hid_fw_get_rdesc(hdev, name);
+
+	return 0;
+}
+
 int hid_add_device(struct hid_device *hdev)
 {
 	static atomic_t id = ATOMIC_INIT(0);
@@ -2499,6 +2595,9 @@ int hid_add_device(struct hid_device *hdev)
 	 */
 	if (hid_ignore_special_drivers ||
 	    !hid_match_id(hdev, hid_have_special_driver)) {
+
+		hid_load_external_rdesc(hdev);
+
 		ret = hid_scan_report(hdev);
 		if (ret)
 			hid_warn(hdev, "bad device descriptor (%d)\n", ret);
@@ -2549,6 +2648,7 @@ struct hid_device *hid_allocate_device(void)
 	spin_lock_init(&hdev->debug_list_lock);
 	sema_init(&hdev->driver_lock, 1);
 	sema_init(&hdev->driver_input_lock, 1);
+	init_waitqueue_head(&hdev->fw_wait);
 
 	return hdev;
 }

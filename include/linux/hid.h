@@ -521,6 +521,11 @@ struct hid_device {							/* device report descriptor */
 	struct list_head debug_list;
 	spinlock_t  debug_list_lock;
 	wait_queue_head_t debug_wait;
+
+	/* For waiting the external report descriptor in firmware dir */
+	wait_queue_head_t fw_wait;
+	bool fw_waiting;
+	const struct firmware *fw;
 };
 
 static inline void *hid_get_drvdata(struct hid_device *hdev)
