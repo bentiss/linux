@@ -63,7 +63,8 @@ struct wacom_data {
 	__u8 led_selector;
 	struct led_classdev *leds[4];
 	struct input_dev *input;
-	s32 x, y, z, p, x_tilt, y_tilt, in_range, hserial, tool_id, tool_type;
+	s32 x, y, distance, p, x_tilt, y_tilt, in_range, hserial, tool_id, tool_type;
+	s32 z, z_max;
 	s32 pad_id;
 	__s16 inputmode;	/* InputMode HID feature, -1 if non-existent */
 	__s16 inputmode_index;	/* InputMode HID feature index in the report */
@@ -853,6 +854,10 @@ static int wacom_input_event(struct hid_device *hdev, struct hid_field *field,
 		case HID_GD_Y:
 			wdata->y = wacom_replace_bits(wdata->y, value, shift, size);
 			break;
+		case HID_GD_Z:
+			wdata->z = wacom_replace_bits(wdata->z, value, shift, size);
+			wdata->distance = wdata->z_max - wdata->z;
+			break;
 		}
 		break;
 	case HID_UP_DIGITIZER:
@@ -869,7 +874,7 @@ static int wacom_input_event(struct hid_device *hdev, struct hid_field *field,
 							   size);
 			break;
 		case HID_DG_ALTITUDE:
-			wdata->z = wacom_replace_bits(wdata->z, value, shift, size);
+			wdata->distance = wacom_replace_bits(wdata->distance, value, shift, size);
 			break;
 		case HID_DG_INRANGE:
 			wdata->in_range = wacom_replace_bits(wdata->in_range, value,
@@ -998,6 +1003,7 @@ static void wacom_input_report(struct hid_device *hdev,
 		wdata->x = 0;
 		wdata->y = 0;
 		wdata->z = 0;
+		wdata->distance = 0;
 		wdata->p = 0;
 		wdata->x_tilt = 0;
 		wdata->y_tilt = 0;
@@ -1007,7 +1013,7 @@ static void wacom_input_report(struct hid_device *hdev,
 
 	input_report_abs(wdata->input, ABS_X, wdata->x);
 	input_report_abs(wdata->input, ABS_Y, wdata->y);
-	input_report_abs(wdata->input, ABS_DISTANCE, wdata->z);
+	input_report_abs(wdata->input, ABS_DISTANCE, wdata->distance);
 	input_report_abs(wdata->input, ABS_PRESSURE, wdata->p);
 	input_report_abs(wdata->input, ABS_TILT_X, wdata->x_tilt);
 	input_report_abs(wdata->input, ABS_TILT_Y, wdata->y_tilt);
@@ -1057,6 +1063,7 @@ static int wacom_input_mapping(struct hid_device *hdev, struct hid_input *hi,
 		struct hid_field *field, struct hid_usage *usage,
 		unsigned long **bit, int *max)
 {
+	struct wacom_data *wdata = hid_get_drvdata(hdev);
 	unsigned usage_code = usage->hid;
 	unsigned code;
 
@@ -1081,6 +1088,11 @@ static int wacom_input_mapping(struct hid_device *hdev, struct hid_input *hi,
 		case HID_GD_Y:
 			hid_map_usage(hi, usage, bit, max, EV_ABS, ABS_Y);
 			set_abs(hi->input, ABS_Y, field, 4);
+			return 1;
+		case HID_GD_Z:
+			hid_map_usage(hi, usage, bit, max, EV_ABS, ABS_DISTANCE);
+			set_abs(hi->input, ABS_DISTANCE, field, 0);
+			wdata->z_max = field->logical_maximum;
 			return 1;
 		case HID_GD_RX:
 			hid_map_usage(hi, usage, bit, max, EV_ABS, ABS_RX);
