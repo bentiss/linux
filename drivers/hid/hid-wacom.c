@@ -65,6 +65,7 @@ struct wacom_data {
 	struct input_dev *input;
 	s32 x, y, distance, p, x_tilt, y_tilt, in_range, hserial, tool_id;
 	s32 tool_type, prev_tool_type;
+	s32 eraser;
 	s32 z, z_max;
 	s32 pad_id;
 	__s16 inputmode;	/* InputMode HID feature, -1 if non-existent */
@@ -964,6 +965,12 @@ static int wacom_input_event(struct hid_device *hdev, struct hid_field *field,
 		case HID_DG_INRANGE:
 			wdata->in_range = wacom_replace_bits(wdata->in_range, value,
 							     shift, size);
+			break;
+		case HID_DG_ERASER:
+			wdata->eraser = wacom_replace_bits(wdata->eraser, value,
+							     shift, size);
+			wdata->tool_type = wdata->eraser ? BTN_TOOL_RUBBER :
+							   BTN_TOOL_PEN;
 			break;
 		}
 		break;
