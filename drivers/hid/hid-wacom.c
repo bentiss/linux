@@ -813,6 +813,90 @@ static int wacom_raw_event(struct hid_device *hdev, struct hid_report *report,
 	return 1;
 }
 
+static int wacom_get_tool_type(int tool_id)
+{
+	int tool_type;
+
+	switch (tool_id) {
+	case 0x812: /* Inking pen */
+	case 0x801: /* Intuos3 Inking pen */
+	case 0x120802: /* Intuos4/5 Inking Pen */
+	case 0x012:
+		tool_type = BTN_TOOL_PENCIL;
+		break;
+
+	case 0x822: /* Pen */
+	case 0x842:
+	case 0x852:
+	case 0x823: /* Intuos3 Grip Pen */
+	case 0x813: /* Intuos3 Classic Pen */
+	case 0x885: /* Intuos3 Marker Pen */
+	case 0x802: /* Intuos4/5 13HD/24HD General Pen */
+	case 0x804: /* Intuos4/5 13HD/24HD Marker Pen */
+	case 0x022:
+	case 0x100804: /* Intuos4/5 13HD/24HD Art Pen */
+	case 0x140802: /* Intuos4/5 13HD/24HD Classic Pen */
+	case 0x160802: /* Cintiq 13HD Pro Pen */
+	case 0x180802: /* DTH2242 Pen */
+	case 0x100802: /* Intuos4/5 13HD/24HD General Pen */
+		tool_type = BTN_TOOL_PEN;
+		break;
+
+	case 0x832: /* Stroke pen */
+	case 0x032:
+		tool_type = BTN_TOOL_BRUSH;
+		break;
+
+	case 0x007: /* Mouse 4D and 2D */
+	case 0x09c:
+	case 0x094:
+	case 0x017: /* Intuos3 2D Mouse */
+	case 0x806: /* Intuos4 Mouse */
+		tool_type = BTN_TOOL_MOUSE;
+		break;
+
+	case 0x096: /* Lens cursor */
+	case 0x097: /* Intuos3 Lens cursor */
+	case 0x006: /* Intuos4 Lens cursor */
+		tool_type = BTN_TOOL_LENS;
+		break;
+
+	case 0x82a: /* Eraser */
+	case 0x85a:
+	case 0x91a:
+	case 0xd1a:
+	case 0x0fa:
+	case 0x82b: /* Intuos3 Grip Pen Eraser */
+	case 0x81b: /* Intuos3 Classic Pen Eraser */
+	case 0x91b: /* Intuos3 Airbrush Eraser */
+	case 0x80c: /* Intuos4/5 13HD/24HD Marker Pen Eraser */
+	case 0x80a: /* Intuos4/5 13HD/24HD General Pen Eraser */
+	case 0x90a: /* Intuos4/5 13HD/24HD Airbrush Eraser */
+	case 0x14080a: /* Intuos4/5 13HD/24HD Classic Pen Eraser */
+	case 0x10090a: /* Intuos4/5 13HD/24HD Airbrush Eraser */
+	case 0x10080c: /* Intuos4/5 13HD/24HD Art Pen Eraser */
+	case 0x16080a: /* Cintiq 13HD Pro Pen Eraser */
+	case 0x18080a: /* DTH2242 Eraser */
+	case 0x10080a: /* Intuos4/5 13HD/24HD General Pen Eraser */
+		tool_type = BTN_TOOL_RUBBER;
+		break;
+
+	case 0xd12:
+	case 0x912:
+	case 0x112:
+	case 0x913: /* Intuos3 Airbrush */
+	case 0x902: /* Intuos4/5 13HD/24HD Airbrush */
+	case 0x100902: /* Intuos4/5 13HD/24HD Airbrush */
+		tool_type = BTN_TOOL_AIRBRUSH;
+		break;
+
+	default: /* Unknown tool */
+		tool_type = BTN_TOOL_PEN;
+		break;
+	}
+	return tool_type;
+}
+
 static s32 wacom_replace_bits(s32 data, s32 bits, unsigned shift, unsigned size)
 {
 	u32 mask = GENMASK(size + shift - 1, shift);
@@ -891,6 +975,7 @@ static int wacom_input_event(struct hid_device *hdev, struct hid_field *field,
 		case HID_WAC_TOOL_ID:
 			wdata->tool_id = wacom_replace_bits(wdata->tool_id, value,
 							    shift, size);
+			wdata->tool_type = wacom_get_tool_type(wdata->tool_id);
 			break;
 		}
 		break;
@@ -918,84 +1003,14 @@ static void wacom_input_report(struct hid_device *hdev,
 	if (!(hdev->claimed & HID_CLAIMED_INPUT))
 		return;
 
-	if (report->id == 0x06) {
-		switch (wdata->tool_id) {
-		case 0x812: /* Inking pen */
-		case 0x801: /* Intuos3 Inking pen */
-		case 0x120802: /* Intuos4/5 Inking Pen */
-		case 0x012:
-			wdata->tool_type = BTN_TOOL_PENCIL;
-			break;
-
-		case 0x822: /* Pen */
-		case 0x842:
-		case 0x852:
-		case 0x823: /* Intuos3 Grip Pen */
-		case 0x813: /* Intuos3 Classic Pen */
-		case 0x885: /* Intuos3 Marker Pen */
-		case 0x802: /* Intuos4/5 13HD/24HD General Pen */
-		case 0x804: /* Intuos4/5 13HD/24HD Marker Pen */
-		case 0x022:
-		case 0x100804: /* Intuos4/5 13HD/24HD Art Pen */
-		case 0x140802: /* Intuos4/5 13HD/24HD Classic Pen */
-		case 0x160802: /* Cintiq 13HD Pro Pen */
-		case 0x180802: /* DTH2242 Pen */
-		case 0x100802: /* Intuos4/5 13HD/24HD General Pen */
-			wdata->tool_type = BTN_TOOL_PEN;
-			break;
-
-		case 0x832: /* Stroke pen */
-		case 0x032:
-			wdata->tool_type = BTN_TOOL_BRUSH;
-			break;
-
-		case 0x007: /* Mouse 4D and 2D */
-		case 0x09c:
-		case 0x094:
-		case 0x017: /* Intuos3 2D Mouse */
-		case 0x806: /* Intuos4 Mouse */
-			wdata->tool_type = BTN_TOOL_MOUSE;
-			break;
-
-		case 0x096: /* Lens cursor */
-		case 0x097: /* Intuos3 Lens cursor */
-		case 0x006: /* Intuos4 Lens cursor */
-			wdata->tool_type = BTN_TOOL_LENS;
-			break;
-
-		case 0x82a: /* Eraser */
-		case 0x85a:
-		case 0x91a:
-		case 0xd1a:
-		case 0x0fa:
-		case 0x82b: /* Intuos3 Grip Pen Eraser */
-		case 0x81b: /* Intuos3 Classic Pen Eraser */
-		case 0x91b: /* Intuos3 Airbrush Eraser */
-		case 0x80c: /* Intuos4/5 13HD/24HD Marker Pen Eraser */
-		case 0x80a: /* Intuos4/5 13HD/24HD General Pen Eraser */
-		case 0x90a: /* Intuos4/5 13HD/24HD Airbrush Eraser */
-		case 0x14080a: /* Intuos4/5 13HD/24HD Classic Pen Eraser */
-		case 0x10090a: /* Intuos4/5 13HD/24HD Airbrush Eraser */
-		case 0x10080c: /* Intuos4/5 13HD/24HD Art Pen Eraser */
-		case 0x16080a: /* Cintiq 13HD Pro Pen Eraser */
-		case 0x18080a: /* DTH2242 Eraser */
-		case 0x10080a: /* Intuos4/5 13HD/24HD General Pen Eraser */
-			wdata->tool_type = BTN_TOOL_RUBBER;
-			break;
-
-		case 0xd12:
-		case 0x912:
-		case 0x112:
-		case 0x913: /* Intuos3 Airbrush */
-		case 0x902: /* Intuos4/5 13HD/24HD Airbrush */
-		case 0x100902: /* Intuos4/5 13HD/24HD Airbrush */
-			wdata->tool_type = BTN_TOOL_AIRBRUSH;
-			break;
-
-		default: /* Unknown tool */
-			wdata->tool_type = BTN_TOOL_PEN;
-			break;
-		}
+	if (!wdata->x) {
+		/* looks like we received a pad event */
+		input_report_abs(wdata->input, ABS_MISC, wdata->pad_id);
+		if (!wdata->tool_id)
+			/* Cintiqs send "in" reports without x/y */
+			input_event(wdata->input, EV_MSC, MSC_SERIAL,
+					wdata->hserial);
+		wdata->pad_id = 0;
 		return;
 	}
 
@@ -1017,17 +1032,13 @@ static void wacom_input_report(struct hid_device *hdev,
 	input_report_abs(wdata->input, ABS_PRESSURE, wdata->p);
 	input_report_abs(wdata->input, ABS_TILT_X, wdata->x_tilt);
 	input_report_abs(wdata->input, ABS_TILT_Y, wdata->y_tilt);
-	if (wdata->pad_id)
-		input_report_abs(wdata->input, ABS_MISC, wdata->pad_id);
-	else
-		input_report_abs(wdata->input, ABS_MISC, wdata->tool_id);
+	input_report_abs(wdata->input, ABS_MISC, wdata->tool_id);
 	input_report_key(wdata->input, wdata->tool_type, !!wdata->in_range);
 	input_report_key(wdata->input, BTN_TOUCH, wdata->p > 1);
 
 	input_event(wdata->input, EV_MSC, MSC_SERIAL, wdata->hserial);
 	if (!wdata->in_range)
 		wdata->hserial = -1;
-	wdata->pad_id = 0;
 }
 
 static void set_abs(struct input_dev *input, unsigned int code,
