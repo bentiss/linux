@@ -1307,10 +1307,13 @@ static int wacom_probe(struct hid_device *hdev,
 		goto err_free;
 	}
 
-	ret = device_create_file(&hdev->dev, &dev_attr_speed);
-	if (ret)
-		hid_warn(hdev,
-			 "can't create sysfs speed attribute err: %d\n", ret);
+	if ((hdev->product == USB_DEVICE_ID_WACOM_GRAPHIRE_BLUETOOTH) ||
+	    (hdev->product == USB_DEVICE_ID_WACOM_INTUOS4_BLUETOOTH)) {
+		ret = device_create_file(&hdev->dev, &dev_attr_speed);
+		if (ret)
+			hid_warn(hdev,
+				 "can't create sysfs speed attribute err: %d\n",
+				 ret);
 
 #define OLED_INIT(OLED_ID)						\
 	do {								\
@@ -1321,14 +1324,15 @@ static int wacom_probe(struct hid_device *hdev,
 			 "can't create sysfs oled attribute, err: %d\n", ret);\
 	} while (0)
 
-OLED_INIT(0);
-OLED_INIT(1);
-OLED_INIT(2);
-OLED_INIT(3);
-OLED_INIT(4);
-OLED_INIT(5);
-OLED_INIT(6);
-OLED_INIT(7);
+		OLED_INIT(0);
+		OLED_INIT(1);
+		OLED_INIT(2);
+		OLED_INIT(3);
+		OLED_INIT(4);
+		OLED_INIT(5);
+		OLED_INIT(6);
+		OLED_INIT(7);
+	}
 
 	wdata->features = 0;
 	wacom_set_features(hdev, 1);
@@ -1341,38 +1345,43 @@ OLED_INIT(7);
 				 "can't create led attribute, err: %d\n", ret);
 	}
 
-	wdata->battery.properties = wacom_battery_props;
-	wdata->battery.num_properties = ARRAY_SIZE(wacom_battery_props);
-	wdata->battery.get_property = wacom_battery_get_property;
-	wdata->battery.name = "wacom_battery";
-	wdata->battery.type = POWER_SUPPLY_TYPE_BATTERY;
-	wdata->battery.use_for_apm = 0;
+	if ((hdev->product == USB_DEVICE_ID_WACOM_GRAPHIRE_BLUETOOTH) ||
+	    (hdev->product == USB_DEVICE_ID_WACOM_INTUOS4_BLUETOOTH)) {
+		wdata->battery.properties = wacom_battery_props;
+		wdata->battery.num_properties = ARRAY_SIZE(wacom_battery_props);
+		wdata->battery.get_property = wacom_battery_get_property;
+		wdata->battery.name = "wacom_battery";
+		wdata->battery.type = POWER_SUPPLY_TYPE_BATTERY;
+		wdata->battery.use_for_apm = 0;
 
 
-	ret = power_supply_register(&hdev->dev, &wdata->battery);
-	if (ret) {
-		hid_err(hdev, "can't create sysfs battery attribute, err: %d\n",
-			ret);
-		goto err_battery;
+		ret = power_supply_register(&hdev->dev, &wdata->battery);
+		if (ret) {
+			hid_err(hdev,
+			      "can't create sysfs battery attribute, err: %d\n",
+			      ret);
+			goto err_battery;
+		}
+
+		power_supply_powers(&wdata->battery, &hdev->dev);
+
+		wdata->ac.properties = wacom_ac_props;
+		wdata->ac.num_properties = ARRAY_SIZE(wacom_ac_props);
+		wdata->ac.get_property = wacom_ac_get_property;
+		wdata->ac.name = "wacom_ac";
+		wdata->ac.type = POWER_SUPPLY_TYPE_MAINS;
+		wdata->ac.use_for_apm = 0;
+
+		ret = power_supply_register(&hdev->dev, &wdata->ac);
+		if (ret) {
+			hid_err(hdev,
+				"can't create ac battery attribute, err: %d\n",
+				ret);
+			goto err_ac;
+		}
+
+		power_supply_powers(&wdata->ac, &hdev->dev);
 	}
-
-	power_supply_powers(&wdata->battery, &hdev->dev);
-
-	wdata->ac.properties = wacom_ac_props;
-	wdata->ac.num_properties = ARRAY_SIZE(wacom_ac_props);
-	wdata->ac.get_property = wacom_ac_get_property;
-	wdata->ac.name = "wacom_ac";
-	wdata->ac.type = POWER_SUPPLY_TYPE_MAINS;
-	wdata->ac.use_for_apm = 0;
-
-	ret = power_supply_register(&hdev->dev, &wdata->ac);
-	if (ret) {
-		hid_err(hdev,
-			"can't create ac battery attribute, err: %d\n", ret);
-		goto err_ac;
-	}
-
-	power_supply_powers(&wdata->ac, &hdev->dev);
 	return 0;
 
 err_ac:
@@ -1398,20 +1407,27 @@ static void wacom_remove(struct hid_device *hdev)
 {
 	struct wacom_data *wdata = hid_get_drvdata(hdev);
 
-	wacom_destroy_leds(hdev);
-	device_remove_file(&hdev->dev, &dev_attr_oled0_img);
-	device_remove_file(&hdev->dev, &dev_attr_oled1_img);
-	device_remove_file(&hdev->dev, &dev_attr_oled2_img);
-	device_remove_file(&hdev->dev, &dev_attr_oled3_img);
-	device_remove_file(&hdev->dev, &dev_attr_oled4_img);
-	device_remove_file(&hdev->dev, &dev_attr_oled5_img);
-	device_remove_file(&hdev->dev, &dev_attr_oled6_img);
-	device_remove_file(&hdev->dev, &dev_attr_oled7_img);
-	device_remove_file(&hdev->dev, &dev_attr_speed);
+	if ((hdev->product == USB_DEVICE_ID_WACOM_GRAPHIRE_BLUETOOTH) ||
+	    (hdev->product == USB_DEVICE_ID_WACOM_INTUOS4_BLUETOOTH)) {
+		wacom_destroy_leds(hdev);
+		device_remove_file(&hdev->dev, &dev_attr_oled0_img);
+		device_remove_file(&hdev->dev, &dev_attr_oled1_img);
+		device_remove_file(&hdev->dev, &dev_attr_oled2_img);
+		device_remove_file(&hdev->dev, &dev_attr_oled3_img);
+		device_remove_file(&hdev->dev, &dev_attr_oled4_img);
+		device_remove_file(&hdev->dev, &dev_attr_oled5_img);
+		device_remove_file(&hdev->dev, &dev_attr_oled6_img);
+		device_remove_file(&hdev->dev, &dev_attr_oled7_img);
+		device_remove_file(&hdev->dev, &dev_attr_speed);
+	}
+
 	hid_hw_stop(hdev);
 
-	power_supply_unregister(&wdata->battery);
-	power_supply_unregister(&wdata->ac);
+	if ((hdev->product == USB_DEVICE_ID_WACOM_GRAPHIRE_BLUETOOTH) ||
+	    (hdev->product == USB_DEVICE_ID_WACOM_INTUOS4_BLUETOOTH)) {
+		power_supply_unregister(&wdata->battery);
+		power_supply_unregister(&wdata->ac);
+	}
 	kfree(hid_get_drvdata(hdev));
 }
 
