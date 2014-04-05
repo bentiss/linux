@@ -63,7 +63,8 @@ struct wacom_data {
 	__u8 led_selector;
 	struct led_classdev *leds[4];
 	struct input_dev *input;
-	s32 x, y, distance, p, x_tilt, y_tilt, in_range, hserial, tool_id, tool_type;
+	s32 x, y, distance, p, x_tilt, y_tilt, in_range, hserial, tool_id;
+	s32 tool_type, prev_tool_type;
 	s32 z, z_max;
 	s32 pad_id;
 	__s16 inputmode;	/* InputMode HID feature, -1 if non-existent */
@@ -1033,7 +1034,12 @@ static void wacom_input_report(struct hid_device *hdev,
 	input_report_abs(wdata->input, ABS_TILT_X, wdata->x_tilt);
 	input_report_abs(wdata->input, ABS_TILT_Y, wdata->y_tilt);
 	input_report_abs(wdata->input, ABS_MISC, wdata->tool_id);
+
+	if (wdata->prev_tool_type != wdata->tool_type)
+		input_report_key(wdata->input, wdata->prev_tool_type, 0);
+	wdata->prev_tool_type = wdata->tool_type;
 	input_report_key(wdata->input, wdata->tool_type, !!wdata->in_range);
+
 	input_report_key(wdata->input, BTN_TOUCH, wdata->p > 1);
 
 	input_event(wdata->input, EV_MSC, MSC_SERIAL, wdata->hserial);
