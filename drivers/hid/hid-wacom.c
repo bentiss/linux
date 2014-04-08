@@ -67,7 +67,7 @@ struct wacom_data {
 	s32 tool_type, prev_tool_type;
 	s32 eraser;
 	s32 z, z_max;
-	s32 pad_id;
+	bool pad_value, pad_event;
 	__s16 inputmode;	/* InputMode HID feature, -1 if non-existent */
 	__s16 inputmode_index;	/* InputMode HID feature index in the report */
 };
@@ -992,8 +992,10 @@ static int wacom_input_event(struct hid_device *hdev, struct hid_field *field,
 		if (!(usage->hid & HID_MASK_UP_OFFSET))
 			code = BTN_0 + code - 1;
 		input_report_key(wdata->input, code, value);
-		if (field->report->id == 0x0c && value && code > 0xff)
-			wdata->pad_id = PAD_DEVICE_ID;
+		if (field->report->id == 0x0c && code > 0xff) {
+			wdata->pad_value = wdata->pad_value || value;
+			wdata->pad_event = true;
+		}
 		break;
 	}
 	return 1;
@@ -1011,16 +1013,9 @@ static void wacom_input_report(struct hid_device *hdev,
 	if (!(hdev->claimed & HID_CLAIMED_INPUT))
 		return;
 
-	if (!wdata->x) {
-		/* looks like we received a pad event */
-		input_report_abs(wdata->input, ABS_MISC, wdata->pad_id);
-		if (!wdata->tool_id)
-			/* Cintiqs send "in" reports without x/y */
-			input_event(wdata->input, EV_MSC, MSC_SERIAL,
-					wdata->hserial);
-		wdata->pad_id = 0;
+	if (!wdata->x && wdata->tool_id)
+		/* Cintiq sends in proximity events without X,Y */
 		return;
-	}
 
 	if (!wdata->in_range) {
 		wdata->x = 0;
@@ -1040,7 +1035,6 @@ static void wacom_input_report(struct hid_device *hdev,
 	input_report_abs(wdata->input, ABS_PRESSURE, wdata->p);
 	input_report_abs(wdata->input, ABS_TILT_X, wdata->x_tilt);
 	input_report_abs(wdata->input, ABS_TILT_Y, wdata->y_tilt);
-	input_report_abs(wdata->input, ABS_MISC, wdata->tool_id);
 
 	if (wdata->prev_tool_type != wdata->tool_type)
 		input_report_key(wdata->input, wdata->prev_tool_type, 0);
@@ -1049,9 +1043,21 @@ static void wacom_input_report(struct hid_device *hdev,
 
 	input_report_key(wdata->input, BTN_TOUCH, wdata->p > 1);
 
-	input_event(wdata->input, EV_MSC, MSC_SERIAL, wdata->hserial);
+	if (wdata->pad_event) {
+		/* looks like we received a pad event */
+		input_report_abs(wdata->input, ABS_MISC, wdata->pad_value ?
+				PAD_DEVICE_ID : 0);
+		input_event(wdata->input, EV_MSC, MSC_SERIAL, -1);
+		wdata->pad_value = false;
+	} else {
+		input_report_abs(wdata->input, ABS_MISC, wdata->tool_id);
+		input_event(wdata->input, EV_MSC, MSC_SERIAL, wdata->hserial);
+	}
+
 	if (!wdata->in_range)
 		wdata->hserial = -1;
+
+	wdata->pad_event = false;
 }
 
 static void set_abs(struct input_dev *input, unsigned int code,
