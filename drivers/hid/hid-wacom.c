@@ -63,7 +63,7 @@ struct wacom_data {
 	__u8 led_selector;
 	struct led_classdev *leds[4];
 	struct input_dev *input;
-	s32 x, y, distance, p, x_tilt, y_tilt, in_range, hserial, tool_id;
+	s32 x, y, distance, rx, ry, p, x_tilt, y_tilt, in_range, hserial, tool_id;
 	s32 tool_type, prev_tool_type;
 	s32 eraser;
 	s32 z, z_max;
@@ -944,6 +944,14 @@ static int wacom_input_event(struct hid_device *hdev, struct hid_field *field,
 			wdata->z = wacom_replace_bits(wdata->z, value, shift, size);
 			wdata->distance = wdata->z_max - wdata->z;
 			break;
+		case HID_GD_RX:
+			wdata->rx = wacom_replace_bits(wdata->rx, value, shift, size);
+			wdata->pad_event = true;
+			break;
+		case HID_GD_RY:
+			wdata->ry = wacom_replace_bits(wdata->ry, value, shift, size);
+			wdata->pad_event = true;
+			break;
 		}
 		break;
 	case HID_UP_DIGITIZER:
@@ -1029,6 +1037,8 @@ static void wacom_input_report(struct hid_device *hdev,
 		wdata->p = 0;
 	}
 
+	input_report_abs(wdata->input, ABS_RX, wdata->rx);
+	input_report_abs(wdata->input, ABS_RY, wdata->ry);
 	input_report_abs(wdata->input, ABS_X, wdata->x);
 	input_report_abs(wdata->input, ABS_Y, wdata->y);
 	input_report_abs(wdata->input, ABS_DISTANCE, wdata->distance);
@@ -1045,6 +1055,7 @@ static void wacom_input_report(struct hid_device *hdev,
 
 	if (wdata->pad_event) {
 		/* looks like we received a pad event */
+		wdata->pad_value = wdata->pad_value || wdata->rx || wdata->ry;
 		input_report_abs(wdata->input, ABS_MISC, wdata->pad_value ?
 				PAD_DEVICE_ID : 0);
 		input_event(wdata->input, EV_MSC, MSC_SERIAL, -1);
