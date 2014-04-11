@@ -1011,6 +1011,8 @@ static int wacom_input_event(struct hid_device *hdev, struct hid_field *field,
 	case HID_UP_WACOM:
 		switch (usage_code) {
 		case HID_WAC_SERIAL:
+			if (!wdata->in_range)
+				break;
 			wdata->hserial = wacom_replace_bits(wdata->hserial, value,
 							    shift, size);
 			break;
