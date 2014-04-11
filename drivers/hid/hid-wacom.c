@@ -995,15 +995,13 @@ static int wacom_input_event(struct hid_device *hdev, struct hid_field *field,
 			break;
 		}
 		break;
-	case HID_UP_BUTTON:
+	case HID_UP_KEYBOARD:
 		code = usage->hid & HID_USAGE;
-		if (!(usage->hid & HID_MASK_UP_OFFSET))
-			code = BTN_0 + code - 1;
 		input_report_key(wdata->input, code, value);
-		if (field->report->id == 0x0c && code > 0xff) {
-			wdata->pad_value = wdata->pad_value || value;
-			wdata->pad_event = true;
-		}
+		break;
+	case HID_UP_BUTTON:
+		code = BTN_0 + (usage->hid & HID_USAGE);
+		input_report_key(wdata->input, code, value);
 		break;
 	}
 	return 1;
@@ -1176,10 +1174,14 @@ static int wacom_input_mapping(struct hid_device *hdev, struct hid_input *hi,
 		}
 		return 1;
 
-	case HID_UP_BUTTON:
+	case HID_UP_KEYBOARD:
 		code = usage->hid & HID_USAGE;
-		if (!(usage->hid & HID_MASK_UP_OFFSET))
-			code = BTN_0 + code - 1;
+		hid_map_usage(hi, usage, bit, max, EV_KEY, code);
+		input_set_capability(hi->input, EV_KEY, code);
+		break;
+
+	case HID_UP_BUTTON:
+		code = BTN_0 + (usage->hid & HID_USAGE);
 		hid_map_usage(hi, usage, bit, max, EV_KEY, code);
 		input_set_capability(hi->input, EV_KEY, code);
 		return 1;

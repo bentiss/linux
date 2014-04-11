@@ -688,8 +688,8 @@ static void hid_scan_input_usage(struct hid_parser *parser, u32 usage)
 	if (usage == HID_DG_CONTACTID)
 		hid->group = HID_GROUP_MULTITOUCH;
 
-	if (usage == 0xbe09014b)
-		hid->group = HID_GROUP_WACOM;
+	if (usage == 0x0009004b)
+		parser->scan_flags |= HID_SCAN_FLAG_STYLUS;
 }
 
 static void hid_scan_feature_usage(struct hid_parser *parser, u32 usage)
@@ -786,9 +786,14 @@ static int hid_scan_report(struct hid_device *hid)
 	/*
 	 * Handle vendor specific handlings
 	 */
-	if ((hid->vendor == USB_VENDOR_ID_WACOM) &&
-	    (hid->group == HID_GROUP_GENERIC))
-		hid->group = HID_GROUP_IGNORE;
+	if (hid->vendor == USB_VENDOR_ID_WACOM) {
+		if (hid->group == HID_GROUP_GENERIC) {
+			if (parser->scan_flags & HID_SCAN_FLAG_STYLUS)
+				hid->group = HID_GROUP_WACOM;
+			else
+				hid->group = HID_GROUP_IGNORE;
+		}
+	}
 
 	vfree(parser);
 	return 0;
