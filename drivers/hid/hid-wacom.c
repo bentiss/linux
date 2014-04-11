@@ -65,6 +65,7 @@ struct wacom_data {
 	struct led_classdev *leds[4];
 	struct input_dev *input;
 	s32 x, y, distance, rx, ry, p, x_tilt, y_tilt, in_range, hserial, tool_id;
+	s32 raw_twist, twist;
 	s32 tool_type, prev_tool_type;
 	s32 eraser;
 	s32 z, z_max;
@@ -993,6 +994,17 @@ static int wacom_input_event(struct hid_device *hdev, struct hid_field *field,
 			wdata->y_tilt = wacom_replace_bits(wdata->y_tilt, value, shift,
 							   size);
 			break;
+		case HID_DG_TWIST:
+			wdata->raw_twist = wacom_replace_bits(wdata->raw_twist, value, shift, size);
+			wdata->twist = wdata->raw_twist >> 1;
+			if (wdata->raw_twist & 0x01) {
+				wdata->twist = (wdata->twist > 450) ?
+					(wdata->twist - 1350) :
+					(wdata->twist + 450);
+			} else {
+				wdata->twist = 450 - wdata->twist;
+			}
+			break;
 		case HID_DG_ALTITUDE:
 			wdata->distance = wacom_replace_bits(wdata->distance, value, shift, size);
 			break;
@@ -1066,6 +1078,7 @@ static void wacom_input_report(struct hid_device *hdev,
 		wdata->y_tilt = 0;
 		wdata->tool_id = 0;
 		wdata->p = 0;
+		wdata->twist = 0;
 	}
 
 	input_report_abs(wdata->input, ABS_RX, wdata->rx);
@@ -1073,6 +1086,7 @@ static void wacom_input_report(struct hid_device *hdev,
 	input_report_abs(wdata->input, ABS_X, wdata->x);
 	input_report_abs(wdata->input, ABS_Y, wdata->y);
 	input_report_abs(wdata->input, ABS_DISTANCE, wdata->distance);
+	input_report_abs(wdata->input, ABS_Z, wdata->twist);
 	input_report_abs(wdata->input, ABS_PRESSURE, wdata->p);
 	input_report_abs(wdata->input, ABS_TILT_X, wdata->x_tilt);
 	input_report_abs(wdata->input, ABS_TILT_Y, wdata->y_tilt);
@@ -1192,6 +1206,11 @@ static int wacom_input_mapping(struct hid_device *hdev, struct hid_input *hi,
 		case HID_DG_Y_TILT:
 			hid_map_usage(hi, usage, bit, max, EV_ABS, ABS_TILT_Y);
 			set_abs(hi->input, ABS_TILT_Y, field, 0);
+			return 1;
+		case HID_DG_TWIST:
+			hid_map_usage(hi, usage, bit, max, EV_ABS, ABS_Z);
+			set_abs(hi->input, ABS_Z, field, 0);
+			input_set_abs_params(hi->input, ABS_Z, -900, 899, 0, 0);
 			return 1;
 		case HID_DG_ALTITUDE:
 			hid_map_usage(hi, usage, bit, max, EV_ABS,
@@ -1324,8 +1343,6 @@ static void wacom_input_configured(struct hid_device *hdev,
 
 	__set_bit(ABS_WHEEL, wdata->input->absbit);
 	input_set_abs_params(wdata->input, ABS_WHEEL, 0, 1023, 0, 0);
-	__set_bit(ABS_Z, wdata->input->absbit);
-	input_set_abs_params(wdata->input, ABS_Z, -900, 899, 0, 0);
 
 	__set_bit(INPUT_PROP_DIRECT, wdata->input->propbit);
 }
