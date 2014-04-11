@@ -946,11 +946,9 @@ static int wacom_input_event(struct hid_device *hdev, struct hid_field *field,
 			break;
 		case HID_GD_RX:
 			wdata->rx = wacom_replace_bits(wdata->rx, value, shift, size);
-			wdata->pad_event = true;
 			break;
 		case HID_GD_RY:
 			wdata->ry = wacom_replace_bits(wdata->ry, value, shift, size);
-			wdata->pad_event = true;
 			break;
 		}
 		break;
@@ -1003,6 +1001,11 @@ static int wacom_input_event(struct hid_device *hdev, struct hid_field *field,
 		code = BTN_0 + (usage->hid & HID_USAGE);
 		input_report_key(wdata->input, code, value);
 		break;
+	}
+
+	if (field->application == HID_GD_KEYPAD) {
+		wdata->pad_event = true;
+		wdata->pad_value = wdata->pad_value || value;
 	}
 	return 1;
 }
