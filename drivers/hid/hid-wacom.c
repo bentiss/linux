@@ -45,6 +45,7 @@
 #define HID_WAC_LOCAL_SUB_REPORT_ID	0x00be0002
 #define HID_WAC_SERIAL			0x00be0003
 #define HID_WAC_TOOL_ID			0x00be0004
+#define HID_WAC_INTUOS_SUB_REPORT_ID	0x00be0005
 
 struct wacom_data {
 	__u16 tool;
@@ -743,6 +744,25 @@ static __u32 extract(const struct hid_device *hid, __u8 *report,
 	return (u32) x;
 }
 
+static u8 wacom_intuos_sub_report_id(u8 value)
+{
+	if (!(value >> 2))
+		/* no changes needed, in/out report */
+		return 0;
+
+	if ((value >> 3) == 4)
+		/* stylus */
+		return 4;
+
+	/*
+	 * 42: artpen
+	 * 44: mouse
+	 * 48: lens
+	 * 52: airbrush
+	 */
+	return value & ~1;
+}
+
 static int wacom_raw_event(struct hid_device *hdev, struct hid_report *report,
 		u8 *raw_data, int size)
 {
@@ -752,6 +772,7 @@ static int wacom_raw_event(struct hid_device *hdev, struct hid_report *report,
 	unsigned char *data = (unsigned char *) raw_data;
 	int i;
 	__u8 power_raw;
+	u8 value;
 
 	if (!(hdev->claimed & HID_CLAIMED_INPUT))
 		return 0;
@@ -761,10 +782,17 @@ static int wacom_raw_event(struct hid_device *hdev, struct hid_report *report,
 		unsigned usage = field->usage->hid;
 		unsigned offset = field->report_offset;
 		unsigned rsize = field->report_size;
-		if (usage == HID_WAC_GLOBAL_SUB_REPORT_ID) {
-			u8 value = (u8) extract(hdev, raw_data + 1, offset,
-						rsize);
+		switch (usage) {
+		case HID_WAC_GLOBAL_SUB_REPORT_ID:
+			value = (u8) extract(hdev, raw_data + 1, offset, rsize);
 			raw_data[0] = value;
+			break;
+		case HID_WAC_INTUOS_SUB_REPORT_ID:
+			value = (u8) extract(hdev, raw_data + 1, offset, rsize);
+			value = wacom_intuos_sub_report_id(value);
+			if (value)
+				raw_data[0] = value;
+			break;
 		}
 	}
 
