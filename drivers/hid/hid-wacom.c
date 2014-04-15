@@ -66,6 +66,7 @@ struct wacom_data {
 	struct input_dev *input;
 	s32 x, y, distance, rx, ry, p, x_tilt, y_tilt, in_range, hserial, tool_id;
 	s32 raw_twist, twist;
+	s32 wheel;
 	s32 tool_type, prev_tool_type;
 	s32 eraser;
 	s32 z, z_max;
@@ -979,6 +980,16 @@ static int wacom_input_event(struct hid_device *hdev, struct hid_field *field,
 		case HID_GD_RY:
 			wdata->ry = wacom_replace_bits(wdata->ry, value, shift, size);
 			break;
+		case HID_GD_WHEEL:
+			if (field->flags & HID_MAIN_ITEM_RELATIVE) {
+				if (value)
+					input_event(wdata->input, usage->type,
+							usage->code,
+							value > 0 ? -1 : 1);
+			} else {
+				wdata->wheel = wacom_replace_bits(wdata->wheel, value, shift, size);
+			}
+			break;
 		}
 		break;
 	case HID_UP_DIGITIZER:
@@ -1090,6 +1101,7 @@ static void wacom_input_report(struct hid_device *hdev,
 	input_report_abs(wdata->input, ABS_PRESSURE, wdata->p);
 	input_report_abs(wdata->input, ABS_TILT_X, wdata->x_tilt);
 	input_report_abs(wdata->input, ABS_TILT_Y, wdata->y_tilt);
+	input_report_abs(wdata->input, ABS_WHEEL, wdata->wheel);
 
 	if (wdata->prev_tool_type != wdata->tool_type)
 		input_report_key(wdata->input, wdata->prev_tool_type, 0);
@@ -1188,6 +1200,15 @@ static int wacom_input_mapping(struct hid_device *hdev, struct hid_input *hi,
 			hid_map_usage(hi, usage, bit, max, EV_ABS, ABS_RY);
 			set_abs(hi->input, ABS_RY, field, 0);
 			return 1;
+		case HID_GD_WHEEL:
+			if (field->flags & HID_MAIN_ITEM_RELATIVE) {
+				hid_map_usage(hi, usage, bit, max, EV_REL, REL_WHEEL);
+				__set_bit(REL_WHEEL, hi->input->relbit);
+			} else {
+				hid_map_usage(hi, usage, bit, max, EV_ABS, ABS_WHEEL);
+				set_abs(hi->input, ABS_WHEEL, field, 0);
+			}
+			return 1;
 		}
 		return 1;
 
@@ -1252,6 +1273,7 @@ static int wacom_input_mapping(struct hid_device *hdev, struct hid_input *hi,
 			input_set_capability(hi->input, EV_KEY, BTN_TOOL_BRUSH);
 			input_set_capability(hi->input, EV_KEY, BTN_TOOL_PENCIL);
 			input_set_capability(hi->input, EV_KEY, BTN_TOOL_AIRBRUSH);
+			input_set_capability(hi->input, EV_KEY, BTN_TOOL_MOUSE);
 			return 1;
 		}
 		return 1;
@@ -1268,6 +1290,7 @@ static int wacom_input_mapped(struct hid_device *hdev, struct hid_input *hi,
 
 	if (usage->type == EV_KEY ||
 	    usage->type == EV_ABS ||
+	    usage->type == EV_REL ||
 	    usage->type == EV_MSC)
 		set_bit(usage->type, hi->input->evbit);
 
@@ -1340,9 +1363,6 @@ static void wacom_input_configured(struct hid_device *hdev,
 	if ((hdev->product == USB_DEVICE_ID_WACOM_GRAPHIRE_BLUETOOTH) ||
 	    (hdev->product == USB_DEVICE_ID_WACOM_INTUOS4_BLUETOOTH))
 		return;
-
-	__set_bit(ABS_WHEEL, wdata->input->absbit);
-	input_set_abs_params(wdata->input, ABS_WHEEL, 0, 1023, 0, 0);
 
 	__set_bit(INPUT_PROP_DIRECT, wdata->input->propbit);
 }
