@@ -844,7 +844,7 @@ static int wacom_raw_event(struct hid_device *hdev, struct hid_report *report,
 	return 1;
 }
 
-static int wacom_get_tool_type(int tool_id)
+static int wacom_intuos_get_tool_type(int tool_id)
 {
 	int tool_type;
 
@@ -1031,7 +1031,7 @@ static int wacom_input_event(struct hid_device *hdev, struct hid_field *field,
 		case HID_WAC_TOOL_ID:
 			wdata->tool_id = wacom_replace_bits(wdata->tool_id, value,
 							    shift, size);
-			wdata->tool_type = wacom_get_tool_type(wdata->tool_id);
+			wdata->tool_type = wacom_intuos_get_tool_type(wdata->tool_id);
 			break;
 		}
 		break;
