@@ -70,19 +70,14 @@ static ssize_t elog_ack_show(struct elog_obj *elog_obj,
 	return sprintf(buf, "ack - acknowledge log message\n");
 }
 
-static void delay_release_kobj(void *kobj)
-{
-	kobject_put((struct kobject *)kobj);
-}
-
 static ssize_t elog_ack_store(struct elog_obj *elog_obj,
 			      struct elog_attribute *attr,
 			      const char *buf,
 			      size_t count)
 {
 	opal_send_ack_elog(elog_obj->id);
-	sysfs_schedule_callback(&elog_obj->kobj, delay_release_kobj,
-				&elog_obj->kobj, THIS_MODULE);
+	sysfs_remove_file_self(&elog_obj->kobj, &attr->attr);
+	kobject_put(&elog_obj->kobj);
 	return count;
 }
 
@@ -243,17 +238,24 @@ static struct elog_obj *create_elog_obj(uint64_t id, size_t size, uint64_t type)
 
 static void elog_work_fn(struct work_struct *work)
 {
-	size_t elog_size;
+	__be64 size;
+	__be64 id;
+	__be64 type;
+	uint64_t elog_size;
 	uint64_t log_id;
 	uint64_t elog_type;
 	int rc;
 	char name[2+16+1];
 
-	rc = opal_get_elog_size(&log_id, &elog_size, &elog_type);
+	rc = opal_get_elog_size(&id, &size, &type);
 	if (rc != OPAL_SUCCESS) {
 		pr_err("ELOG: Opal log read failed\n");
 		return;
 	}
+
+	elog_size = be64_to_cpu(size);
+	log_id = be64_to_cpu(id);
+	elog_type = be64_to_cpu(type);
 
 	BUG_ON(elog_size > OPAL_MAX_ERRLOG_SIZE);
 

@@ -13,7 +13,6 @@
 #include <linux/clk.h>
 #include <linux/cpufreq.h>
 #include <linux/errno.h>
-#include <sysdev/fsl_soc.h>
 #include <linux/init.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
@@ -139,6 +138,7 @@ static int corenet_cpufreq_cpu_init(struct cpufreq_policy *policy)
 	struct cpufreq_frequency_table *table;
 	struct cpu_data *data;
 	unsigned int cpu = policy->cpu;
+	u64 transition_latency_hz;
 
 	np = of_get_cpu_node(cpu, NULL);
 	if (!np)
@@ -206,8 +206,10 @@ static int corenet_cpufreq_cpu_init(struct cpufreq_policy *policy)
 	for_each_cpu(i, per_cpu(cpu_mask, cpu))
 		per_cpu(cpu_data, i) = data;
 
+	transition_latency_hz = 12ULL * NSEC_PER_SEC;
 	policy->cpuinfo.transition_latency =
-				(12 * NSEC_PER_SEC) / fsl_get_sys_freq();
+		do_div(transition_latency_hz, fsl_get_sys_freq());
+
 	of_node_put(np);
 
 	return 0;

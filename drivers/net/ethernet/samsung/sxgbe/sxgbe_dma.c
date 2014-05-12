@@ -9,7 +9,6 @@
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  */
-#include <linux/io.h>
 #include <linux/delay.h>
 #include <linux/export.h>
 #include <linux/io.h>
@@ -24,20 +23,7 @@
 /* DMA core initialization */
 static int sxgbe_dma_init(void __iomem *ioaddr, int fix_burst, int burst_map)
 {
-	int retry_count = 10;
 	u32 reg_val;
-
-	/* reset the DMA */
-	writel(SXGBE_DMA_SOFT_RESET, ioaddr + SXGBE_DMA_MODE_REG);
-	while (retry_count--) {
-		if (!(readl(ioaddr + SXGBE_DMA_MODE_REG) &
-		      SXGBE_DMA_SOFT_RESET))
-			break;
-		mdelay(10);
-	}
-
-	if (retry_count < 0)
-		return -EBUSY;
 
 	reg_val = readl(ioaddr + SXGBE_DMA_SYSBUS_MODE_REG);
 

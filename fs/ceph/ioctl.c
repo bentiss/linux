@@ -1,9 +1,8 @@
+#include <linux/ceph/ceph_debug.h>
 #include <linux/in.h>
 
 #include "super.h"
 #include "mds_client.h"
-#include <linux/ceph/ceph_debug.h>
-
 #include "ioctl.h"
 
 
@@ -110,6 +109,8 @@ static long ceph_ioctl_set_layout(struct file *file, void __user *arg)
 		return PTR_ERR(req);
 	req->r_inode = inode;
 	ihold(inode);
+	req->r_num_caps = 1;
+
 	req->r_inode_drop = CEPH_CAP_FILE_SHARED | CEPH_CAP_FILE_EXCL;
 
 	req->r_args.setlayout.layout.fl_stripe_unit =
@@ -154,6 +155,7 @@ static long ceph_ioctl_set_layout_policy (struct file *file, void __user *arg)
 		return PTR_ERR(req);
 	req->r_inode = inode;
 	ihold(inode);
+	req->r_num_caps = 1;
 
 	req->r_args.setlayout.layout.fl_stripe_unit =
 			cpu_to_le32(l.stripe_unit);

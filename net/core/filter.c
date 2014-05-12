@@ -122,6 +122,13 @@ noinline u64 __bpf_call_base(u64 r1, u64 r2, u64 r3, u64 r4, u64 r5)
 	return 0;
 }
 
+/* Register mappings for user programs. */
+#define A_REG		0
+#define X_REG		7
+#define TMP_REG		8
+#define ARG2_REG	2
+#define ARG3_REG	3
+
 /**
  *	__sk_run_filter - run a filter on a given context
  *	@ctx: buffer to run the filter on
@@ -242,6 +249,8 @@ unsigned int __sk_run_filter(void *ctx, const struct sock_filter_int *insn)
 
 	regs[FP_REG]  = (u64) (unsigned long) &stack[ARRAY_SIZE(stack)];
 	regs[ARG1_REG] = (u64) (unsigned long) ctx;
+	regs[A_REG] = 0;
+	regs[X_REG] = 0;
 
 select_insn:
 	goto *jumptable[insn->code];
@@ -295,43 +304,43 @@ select_insn:
 		(*(s64 *) &A) >>= K;
 		CONT;
 	BPF_ALU64_BPF_MOD_BPF_X:
+		if (unlikely(X == 0))
+			return 0;
 		tmp = A;
-		if (X)
-			A = do_div(tmp, X);
+		A = do_div(tmp, X);
 		CONT;
 	BPF_ALU_BPF_MOD_BPF_X:
+		if (unlikely(X == 0))
+			return 0;
 		tmp = (u32) A;
-		if (X)
-			A = do_div(tmp, (u32) X);
+		A = do_div(tmp, (u32) X);
 		CONT;
 	BPF_ALU64_BPF_MOD_BPF_K:
 		tmp = A;
-		if (K)
-			A = do_div(tmp, K);
+		A = do_div(tmp, K);
 		CONT;
 	BPF_ALU_BPF_MOD_BPF_K:
 		tmp = (u32) A;
-		if (K)
-			A = do_div(tmp, (u32) K);
+		A = do_div(tmp, (u32) K);
 		CONT;
 	BPF_ALU64_BPF_DIV_BPF_X:
-		if (X)
-			do_div(A, X);
+		if (unlikely(X == 0))
+			return 0;
+		do_div(A, X);
 		CONT;
 	BPF_ALU_BPF_DIV_BPF_X:
+		if (unlikely(X == 0))
+			return 0;
 		tmp = (u32) A;
-		if (X)
-			do_div(tmp, (u32) X);
+		do_div(tmp, (u32) X);
 		A = (u32) tmp;
 		CONT;
 	BPF_ALU64_BPF_DIV_BPF_K:
-		if (K)
-			do_div(A, K);
+		do_div(A, K);
 		CONT;
 	BPF_ALU_BPF_DIV_BPF_K:
 		tmp = (u32) A;
-		if (K)
-			do_div(tmp, (u32) K);
+		do_div(tmp, (u32) K);
 		A = (u32) tmp;
 		CONT;
 	BPF_ALU_BPF_END_BPF_TO_BE:
@@ -600,6 +609,9 @@ static u64 __skb_get_nlattr(u64 ctx, u64 A, u64 X, u64 r4, u64 r5)
 	if (skb_is_nonlinear(skb))
 		return 0;
 
+	if (skb->len < sizeof(struct nlattr))
+		return 0;
+
 	if (A > skb->len - sizeof(struct nlattr))
 		return 0;
 
@@ -618,11 +630,14 @@ static u64 __skb_get_nlattr_nest(u64 ctx, u64 A, u64 X, u64 r4, u64 r5)
 	if (skb_is_nonlinear(skb))
 		return 0;
 
+	if (skb->len < sizeof(struct nlattr))
+		return 0;
+
 	if (A > skb->len - sizeof(struct nlattr))
 		return 0;
 
 	nla = (struct nlattr *) &skb->data[A];
-	if (nla->nla_len > A - skb->len)
+	if (nla->nla_len > skb->len - A)
 		return 0;
 
 	nla = nla_find_nested(nla, X);
@@ -636,13 +651,6 @@ static u64 __get_raw_cpu_id(u64 ctx, u64 A, u64 X, u64 r4, u64 r5)
 {
 	return raw_smp_processor_id();
 }
-
-/* Register mappings for user programs. */
-#define A_REG		0
-#define X_REG		7
-#define TMP_REG		8
-#define ARG2_REG	2
-#define ARG3_REG	3
 
 static bool convert_bpf_extensions(struct sock_filter *fp,
 				   struct sock_filter_int **insnp)
@@ -1737,7 +1745,6 @@ void sk_decode_filter(struct sock_filter *filt, struct sock_filter *to)
 		[BPF_S_ANC_RXHASH]	= BPF_LD|BPF_B|BPF_ABS,
 		[BPF_S_ANC_CPU]		= BPF_LD|BPF_B|BPF_ABS,
 		[BPF_S_ANC_ALU_XOR_X]	= BPF_LD|BPF_B|BPF_ABS,
-		[BPF_S_ANC_SECCOMP_LD_W] = BPF_LD|BPF_B|BPF_ABS,
 		[BPF_S_ANC_VLAN_TAG]	= BPF_LD|BPF_B|BPF_ABS,
 		[BPF_S_ANC_VLAN_TAG_PRESENT] = BPF_LD|BPF_B|BPF_ABS,
 		[BPF_S_ANC_PAY_OFFSET]	= BPF_LD|BPF_B|BPF_ABS,

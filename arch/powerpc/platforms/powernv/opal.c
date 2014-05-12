@@ -46,7 +46,7 @@ struct mcheck_recoverable_range {
 static struct mcheck_recoverable_range *mc_recoverable_range;
 static int mc_recoverable_range_len;
 
-static struct device_node *opal_node;
+struct device_node *opal_node;
 static DEFINE_SPINLOCK(opal_write_lock);
 extern u64 opal_mc_secondary_handler[];
 static unsigned int *opal_irqs;
@@ -102,18 +102,35 @@ int __init early_init_dt_scan_opal(unsigned long node,
 int __init early_init_dt_scan_recoverable_ranges(unsigned long node,
 				   const char *uname, int depth, void *data)
 {
-	unsigned long i, size;
+	unsigned long i, psize, size;
 	const __be32 *prop;
 
 	if (depth != 1 || strcmp(uname, "ibm,opal") != 0)
 		return 0;
 
-	prop = of_get_flat_dt_prop(node, "mcheck-recoverable-ranges", &size);
+	prop = of_get_flat_dt_prop(node, "mcheck-recoverable-ranges", &psize);
 
 	if (!prop)
 		return 1;
 
 	pr_debug("Found machine check recoverable ranges.\n");
+
+	/*
+	 * Calculate number of available entries.
+	 *
+	 * Each recoverable address range entry is (start address, len,
+	 * recovery address), 2 cells each for start and recovery address,
+	 * 1 cell for len, totalling 5 cells per entry.
+	 */
+	mc_recoverable_range_len = psize / (sizeof(*prop) * 5);
+
+	/* Sanity check */
+	if (!mc_recoverable_range_len)
+		return 1;
+
+	/* Size required to hold all the entries. */
+	size = mc_recoverable_range_len *
+			sizeof(struct mcheck_recoverable_range);
 
 	/*
 	 * Allocate a buffer to hold the MC recoverable ranges. We would be
@@ -124,11 +141,7 @@ int __init early_init_dt_scan_recoverable_ranges(unsigned long node,
 							ppc64_rma_size));
 	memset(mc_recoverable_range, 0, size);
 
-	/*
-	 * Each recoverable address entry is an (start address,len,
-	 * recover address) pair, * 2 cells each, totalling 4 cells per entry.
-	 */
-	for (i = 0; i < size / (sizeof(*prop) * 5); i++) {
+	for (i = 0; i < mc_recoverable_range_len; i++) {
 		mc_recoverable_range[i].start_addr =
 					of_read_number(prop + (i * 5) + 0, 2);
 		mc_recoverable_range[i].end_addr =
@@ -142,7 +155,6 @@ int __init early_init_dt_scan_recoverable_ranges(unsigned long node,
 				mc_recoverable_range[i].end_addr,
 				mc_recoverable_range[i].recover_addr);
 	}
-	mc_recoverable_range_len = i;
 	return 1;
 }
 
@@ -180,6 +192,20 @@ int opal_notifier_register(struct notifier_block *nb)
 	atomic_notifier_chain_register(&opal_notifier_head, nb);
 	return 0;
 }
+EXPORT_SYMBOL_GPL(opal_notifier_register);
+
+int opal_notifier_unregister(struct notifier_block *nb)
+{
+	if (!nb) {
+		pr_warning("%s: Invalid argument (%p)\n",
+			   __func__, nb);
+		return -EINVAL;
+	}
+
+	atomic_notifier_chain_unregister(&opal_notifier_head, nb);
+	return 0;
+}
+EXPORT_SYMBOL_GPL(opal_notifier_unregister);
 
 static void opal_do_notifier(uint64_t events)
 {
@@ -216,14 +242,14 @@ void opal_notifier_update_evt(uint64_t evt_mask,
 void opal_notifier_enable(void)
 {
 	int64_t rc;
-	uint64_t evt = 0;
+	__be64 evt = 0;
 
 	atomic_set(&opal_notifier_hold, 0);
 
 	/* Process pending events */
 	rc = opal_poll_events(&evt);
 	if (rc == OPAL_SUCCESS && evt)
-		opal_do_notifier(evt);
+		opal_do_notifier(be64_to_cpu(evt));
 }
 
 void opal_notifier_disable(void)
@@ -267,6 +293,7 @@ static void opal_handle_message(void)
 	 * value in /proc/device-tree.
 	 */
 	static struct opal_msg msg;
+	u32 type;
 
 	ret = opal_get_msg(__pa(&msg), sizeof(msg));
 	/* No opal message pending. */
@@ -280,13 +307,14 @@ static void opal_handle_message(void)
 		return;
 	}
 
+	type = be32_to_cpu(msg.msg_type);
+
 	/* Sanity check */
-	if (msg.msg_type > OPAL_MSG_TYPE_MAX) {
-		pr_warning("%s: Unknown message type: %u\n",
-				__func__, msg.msg_type);
+	if (type > OPAL_MSG_TYPE_MAX) {
+		pr_warning("%s: Unknown message type: %u\n", __func__, type);
 		return;
 	}
-	opal_message_do_notify(msg.msg_type, (void *)&msg);
+	opal_message_do_notify(type, (void *)&msg);
 }
 
 static int opal_message_notify(struct notifier_block *nb,
@@ -501,7 +529,7 @@ static irqreturn_t opal_interrupt(int irq, void *data)
 
 	opal_handle_interrupt(virq_to_hw(irq), &events);
 
-	opal_do_notifier(events);
+	opal_do_notifier(be64_to_cpu(events));
 
 	return IRQ_HANDLED;
 }
@@ -574,6 +602,8 @@ static int __init opal_init(void)
 		opal_platform_dump_init();
 		/* Setup system parameters interface */
 		opal_sys_param_init();
+		/* Setup message log interface. */
+		opal_msglog_init();
 	}
 
 	return 0;
@@ -603,5 +633,71 @@ void opal_shutdown(void)
 			opal_poll_events(NULL);
 		else
 			mdelay(10);
+	}
+}
+
+/* Export this so that test modules can use it */
+EXPORT_SYMBOL_GPL(opal_invalid_call);
+
+/* Convert a region of vmalloc memory to an opal sg list */
+struct opal_sg_list *opal_vmalloc_to_sg_list(void *vmalloc_addr,
+					     unsigned long vmalloc_size)
+{
+	struct opal_sg_list *sg, *first = NULL;
+	unsigned long i = 0;
+
+	sg = kzalloc(PAGE_SIZE, GFP_KERNEL);
+	if (!sg)
+		goto nomem;
+
+	first = sg;
+
+	while (vmalloc_size > 0) {
+		uint64_t data = vmalloc_to_pfn(vmalloc_addr) << PAGE_SHIFT;
+		uint64_t length = min(vmalloc_size, PAGE_SIZE);
+
+		sg->entry[i].data = cpu_to_be64(data);
+		sg->entry[i].length = cpu_to_be64(length);
+		i++;
+
+		if (i >= SG_ENTRIES_PER_NODE) {
+			struct opal_sg_list *next;
+
+			next = kzalloc(PAGE_SIZE, GFP_KERNEL);
+			if (!next)
+				goto nomem;
+
+			sg->length = cpu_to_be64(
+					i * sizeof(struct opal_sg_entry) + 16);
+			i = 0;
+			sg->next = cpu_to_be64(__pa(next));
+			sg = next;
+		}
+
+		vmalloc_addr += length;
+		vmalloc_size -= length;
+	}
+
+	sg->length = cpu_to_be64(i * sizeof(struct opal_sg_entry) + 16);
+
+	return first;
+
+nomem:
+	pr_err("%s : Failed to allocate memory\n", __func__);
+	opal_free_sg_list(first);
+	return NULL;
+}
+
+void opal_free_sg_list(struct opal_sg_list *sg)
+{
+	while (sg) {
+		uint64_t next = be64_to_cpu(sg->next);
+
+		kfree(sg);
+
+		if (next)
+			sg = __va(next);
+		else
+			sg = NULL;
 	}
 }

@@ -670,6 +670,7 @@ static const struct ieee80211_iface_combination if_comb[] = {
 		.num_different_channels = 1,
 		.beacon_int_infra_match = true,
 	},
+#ifdef CONFIG_ATH9K_DFS_CERTIFIED
 	{
 		.limits = if_dfs_limits,
 		.n_limits = ARRAY_SIZE(if_dfs_limits),
@@ -679,6 +680,7 @@ static const struct ieee80211_iface_combination if_comb[] = {
 		.radar_detect_widths =	BIT(NL80211_CHAN_WIDTH_20_NOHT) |
 					BIT(NL80211_CHAN_WIDTH_20),
 	}
+#endif
 };
 
 static void ath9k_set_hw_capab(struct ath_softc *sc, struct ieee80211_hw *hw)
@@ -780,6 +782,9 @@ int ath9k_init_device(u16 devid, struct ath_softc *sc,
 	ah = sc->sc_ah;
 	common = ath9k_hw_common(ah);
 	ath9k_set_hw_capab(sc, hw);
+
+	/* Will be cleared in ath9k_start() */
+	set_bit(ATH_OP_INVALID, &common->op_flags);
 
 	/* Initialize regulatory */
 	error = ath_regd_init(&common->regulatory, sc->hw->wiphy,

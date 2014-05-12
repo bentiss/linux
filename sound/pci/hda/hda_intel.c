@@ -249,7 +249,8 @@ enum {
 /* quirks for Nvidia */
 #define AZX_DCAPS_PRESET_NVIDIA \
 	(AZX_DCAPS_NVIDIA_SNOOP | AZX_DCAPS_RIRB_DELAY | AZX_DCAPS_NO_MSI |\
-	 AZX_DCAPS_ALIGN_BUFSIZE | AZX_DCAPS_NO_64BIT)
+	 AZX_DCAPS_ALIGN_BUFSIZE | AZX_DCAPS_NO_64BIT |\
+	 AZX_DCAPS_CORBRP_SELF_CLEAR)
 
 #define AZX_DCAPS_PRESET_CTHDA \
 	(AZX_DCAPS_NO_MSI | AZX_DCAPS_POSFIX_LPIB | AZX_DCAPS_4K_BDLE_BOUNDARY)
@@ -636,7 +637,7 @@ static int azx_resume(struct device *dev)
 		return -EIO;
 	azx_init_pci(chip);
 
-	azx_init_chip(chip, 1);
+	azx_init_chip(chip, true);
 
 	snd_hda_resume(chip->bus);
 	snd_power_change_state(card, SNDRV_CTL_POWER_D0);
@@ -689,7 +690,7 @@ static int azx_runtime_resume(struct device *dev)
 	status = azx_readw(chip, STATESTS);
 
 	azx_init_pci(chip);
-	azx_init_chip(chip, 1);
+	azx_init_chip(chip, true);
 
 	bus = chip->bus;
 	if (status && bus) {
