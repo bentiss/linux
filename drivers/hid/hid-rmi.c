@@ -277,9 +277,9 @@ static void rmi_f11_process_touch(struct rmi_data *hdata, int slot,
 	input_mt_report_slot_state(hdata->input, MT_TOOL_FINGER,
 			finger_state == 0x01);
 	if (finger_state == 0x01) {
-		x = (touch_data[0] << 4) | (touch_data[2] & 0x07);
+		x = (touch_data[0] << 4) | (touch_data[2] & 0x0F);
 		y = (touch_data[1] << 4) | (touch_data[2] >> 4);
-		wx = touch_data[3] & 0x07;
+		wx = touch_data[3] & 0x0F;
 		wy = touch_data[3] >> 4;
 		wide = (wx > wy);
 		major = max(wx, wy);
@@ -546,9 +546,13 @@ static int rmi_populate_f11(struct hid_device *hdev)
 	struct rmi_data *data = hid_get_drvdata(hdev);
 	u8 buf[20];
 	int ret;
+	bool has_query9;
+	bool has_query10;
+	bool has_query11;
 	bool has_query12;
 	bool has_physical_props;
 	unsigned x_size, y_size;
+	u16 query12_offset;
 
 	if (!data->f11.query_base_addr) {
 		hid_err(hdev, "No 2D sensor found, giving up.\n");
@@ -561,6 +565,8 @@ static int rmi_populate_f11(struct hid_device *hdev)
 		hid_err(hdev, "can not get query 0: %d.\n", ret);
 		return ret;
 	}
+	has_query9 = !!(buf[0] & BIT(3));
+	has_query11 = !!(buf[0] & BIT(4));
 	has_query12 = !!(buf[0] & BIT(5));
 
 	/* query 1 to get the max number of fingers */
@@ -581,12 +587,33 @@ static int rmi_populate_f11(struct hid_device *hdev)
 		return -ENODEV;
 	}
 
+	/* query 8 to find out if query 10 exists */
+	ret = rmi_read(hdev, data->f11.query_base_addr + 8, buf);
+	if (ret) {
+		hid_err(hdev, "can not read gesture information: %d.\n", ret);
+		return ret;
+	}
+	has_query10 = !!(buf[0] & BIT(2));
+
 	/*
-	 * query 12 to know if the physical properties are reported
-	 * (query 12 is at offset 10 for HID devices)
+	 * At least 8 queries are guaranteed to be present in F11
+	 * +1 for query12.
 	 */
+	query12_offset = 9;
+
+	if (has_query9)
+		++query12_offset;
+
+	if (has_query10)
+		++query12_offset;
+
+	if (has_query11)
+		++query12_offset;
+
+	/* query 12 to know if the physical properties are reported */
 	if (has_query12) {
-		ret = rmi_read(hdev, data->f11.query_base_addr + 10, buf);
+		ret = rmi_read(hdev, data->f11.query_base_addr
+				+ query12_offset, buf);
 		if (ret) {
 			hid_err(hdev, "can not get query 12: %d.\n", ret);
 			return ret;
@@ -595,7 +622,8 @@ static int rmi_populate_f11(struct hid_device *hdev)
 
 		if (has_physical_props) {
 			ret = rmi_read_block(hdev,
-					data->f11.query_base_addr + 11, buf, 4);
+					data->f11.query_base_addr
+						+ query12_offset + 1, buf, 4);
 			if (ret) {
 				hid_err(hdev, "can not read query 15-18: %d.\n",
 					ret);
@@ -613,10 +641,15 @@ static int rmi_populate_f11(struct hid_device *hdev)
 		}
 	}
 
-	/* retrieve the ctrl registers */
-	ret = rmi_read_block(hdev, data->f11.control_base_addr, buf, 20);
+	/*
+	 * retrieve the ctrl registers
+	 * the ctrl register has a size of 20 but a fw bug split it into 16 + 4,
+	 * and there is no way to know if the first 20 bytes are here or not.
+	 * We use only the first 10 bytes, so get only them.
+	 */
+	ret = rmi_read_block(hdev, data->f11.control_base_addr, buf, 10);
 	if (ret) {
-		hid_err(hdev, "can not read ctrl block of size 20: %d.\n", ret);
+		hid_err(hdev, "can not read ctrl block of size 10: %d.\n", ret);
 		return ret;
 	}
 
@@ -754,9 +787,9 @@ static void rmi_input_configured(struct hid_device *hdev, struct hid_input *hi)
 	input_set_abs_params(input, ABS_MT_POSITION_X, 1, data->max_x, 0, 0);
 	input_set_abs_params(input, ABS_MT_POSITION_Y, 1, data->max_y, 0, 0);
 
-	if (data->x_size_mm && data->x_size_mm) {
+	if (data->x_size_mm && data->y_size_mm) {
 		res_x = (data->max_x - 1) / data->x_size_mm;
-		res_y = (data->max_y - 1) / data->x_size_mm;
+		res_y = (data->max_y - 1) / data->y_size_mm;
 
 		input_abs_set_res(input, ABS_MT_POSITION_X, res_x);
 		input_abs_set_res(input, ABS_MT_POSITION_Y, res_y);
