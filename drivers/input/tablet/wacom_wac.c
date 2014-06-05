@@ -2323,20 +2323,15 @@ static const struct wacom_features wacom_features_0x0309 =
 	{ "Wacom ISDv5 309", .type = WACOM_24HDT, /* Touch */
 	  .oVid = USB_VENDOR_ID_WACOM, .oPid = 0x0307, .touch_max = 10 };
 
-#define USB_DEVICE_WACOM(prod)					\
-	USB_DEVICE(USB_VENDOR_ID_WACOM, prod),			\
-	.driver_info = (kernel_ulong_t)&wacom_features_##prod
-
-#define USB_DEVICE_DETAILED(prod, class, sub, proto)			\
-	USB_DEVICE_AND_INTERFACE_INFO(USB_VENDOR_ID_WACOM, prod, class,	\
-				      sub, proto),			\
-	.driver_info = (kernel_ulong_t)&wacom_features_##prod
+#define USB_DEVICE_WACOM(prod)						\
+	HID_DEVICE(BUS_USB, HID_GROUP_WACOM_LEGACY, USB_VENDOR_ID_WACOM, prod),\
+	.driver_data = (kernel_ulong_t)&wacom_features_##prod
 
 #define USB_DEVICE_LENOVO(prod)					\
-	USB_DEVICE(USB_VENDOR_ID_LENOVO, prod),			\
-	.driver_info = (kernel_ulong_t)&wacom_features_##prod
+	HID_USB_DEVICE(USB_VENDOR_ID_LENOVO, prod),			\
+	.driver_data = (kernel_ulong_t)&wacom_features_##prod
 
-const struct usb_device_id wacom_ids[] = {
+const struct hid_device_id wacom_ids[] = {
 	{ USB_DEVICE_WACOM(0x00) },
 	{ USB_DEVICE_WACOM(0x10) },
 	{ USB_DEVICE_WACOM(0x11) },
@@ -2382,9 +2377,9 @@ const struct usb_device_id wacom_ids[] = {
 	{ USB_DEVICE_WACOM(0x45) },
 	{ USB_DEVICE_WACOM(0x57) },
 	{ USB_DEVICE_WACOM(0x59) },
-	{ USB_DEVICE_DETAILED(0x5D, USB_CLASS_HID, 0, 0) },
+	{ USB_DEVICE_WACOM(0x5D) },
 	{ USB_DEVICE_WACOM(0x5B) },
-	{ USB_DEVICE_DETAILED(0x5E, USB_CLASS_HID, 0, 0) },
+	{ USB_DEVICE_WACOM(0x5E) },
 	{ USB_DEVICE_WACOM(0xB0) },
 	{ USB_DEVICE_WACOM(0xB1) },
 	{ USB_DEVICE_WACOM(0xB2) },
@@ -2409,10 +2404,9 @@ const struct usb_device_id wacom_ids[] = {
 	/*
 	 * DTU-2231 has two interfaces on the same configuration,
 	 * only one is used.
+	 *  -> USB_INTERFACE_SUBCLASS_BOOT, USB_INTERFACE_PROTOCOL_MOUSE
 	 */
-	{ USB_DEVICE_DETAILED(0xCE, USB_CLASS_HID,
-			      USB_INTERFACE_SUBCLASS_BOOT,
-			      USB_INTERFACE_PROTOCOL_MOUSE) },
+	{ USB_DEVICE_WACOM(0xCE) },
 	{ USB_DEVICE_WACOM(0x84) },
 	{ USB_DEVICE_WACOM(0xD0) },
 	{ USB_DEVICE_WACOM(0xD1) },
@@ -2449,23 +2443,23 @@ const struct usb_device_id wacom_ids[] = {
 	{ USB_DEVICE_WACOM(0x10F) },
 	{ USB_DEVICE_WACOM(0x300) },
 	{ USB_DEVICE_WACOM(0x301) },
-	{ USB_DEVICE_DETAILED(0x302, USB_CLASS_HID, 0, 0) },
-	{ USB_DEVICE_DETAILED(0x303, USB_CLASS_HID, 0, 0) },
-	{ USB_DEVICE_DETAILED(0x30E, USB_CLASS_HID, 0, 0) },
+	{ USB_DEVICE_WACOM(0x302) },
+	{ USB_DEVICE_WACOM(0x303) },
+	{ USB_DEVICE_WACOM(0x30E) },
 	{ USB_DEVICE_WACOM(0x304) },
-	{ USB_DEVICE_DETAILED(0x314, USB_CLASS_HID, 0, 0) },
-	{ USB_DEVICE_DETAILED(0x315, USB_CLASS_HID, 0, 0) },
-	{ USB_DEVICE_DETAILED(0x317, USB_CLASS_HID, 0, 0) },
+	{ USB_DEVICE_WACOM(0x314) },
+	{ USB_DEVICE_WACOM(0x315) },
+	{ USB_DEVICE_WACOM(0x317) },
 	{ USB_DEVICE_WACOM(0x4001) },
 	{ USB_DEVICE_WACOM(0x47) },
 	{ USB_DEVICE_WACOM(0xF4) },
 	{ USB_DEVICE_WACOM(0xF8) },
-	{ USB_DEVICE_DETAILED(0xF6, USB_CLASS_HID, 0, 0) },
+	{ USB_DEVICE_WACOM(0xF6) },
 	{ USB_DEVICE_WACOM(0xFA) },
 	{ USB_DEVICE_WACOM(0xFB) },
 	{ USB_DEVICE_WACOM(0x0307) },
-	{ USB_DEVICE_DETAILED(0x0309, USB_CLASS_HID, 0, 0) },
+	{ USB_DEVICE_WACOM(0x0309) },
 	{ USB_DEVICE_LENOVO(0x6004) },
 	{ }
 };
-MODULE_DEVICE_TABLE(usb, wacom_ids);
+MODULE_DEVICE_TABLE(hid, wacom_ids);

@@ -144,7 +144,7 @@ struct wacom_shared {
 
 struct wacom_wac {
 	char name[WACOM_NAME_MAX];
-	unsigned char *data;
+	unsigned char data[WACOM_PKGLEN_MAX];
 	int tool[2];
 	int id[2];
 	__u32 serial[2];
