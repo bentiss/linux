@@ -975,8 +975,7 @@ static void wacom_destroy_battery(struct wacom *wacom)
 static int wacom_register_input(struct wacom *wacom)
 {
 	struct input_dev *input_dev;
-	struct usb_interface *intf = wacom->intf;
-	struct usb_device *dev = interface_to_usbdev(intf);
+	struct hid_device *hdev = wacom->hdev;
 	struct wacom_wac *wacom_wac = &(wacom->wacom_wac);
 	int error;
 
@@ -987,10 +986,15 @@ static int wacom_register_input(struct wacom *wacom)
 	}
 
 	input_dev->name = wacom_wac->name;
-	input_dev->dev.parent = &intf->dev;
+	input_dev->dev.parent = &hdev->dev;
 	input_dev->open = wacom_open;
 	input_dev->close = wacom_close;
-	usb_to_input_id(dev, &input_dev->id);
+	input_dev->phys = hdev->phys;
+	input_dev->uniq = hdev->uniq;
+	input_dev->id.bustype = hdev->bus;
+	input_dev->id.vendor  = hdev->vendor;
+	input_dev->id.product = hdev->product;
+	input_dev->id.version = hdev->version;
 	input_set_drvdata(input_dev, wacom);
 
 	wacom_wac->input = input_dev;
