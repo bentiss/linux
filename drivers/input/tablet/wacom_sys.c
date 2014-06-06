@@ -1225,7 +1225,7 @@ static int wacom_probe(struct hid_device *hdev,
 	/* Retrieve the physical and logical size for touch devices */
 	error = wacom_retrieve_hid_descriptor(hdev, features);
 	if (error)
-		goto fail3;
+		goto fail1;
 
 	/*
 	 * Intuos5 has no useful data about its touch interface in its
@@ -1271,17 +1271,17 @@ static int wacom_probe(struct hid_device *hdev,
 			other_dev = dev;
 		error = wacom_add_shared_data(wacom_wac, other_dev);
 		if (error)
-			goto fail3;
+			goto fail1;
 	}
 
 	error = wacom_initialize_leds(wacom);
 	if (error)
-		goto fail4;
+		goto fail2;
 
 	if (!(features->quirks & WACOM_QUIRK_NO_INPUT)) {
 		error = wacom_register_input(wacom);
 		if (error)
-			goto fail5;
+			goto fail3;
 	}
 
 	/* Note that if query fails it is not a hard failure */
@@ -1291,7 +1291,7 @@ static int wacom_probe(struct hid_device *hdev,
 	error = hid_hw_start(hdev, HID_CONNECT_HIDRAW);
 	if (error) {
 		hid_err(hdev, "hw start failed\n");
-		goto fail5;
+		goto fail4;
 	}
 
 	if (features->quirks & WACOM_QUIRK_MONITOR)
@@ -1304,9 +1304,10 @@ static int wacom_probe(struct hid_device *hdev,
 
 	return 0;
 
- fail5: wacom_destroy_leds(wacom);
- fail4:	wacom_remove_shared_data(wacom_wac);
- fail3:
+ fail4:	if (wacom->wacom_wac.input)
+		input_unregister_device(wacom->wacom_wac.input);
+ fail3:	wacom_destroy_leds(wacom);
+ fail2:	wacom_remove_shared_data(wacom_wac);
  fail1:	kfree(wacom);
 	hid_set_drvdata(hdev, NULL);
 	return error;
