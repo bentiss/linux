@@ -1173,16 +1173,39 @@ static void wacom_calculate_res(struct wacom_features *features)
 						    features->unitExpo);
 }
 
+static int wacom_hid_report_len(struct hid_report *report)
+{
+	/* equivalent to DIV_ROUND_UP(report->size, 8) + !!(report->id > 0) */
+	return ((report->size - 1) >> 3) + 1 + (report->id > 0);
+}
+
+static size_t wacom_compute_pktlen(struct hid_device *hdev)
+{
+	struct hid_report_enum *report_enum;
+	struct hid_report *report;
+	size_t size = 0;
+
+	report_enum = hdev->report_enum + HID_INPUT_REPORT;
+
+	list_for_each_entry(report, &report_enum->report_list, list) {
+		size_t report_size = wacom_hid_report_len(report);
+		if (report_size > size)
+			size = report_size;
+	}
+
+	return size;
+}
+
 static int wacom_probe(struct hid_device *hdev,
 		const struct hid_device_id *id)
 {
 	struct usb_interface *intf = to_usb_interface(hdev->dev.parent);
 	struct usb_device *dev = interface_to_usbdev(intf);
-	struct usb_endpoint_descriptor *endpoint;
 	struct wacom *wacom;
 	struct wacom_wac *wacom_wac;
 	struct wacom_features *features;
 	int error;
+	size_t pktlen;
 
 	if (!id->driver_data)
 		return -EINVAL;
@@ -1200,6 +1223,7 @@ static int wacom_probe(struct hid_device *hdev,
 		hid_err(hdev, "parse failed\n");
 		goto fail1;
 	}
+	pktlen = wacom_compute_pktlen(hdev);
 
 	wacom_wac = &wacom->wacom_wac;
 	wacom_wac->features = *((struct wacom_features *)id->driver_data);
@@ -1214,8 +1238,6 @@ static int wacom_probe(struct hid_device *hdev,
 	mutex_init(&wacom->lock);
 	INIT_WORK(&wacom->work, wacom_wireless_work);
 
-	endpoint = &intf->cur_altsetting->endpoint[0].desc;
-
 	/* set the default size in case we do not get them from hid */
 	wacom_set_default_phy(features);
 
@@ -1226,11 +1248,11 @@ static int wacom_probe(struct hid_device *hdev,
 
 	/*
 	 * Intuos5 has no useful data about its touch interface in its
-	 * HID descriptor. If this is the touch interface (wMaxPacketSize
+	 * HID descriptor. If this is the touch interface (PacketSize
 	 * of WACOM_PKGLEN_BBTOUCH3), override the table values.
 	 */
 	if (features->type >= INTUOS5S && features->type <= INTUOSHT) {
-		if (endpoint->wMaxPacketSize == WACOM_PKGLEN_BBTOUCH3) {
+		if (pktlen == WACOM_PKGLEN_BBTOUCH3) {
 			features->device_type = BTN_TOOL_FINGER;
 			features->pktlen = WACOM_PKGLEN_BBTOUCH3;
 
