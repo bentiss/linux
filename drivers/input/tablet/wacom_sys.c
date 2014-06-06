@@ -153,7 +153,6 @@ static int wacom_parse_logical_collection(unsigned char *report,
 	if (features->type == BAMBOO_PT) {
 
 		/* Logical collection is only used by 3rd gen Bamboo Touch */
-		features->pktlen = WACOM_PKGLEN_BBTOUCH3;
 		features->device_type = BTN_TOOL_FINGER;
 
 		features->x_max = features->y_max =
@@ -244,28 +243,6 @@ static int wacom_parse_hid(struct hid_device *hdev,
 					features->device_type = BTN_TOOL_FINGER;
 					/* touch device at least supports one touch point */
 					touch_max = 1;
-					switch (features->type) {
-					case TABLETPC2FG:
-						features->pktlen = WACOM_PKGLEN_TPC2FG;
-						break;
-
-					case MTSCREEN:
-					case WACOM_24HDT:
-						features->pktlen = WACOM_PKGLEN_MTOUCH;
-						break;
-
-					case MTTPC:
-						features->pktlen = WACOM_PKGLEN_MTTPC;
-						break;
-
-					case BAMBOO_PT:
-						features->pktlen = WACOM_PKGLEN_BBTOUCH;
-						break;
-
-					default:
-						features->pktlen = WACOM_PKGLEN_GRAPHIRE;
-						break;
-					}
 
 					switch (features->type) {
 					case BAMBOO_PT:
@@ -298,8 +275,6 @@ static int wacom_parse_hid(struct hid_device *hdev,
 					}
 				} else if (pen) {
 					/* penabled only accepts exact bytes of data */
-					if (features->type >= TABLETPC)
-						features->pktlen = WACOM_PKGLEN_GRAPHIRE;
 					features->device_type = BTN_TOOL_PEN;
 					features->x_max =
 						get_unaligned_le16(&report[i + 3]);
@@ -1196,6 +1171,18 @@ static size_t wacom_compute_pktlen(struct hid_device *hdev)
 	return size;
 }
 
+static bool wacom_is_touch_pktlen(size_t pktlen)
+{
+	switch (pktlen) {
+		case WACOM_PKGLEN_BBTOUCH3:
+		case WACOM_PKGLEN_MTOUCH:
+		case WACOM_PKGLEN_MTTPC:
+		case WACOM_PKGLEN_BBTOUCH:
+			return true;
+	}
+	return false;
+}
+
 static int wacom_probe(struct hid_device *hdev,
 		const struct hid_device_id *id)
 {
@@ -1233,6 +1220,19 @@ static int wacom_probe(struct hid_device *hdev,
 		goto fail1;
 	}
 
+	/* check for valid devices */
+	if (features->pktlen && features->type != WIRELESS) {
+		if (features->pktlen != pktlen &&
+		    !wacom_is_touch_pktlen(pktlen)) {
+			hid_info(hdev, "did not validated pktlen: %lu\n",
+				 pktlen);
+			error = -ENODEV;
+			goto fail1;
+		}
+	}
+
+	features->pktlen = pktlen;
+
 	wacom->usbdev = dev;
 	wacom->intf = intf;
 	mutex_init(&wacom->lock);
@@ -1254,7 +1254,6 @@ static int wacom_probe(struct hid_device *hdev,
 	if (features->type >= INTUOS5S && features->type <= INTUOSHT) {
 		if (pktlen == WACOM_PKGLEN_BBTOUCH3) {
 			features->device_type = BTN_TOOL_FINGER;
-			features->pktlen = WACOM_PKGLEN_BBTOUCH3;
 
 			features->x_max = 4096;
 			features->y_max = 4096;
