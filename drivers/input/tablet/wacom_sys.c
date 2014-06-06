@@ -1210,8 +1210,6 @@ static int wacom_probe(struct hid_device *hdev,
 	wacom->intf = intf;
 	mutex_init(&wacom->lock);
 	INIT_WORK(&wacom->work, wacom_wireless_work);
-	usb_make_path(dev, wacom->phys, sizeof(wacom->phys));
-	strlcat(wacom->phys, "/input0", sizeof(wacom->phys));
 
 	endpoint = &intf->cur_altsetting->endpoint[0].desc;
 
