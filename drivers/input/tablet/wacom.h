@@ -106,7 +106,6 @@ MODULE_LICENSE(DRIVER_LICENSE);
 #define USB_VENDOR_ID_LENOVO	0x17ef
 
 struct wacom {
-	dma_addr_t data_dma;
 	struct usb_device *usbdev;
 	struct usb_interface *intf;
 	struct wacom_wac wacom_wac;
