@@ -1319,14 +1319,14 @@ static void wacom_remove(struct hid_device *hdev)
 
 	hid_hw_stop(hdev);
 
-	hid_set_drvdata(hdev, NULL);
-
 	cancel_work_sync(&wacom->work);
 	if (wacom->wacom_wac.input)
 		input_unregister_device(wacom->wacom_wac.input);
 	wacom_destroy_battery(wacom);
 	wacom_destroy_leds(wacom);
 	wacom_remove_shared_data(&wacom->wacom_wac);
+
+	hid_set_drvdata(hdev, NULL);
 	kfree(wacom);
 }
 
