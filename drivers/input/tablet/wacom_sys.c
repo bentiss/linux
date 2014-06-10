@@ -512,7 +512,7 @@ static struct wacom_hdev_data *wacom_get_hdev_data(struct hid_device *hdev)
 	struct wacom_hdev_data *data;
 
 	list_for_each_entry(data, &wacom_udev_list, list) {
-		if (wacom_are_sibling(data->dev, hdev)) {
+		if (wacom_are_sibling(hdev, data->dev)) {
 			kref_get(&data->kref);
 			return data;
 		}
