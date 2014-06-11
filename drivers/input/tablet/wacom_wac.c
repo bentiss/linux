@@ -1600,8 +1600,8 @@ static void wacom_abs_set_axis(struct input_dev *input_dev,
 	}
 }
 
-int wacom_setup_input_capabilities(struct input_dev *input_dev,
-				   struct wacom_wac *wacom_wac)
+void wacom_setup_input_capabilities(struct input_dev *input_dev,
+				    struct wacom_wac *wacom_wac)
 {
 	struct wacom_features *features = &wacom_wac->features;
 	int i;
@@ -1924,7 +1924,6 @@ int wacom_setup_input_capabilities(struct input_dev *input_dev,
 		wacom_setup_cintiq(wacom_wac);
 		break;
 	}
-	return 0;
 }
 
 static const struct wacom_features wacom_features_0x00 =

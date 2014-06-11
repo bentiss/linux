@@ -998,9 +998,7 @@ static int wacom_register_input(struct wacom *wacom)
 	input_set_drvdata(input_dev, wacom);
 
 	wacom_wac->input = input_dev;
-	error = wacom_setup_input_capabilities(input_dev, wacom_wac);
-	if (error)
-		goto fail1;
+	wacom_setup_input_capabilities(input_dev, wacom_wac);
 
 	error = input_register_device(input_dev);
 	if (error)
