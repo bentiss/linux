@@ -407,6 +407,7 @@ static int uhid_dev_create(struct uhid_device *uhid,
 	hid->country = ev->u.create.country;
 	hid->driver_data = uhid;
 	hid->dev.parent = uhid_misc.this_device;
+	hid->type = HID_TYPE_UHID;
 
 	uhid->hid = hid;
 	uhid->running = true;
@@ -467,6 +468,7 @@ static int uhid_dev_create2(struct uhid_device *uhid,
 	hid->country = ev->u.create2.country;
 	hid->driver_data = uhid;
 	hid->dev.parent = uhid_misc.this_device;
+	hid->type = HID_TYPE_UHID;
 
 	uhid->hid = hid;
 	uhid->running = true;
