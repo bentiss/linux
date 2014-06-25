@@ -1268,7 +1268,8 @@ static int wacom_probe(struct hid_device *hdev,
 		goto fail1;
 	}
 
-	if (features->check_for_hid_type && features->hid_type != hdev->type) {
+	if (hdev->type != HID_TYPE_UHID &&
+	    features->check_for_hid_type && features->hid_type != hdev->type) {
 		error = -ENODEV;
 		goto fail1;
 	}
