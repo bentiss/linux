@@ -412,6 +412,10 @@ static int wacom_query_tablet_data(struct hid_device *hdev,
 	if (hdev->bus == BUS_BLUETOOTH)
 		return wacom_bt_query_tablet_data(hdev, 1, features);
 
+	if (hdev->type == HID_TYPE_UHID) {
+		return 0;
+	}
+
 	if (features->type == HID_GENERIC)
 		return wacom_hid_set_device_mode(hdev);
 
@@ -1722,7 +1726,8 @@ static int wacom_probe(struct hid_device *hdev,
 		goto fail_pktlen;
 	}
 
-	if (features->check_for_hid_type && features->hid_type != hdev->type) {
+	if (hdev->type != HID_TYPE_UHID &&
+	    features->check_for_hid_type && features->hid_type != hdev->type) {
 		error = -ENODEV;
 		goto fail_type;
 	}
