@@ -761,14 +761,6 @@ config THRUSTMASTER_FF
 	  a THRUSTMASTER Dual Trigger 3-in-1 or a THRUSTMASTER Ferrari GT
 	  Rumble Force or Force Feedback Wheel.
 
-config HID_WACOM
-	tristate "Wacom Bluetooth devices support"
-	depends on HID
-	depends on LEDS_CLASS
-	select POWER_SUPPLY
-	---help---
-	Support for Wacom Graphire Bluetooth and Intuos4 WL tablets.
-
 config HID_WIIMOTE
 	tristate "Nintendo Wii / Wii U peripherals"
 	depends on HID
