@@ -262,6 +262,54 @@ static int wacom_set_device_mode(struct hid_device *hdev, int report_id,
 	return error < 0 ? error : 0;
 }
 
+static int wacom_bt_query_tablet_data(struct hid_device *hdev, u8 speed,
+		struct wacom_features *features)
+{
+	struct wacom *wacom = hid_get_drvdata(hdev);
+	int limit, ret;
+	__u8 rep_data[2];
+
+	switch (features->type) {
+	case GRAPHIRE_BT:
+		rep_data[0] = 0x03 ; rep_data[1] = 0x00;
+		limit = 3;
+		do {
+			ret = hid_hw_raw_request(hdev, rep_data[0], rep_data, 2,
+					HID_FEATURE_REPORT, HID_REQ_SET_REPORT);
+		} while (ret < 0 && limit-- > 0);
+
+		if (ret >= 0) {
+			if (speed == 0)
+				rep_data[0] = 0x05;
+			else
+				rep_data[0] = 0x06;
+
+			rep_data[1] = 0x00;
+			limit = 3;
+			do {
+				ret = hid_hw_raw_request(hdev, rep_data[0],
+					rep_data, 2, HID_FEATURE_REPORT,
+					HID_REQ_SET_REPORT);
+			} while (ret < 0 && limit-- > 0);
+
+			if (ret >= 0) {
+				wacom->wacom_wac.bt_high_speed = speed;
+				return 0;
+			}
+		}
+
+		/*
+		 * Note that if the raw queries fail, it's not a hard failure
+		 * and it is safe to continue
+		 */
+		hid_warn(hdev, "failed to poke device, command %d, err %d\n",
+			 rep_data[0], ret);
+		break;
+	}
+
+	return 0;
+}
+
 /*
  * Switch the tablet into its most-capable mode. Wacom tablets are
  * typically configured to power-up in a mode which sends mouse-like
@@ -272,6 +320,9 @@ static int wacom_set_device_mode(struct hid_device *hdev, int report_id,
 static int wacom_query_tablet_data(struct hid_device *hdev,
 		struct wacom_features *features)
 {
+	if (hdev->bus == BUS_BLUETOOTH)
+		return wacom_bt_query_tablet_data(hdev, 1, features);
+
 	if (features->device_type == BTN_TOOL_FINGER) {
 		if (features->type > TABLETPC) {
 			/* MT Tablet PC touch */
@@ -808,7 +859,8 @@ static int wacom_initialize_battery(struct wacom *wacom, const char *name)
 	int error = 0;
 	int i;
 
-	if (wacom->wacom_wac.features.quirks & WACOM_QUIRK_MONITOR) {
+	if ((wacom->wacom_wac.features.quirks & WACOM_QUIRK_MONITOR) ||
+	    (wacom->wacom_wac.features.type == GRAPHIRE_BT)) {
 		wacom->battery.properties = wacom_battery_props;
 		wacom->battery.num_properties = ARRAY_SIZE(wacom_battery_props);
 		wacom->battery.get_property = wacom_battery_get_property;
@@ -834,7 +886,8 @@ static int wacom_initialize_battery(struct wacom *wacom, const char *name)
 
 static void wacom_destroy_battery(struct wacom *wacom)
 {
-	if (wacom->wacom_wac.features.quirks & WACOM_QUIRK_MONITOR &&
+	if (((wacom->wacom_wac.features.quirks & WACOM_QUIRK_MONITOR) ||
+	     (wacom->wacom_wac.features.type == GRAPHIRE_BT)) &&
 	    wacom->battery.dev) {
 		power_supply_unregister(&wacom->battery);
 		wacom->battery.dev = NULL;
@@ -1194,10 +1247,16 @@ static int wacom_probe(struct hid_device *hdev,
 	if (error)
 		goto fail2;
 
+	if (!(features->quirks & WACOM_QUIRK_MONITOR)) {
+		error = wacom_initialize_battery(wacom, features->name);
+		if (error)
+			goto fail3;
+	}
+
 	if (!(features->quirks & WACOM_QUIRK_NO_INPUT)) {
 		error = wacom_register_inputs(wacom);
 		if (error)
-			goto fail3;
+			goto fail4;
 	}
 
 	/* Note that if query fails it is not a hard failure */
@@ -1207,7 +1266,7 @@ static int wacom_probe(struct hid_device *hdev,
 	error = hid_hw_start(hdev, HID_CONNECT_HIDRAW);
 	if (error) {
 		hid_err(hdev, "hw start failed\n");
-		goto fail4;
+		goto fail5;
 	}
 
 	if (features->quirks & WACOM_QUIRK_MONITOR)
@@ -1220,7 +1279,8 @@ static int wacom_probe(struct hid_device *hdev,
 
 	return 0;
 
- fail4:	wacom_unregister_inputs(wacom);
+ fail5:	wacom_unregister_inputs(wacom);
+ fail4:	wacom_destroy_battery(wacom);
  fail3:	wacom_destroy_leds(wacom);
  fail2:	wacom_remove_shared_data(wacom_wac);
  fail1:	kfree(wacom);
