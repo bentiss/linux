@@ -803,15 +803,21 @@ static int wacom_battery_get_property(struct power_supply *psy,
 	return ret;
 }
 
-static int wacom_initialize_battery(struct wacom *wacom)
+static int wacom_initialize_battery(struct wacom *wacom, const char *name)
 {
 	int error = 0;
+	int i;
 
 	if (wacom->wacom_wac.features.quirks & WACOM_QUIRK_MONITOR) {
 		wacom->battery.properties = wacom_battery_props;
 		wacom->battery.num_properties = ARRAY_SIZE(wacom_battery_props);
 		wacom->battery.get_property = wacom_battery_get_property;
-		wacom->battery.name = "wacom_battery";
+		sprintf(wacom->wacom_wac.bat_name, "%s battery", name);
+		for (i=0; i < strlen(wacom->wacom_wac.bat_name); i++) {
+			if (wacom->wacom_wac.bat_name[i] == ' ')
+				wacom->wacom_wac.bat_name[i] = '_';
+		}
+		wacom->battery.name = wacom->wacom_wac.bat_name;
 		wacom->battery.type = POWER_SUPPLY_TYPE_BATTERY;
 		wacom->battery.use_for_apm = 0;
 
@@ -1012,7 +1018,8 @@ static void wacom_wireless_work(struct work_struct *work)
 				wacom_wac->shared->touch_input = wacom_wac2->input;
 		}
 
-		error = wacom_initialize_battery(wacom);
+		error = wacom_initialize_battery(wacom,
+				wacom_wac1->features.name);
 		if (error)
 			goto fail;
 	}
