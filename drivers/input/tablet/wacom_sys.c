@@ -305,6 +305,20 @@ static int wacom_bt_query_tablet_data(struct hid_device *hdev, u8 speed,
 		hid_warn(hdev, "failed to poke device, command %d, err %d\n",
 			 rep_data[0], ret);
 		break;
+	case INTUOS4WL:
+		if (speed == 1)
+			wacom->wacom_wac.bt_features &= ~0x20;
+		else
+			wacom->wacom_wac.bt_features |= 0x20;
+
+		rep_data[0] = 0x03;
+		rep_data[1] = wacom->wacom_wac.bt_features;
+
+		ret = hid_hw_raw_request(hdev, rep_data[0], rep_data, 2,
+				HID_FEATURE_REPORT, HID_REQ_SET_REPORT);
+		if (ret >= 0)
+			wacom->wacom_wac.bt_high_speed = speed;
+		break;
 	}
 
 	return 0;
@@ -726,6 +740,7 @@ static int wacom_initialize_leds(struct wacom *wacom)
 	switch (wacom->wacom_wac.features.type) {
 	case INTUOS4S:
 	case INTUOS4:
+	case INTUOS4WL:
 	case INTUOS4L:
 		wacom->led.select[0] = 0;
 		wacom->led.select[1] = 0;
@@ -792,6 +807,7 @@ static void wacom_destroy_leds(struct wacom *wacom)
 	switch (wacom->wacom_wac.features.type) {
 	case INTUOS4S:
 	case INTUOS4:
+	case INTUOS4WL:
 	case INTUOS4L:
 		sysfs_remove_group(&wacom->hdev->dev.kobj,
 				   &intuos4_led_attr_group);
@@ -860,7 +876,8 @@ static int wacom_initialize_battery(struct wacom *wacom, const char *name)
 	int i;
 
 	if ((wacom->wacom_wac.features.quirks & WACOM_QUIRK_MONITOR) ||
-	    (wacom->wacom_wac.features.type == GRAPHIRE_BT)) {
+	    (wacom->wacom_wac.features.type == GRAPHIRE_BT) ||
+	    (wacom->wacom_wac.features.type == INTUOS4WL)) {
 		wacom->battery.properties = wacom_battery_props;
 		wacom->battery.num_properties = ARRAY_SIZE(wacom_battery_props);
 		wacom->battery.get_property = wacom_battery_get_property;
@@ -887,7 +904,8 @@ static int wacom_initialize_battery(struct wacom *wacom, const char *name)
 static void wacom_destroy_battery(struct wacom *wacom)
 {
 	if (((wacom->wacom_wac.features.quirks & WACOM_QUIRK_MONITOR) ||
-	     (wacom->wacom_wac.features.type == GRAPHIRE_BT)) &&
+	     (wacom->wacom_wac.features.type == GRAPHIRE_BT) ||
+	     (wacom->wacom_wac.features.type == INTUOS4WL)) &&
 	    wacom->battery.dev) {
 		power_supply_unregister(&wacom->battery);
 		wacom->battery.dev = NULL;
