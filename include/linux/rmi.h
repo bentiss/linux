@@ -95,6 +95,8 @@ struct rmi_f11_sensor_data {
 	struct rmi_f11_2d_axis_alignment axis_align;
 	bool type_a;
 	enum rmi_f11_sensor_type sensor_type;
+	int x_mm;
+	int y_mm;
 	int disable_report_mask;
 };
 
