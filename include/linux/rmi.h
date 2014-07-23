@@ -76,6 +76,8 @@ enum rmi_f11_sensor_type {
 	rmi_f11_sensor_touchpad
 };
 
+#define RMI_F11_DISABLE_ABS_REPORT      BIT(0)
+
 /**
  * struct rmi_f11_sensor_data - overrides defaults for a single F11 2D sensor.
  * @axis_align - provides axis alignment overrides (see above).
@@ -86,11 +88,14 @@ enum rmi_f11_sensor_type {
  * pointing device (touchpad) rather than a direct pointing device
  * (touchscreen).  This is useful when F11_2D_QUERY14 register is not
  * available.
+ * @disable_report_mask - Force data to not be reported even if it is supported
+ * by the firware.
  */
 struct rmi_f11_sensor_data {
 	struct rmi_f11_2d_axis_alignment axis_align;
 	bool type_a;
 	enum rmi_f11_sensor_type sensor_type;
+	int disable_report_mask;
 };
 
 /**
