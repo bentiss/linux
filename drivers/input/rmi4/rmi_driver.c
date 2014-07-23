@@ -508,7 +508,8 @@ static int rmi_scan_pdt_page(struct rmi_device *rmi_dev,
 			return retval;
 	}
 
-	return data->f01_bootloader_mode ? RMI_SCAN_DONE : RMI_SCAN_CONTINUE;
+	return (data->f01_bootloader_mode || addr == pdt_start) ?
+					RMI_SCAN_DONE : RMI_SCAN_CONTINUE;
 }
 
 static int rmi_scan_pdt(struct rmi_device *rmi_dev, void *ctx,
