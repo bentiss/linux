@@ -408,6 +408,10 @@ struct f11_2d_sensor_queries {
 	u8 clickpad_props;
 	u8 mouse_buttons;
 	bool has_advanced_gestures;
+
+	/* Query 15 - 18 */
+	u16 x_sensor_size_mm;
+	u16 y_sensor_size_mm;
 };
 
 /* Defs for Ctrl0. */
@@ -518,6 +522,8 @@ struct f11_2d_sensor {
 	char input_phys[NAME_BUFFER_SIZE];
 	u8 report_abs;
 	u8 report_rel;
+	u8 x_mm;
+	u8 y_mm;
 };
 
 /** Data pertaining to F11 in general.  For per-sensor data, see struct
@@ -1064,7 +1070,7 @@ static int rmi_f11_get_query_parameters(struct rmi_device *rmi_dev,
 		query_size++;
 	}
 
-	if (f11->has_query12 && sensor_query->has_info2) {
+	if (sensor_query->has_info2) {
 		rc = rmi_read(rmi_dev, query_base_addr + query_size, query_buf);
 		if (rc < 0)
 			return rc;
@@ -1083,6 +1089,20 @@ static int rmi_f11_get_query_parameters(struct rmi_device *rmi_dev,
 			!!(query_buf[0] & RMI_F11_HAS_ADVANCED_GESTURES);
 
 		query_size++;
+	}
+
+	if (sensor_query->has_physical_props) {
+		rc = rmi_read_block(rmi_dev, query_base_addr
+			+ query_size, query_buf, 4);
+		if (rc < 0)
+			return rc;
+
+		sensor_query->x_sensor_size_mm =
+			(query_buf[0] | (query_buf[1] << 8)) / 10;
+		sensor_query->y_sensor_size_mm =
+			(query_buf[2] | (query_buf[3] << 8)) / 10;
+
+		query_size += 4;
 	}
 
 	return query_size;
@@ -1106,6 +1126,7 @@ static void f11_set_abs_params(struct rmi_function *fn, struct f11_data *f11)
 			((f11->dev_controls.ctrl0_9[9] & 0x0F) << 8);
 	u16 x_min, x_max, y_min, y_max;
 	unsigned int input_flags;
+	int res_x, res_y;
 
 	/* We assume touchscreen unless demonstrably a touchpad or specified
 	 * as a touchpad in the platform data
@@ -1156,6 +1177,18 @@ static void f11_set_abs_params(struct rmi_function *fn, struct f11_data *f11)
 			x_min, x_max, 0, 0);
 	input_set_abs_params(input, ABS_MT_POSITION_Y,
 			y_min, y_max, 0, 0);
+
+	if (sensor->x_mm && sensor->y_mm) {
+		res_x = (x_max - x_min) / sensor->x_mm;
+		res_y = (y_max - y_min) / sensor->y_mm;
+
+		input_abs_set_res(input, ABS_X, res_x);
+		input_abs_set_res(input, ABS_Y, res_y);
+
+		input_abs_set_res(input, ABS_MT_POSITION_X, res_x);
+		input_abs_set_res(input, ABS_MT_POSITION_Y, res_y);
+	}
+
 	if (!sensor->type_a)
 		input_mt_init_slots(input, sensor->nbr_fingers, input_flags);
 	if (IS_ENABLED(CONFIG_RMI4_F11_PEN) && sensor->sens_query.has_pen)
@@ -1251,6 +1284,14 @@ static int rmi_f11_initialize(struct rmi_function *fn)
 		sensor->axis_align =
 			pdata->f11_sensor_data->axis_align;
 		sensor->type_a = pdata->f11_sensor_data->type_a;
+
+		if (sensor->sens_query.has_physical_props) {
+			sensor->x_mm = sensor->sens_query.x_sensor_size_mm;
+			sensor->y_mm = sensor->sens_query.y_sensor_size_mm;
+		} else if (pdata->f11_sensor_data) {
+			sensor->x_mm = pdata->f11_sensor_data->x_mm;
+			sensor->y_mm = pdata->f11_sensor_data->y_mm;
+		}
 
 		if (sensor->sensor_type == rmi_f11_sensor_default)
 			sensor->sensor_type =
