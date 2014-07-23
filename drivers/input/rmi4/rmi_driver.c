@@ -330,78 +330,58 @@ static int rmi_driver_set_input_params(struct rmi_device *rmi_dev,
 	return 0;
 }
 
-/**
- * This pair of functions allows functions like function 54 to request to have
- * other interrupts disabled until the restore function is called. Only one
- * store happens at a time.
- */
-static int rmi_driver_irq_save(struct rmi_device *rmi_dev,
-				unsigned long *new_ints)
+static int rmi_driver_set_irq_bits(struct rmi_device *rmi_dev,
+				   unsigned long *mask)
 {
-	int retval = 0;
+	int error = 0;
 	struct rmi_driver_data *data = dev_get_drvdata(&rmi_dev->dev);
 	struct device *dev = &rmi_dev->dev;
 
 	mutex_lock(&data->irq_mutex);
-	if (!data->irq_stored) {
-		/* Save current enabled interrupts */
-		retval = rmi_read_block(rmi_dev,
-				data->f01_container->fd.control_base_addr + 1,
-				data->irq_mask_store, data->num_of_irq_regs);
-		if (retval < 0) {
-			dev_err(dev, "%s: Failed to read enabled interrupts!",
-								__func__);
-			goto error_unlock;
-		}
-		retval = rmi_write_block(rmi_dev,
-				data->f01_container->fd.control_base_addr + 1,
-				new_ints, data->num_of_irq_regs);
-		if (retval < 0) {
-			dev_err(dev, "%s: Failed to change enabled interrupts!",
-								__func__);
-			goto error_unlock;
-		}
-		bitmap_copy(data->current_irq_mask, new_ints, data->irq_count);
-		data->irq_stored = true;
-	} else {
-		retval = -ENOSPC; /* No space to store IRQs.*/
-		dev_err(dev, "Attempted to save IRQs when already stored!");
+	bitmap_or(data->new_irq_mask,
+		  data->current_irq_mask, mask, data->irq_count);
+	/* FIXME: convert to on-wire endianness before writing */
+	error = rmi_write_block(rmi_dev,
+			data->f01_container->fd.control_base_addr + 1,
+			data->new_irq_mask, data->num_of_irq_regs);
+	if (error < 0) {
+		dev_err(dev, "%s: Failed to change enabled interrupts!",
+							__func__);
+		goto error_unlock;
 	}
+	bitmap_copy(data->current_irq_mask, data->new_irq_mask,
+		    data->num_of_irq_regs);
 
 error_unlock:
 	mutex_unlock(&data->irq_mutex);
-	return retval;
+	return error;
 }
 
-static int rmi_driver_irq_restore(struct rmi_device *rmi_dev)
+static int rmi_driver_clear_irq_bits(struct rmi_device *rmi_dev,
+				     unsigned long *mask)
 {
-	int retval = 0;
+	int error = 0;
 	struct rmi_driver_data *data = dev_get_drvdata(&rmi_dev->dev);
 	struct device *dev = &rmi_dev->dev;
 
 	mutex_lock(&data->irq_mutex);
-
-	if (data->irq_stored) {
-		retval = rmi_write_block(rmi_dev,
-				data->f01_container->fd.control_base_addr+1,
-				data->irq_mask_store, data->num_of_irq_regs);
-		if (retval < 0) {
-			dev_err(dev, "%s: Failed to write enabled interupts!",
-								__func__);
-			goto error_unlock;
-		}
-		memcpy(data->current_irq_mask, data->irq_mask_store,
-					data->num_of_irq_regs * sizeof(u8));
-		data->irq_stored = false;
-	} else {
-		retval = -EINVAL;
-		dev_err(dev, "%s: Attempted to restore values when not stored!",
-			__func__);
+	bitmap_andnot(data->new_irq_mask,
+		  data->current_irq_mask, mask, data->irq_count);
+	/* FIXME: convert to on-wire endianness before writing */
+	error = rmi_write_block(rmi_dev,
+			data->f01_container->fd.control_base_addr + 1,
+			data->new_irq_mask, data->num_of_irq_regs);
+	if (error < 0) {
+		dev_err(dev, "%s: Failed to change enabled interrupts!",
+							__func__);
+		goto error_unlock;
 	}
+	bitmap_copy(data->current_irq_mask, data->new_irq_mask,
+		    data->num_of_irq_regs);
 
 error_unlock:
 	mutex_unlock(&data->irq_mutex);
-	return retval;
+	return error;
 }
 
 static int rmi_driver_irq_handler(struct rmi_device *rmi_dev, int irq)
@@ -437,20 +417,23 @@ static int rmi_driver_reset_handler(struct rmi_device *rmi_dev)
 		return 0;
 	}
 
+	error = rmi_read_block(rmi_dev,
+			       data->f01_container->fd.control_base_addr + 1,
+			       data->current_irq_mask, data->num_of_irq_regs);
+	/* FIXME: convert from on-wire endianness before using */
+	if (error < 0) {
+		dev_err(&rmi_dev->dev, "%s: Failed to read current IRQ mask.\n",
+			__func__);
+		return error;
+	}
+
 	error = rmi_driver_process_reset_requests(rmi_dev);
 	if (error < 0)
 		return error;
 
-
 	error = rmi_driver_process_config_requests(rmi_dev);
 	if (error < 0)
 		return error;
-
-	if (data->irq_stored) {
-		error = rmi_driver_irq_restore(rmi_dev);
-		if (error < 0)
-			return error;
-	}
 
 	return 0;
 }
@@ -846,7 +829,7 @@ static int rmi_driver_probe(struct device *dev)
 	data->irq_status	= irq_memory + size * 0;
 	data->fn_irq_bits	= irq_memory + size * 1;
 	data->current_irq_mask	= irq_memory + size * 2;
-	data->irq_mask_store	= irq_memory + size * 3;
+	data->new_irq_mask	= irq_memory + size * 3;
 
 	irq_count = 0;
 	dev_dbg(dev, "Creating functions.");
@@ -957,8 +940,8 @@ static struct rmi_driver rmi_physical_driver = {
 	},
 	.irq_handler = rmi_driver_irq_handler,
 	.reset_handler = rmi_driver_reset_handler,
-	.store_irq_mask = rmi_driver_irq_save,
-	.restore_irq_mask = rmi_driver_irq_restore,
+	.clear_irq_bits = rmi_driver_clear_irq_bits,
+	.set_irq_bits = rmi_driver_set_irq_bits,
 	.set_input_params = rmi_driver_set_input_params,
 };
 
