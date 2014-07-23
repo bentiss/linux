@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011-2013 Synaptics Incorporated
+ * Copyright (c) 2011-2014 Synaptics Incorporated
  * Copyright (c) 2011 Unixphere
  *
  * This program is free software; you can redistribute it and/or modify it
@@ -111,9 +111,8 @@ void rmi_unregister_function_handler(struct rmi_function_handler *);
  * @driver: Device driver model driver
  * @irq_handler: Callback for handling irqs
  * @reset_handler: Called when a reset is detected.
- * @get_func_irq_mask: Callback for calculating interrupt mask
- * @store_irq_mask: Callback for storing and replacing interrupt mask
- * @restore_irq_mask: Callback for restoring previously stored interrupt mask
+ * @clear_irq_bits: Clear the specified bits in the current interrupt mask.
+ * @set_irq_bist: Set the specified bits in the current interrupt mask.
  * @store_productid: Callback for cache product id from function 01
  * @data: Private data pointer
  *
@@ -123,9 +122,8 @@ struct rmi_driver {
 
 	int (*irq_handler)(struct rmi_device *rmi_dev, int irq);
 	int (*reset_handler)(struct rmi_device *rmi_dev);
-	int (*store_irq_mask)(struct rmi_device *rmi_dev,
-				unsigned long *new_interupts);
-	int (*restore_irq_mask)(struct rmi_device *rmi_dev);
+	int (*clear_irq_bits)(struct rmi_device *rmi_dev, unsigned long *mask);
+	int (*set_irq_bits)(struct rmi_device *rmi_dev, unsigned long *mask);
 	int (*store_productid)(struct rmi_device *rmi_dev);
 	int (*set_input_params)(struct rmi_device *rmi_dev,
 			struct input_dev *input);

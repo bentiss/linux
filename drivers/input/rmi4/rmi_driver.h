@@ -47,8 +47,7 @@ struct rmi_driver_data {
 	unsigned long *irq_status;
 	unsigned long *fn_irq_bits;
 	unsigned long *current_irq_mask;
-	unsigned long *irq_mask_store;
-	bool irq_stored;
+	unsigned long *new_irq_mask;
 	struct mutex irq_mutex;
 
 	/* Following are used when polling. */
