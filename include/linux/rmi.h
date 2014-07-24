@@ -146,9 +146,14 @@ struct rmi_button_map {
 	u8 *map;
 };
 
+struct rmi_f30_button {
+	u16 button;
+	int sense;
+};
+
 struct rmi_f30_gpioled_map {
 	u8 ngpioleds;
-	u8 *map;
+	struct rmi_f30_button *map;
 };
 
 /**
