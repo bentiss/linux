@@ -6956,6 +6956,12 @@ L:	linux-arm-kernel@lists.infradead.org (moderated for non-subscribers)
 S:	Maintained
 F:	drivers/pinctrl/pinctrl-at91.c
 
+PIN CONTROLLER - RENESAS
+M:	Laurent Pinchart <laurent.pinchart@ideasonboard.com>
+L:	linux-sh@vger.kernel.org
+S:	Maintained
+F:	drivers/pinctrl/sh-pfc/
+
 PIN CONTROLLER - SAMSUNG
 M:	Tomasz Figa <t.figa@samsung.com>
 M:	Thomas Abraham <thomas.abraham@linaro.org>
@@ -7418,7 +7424,7 @@ S:	Orphan
 F:	drivers/net/wireless/ray*
 
 RCUTORTURE MODULE
-M:	Josh Triplett <josh@freedesktop.org>
+M:	Josh Triplett <josh@joshtriplett.org>
 M:	"Paul E. McKenney" <paulmck@linux.vnet.ibm.com>
 L:	linux-kernel@vger.kernel.org
 S:	Supported
@@ -8018,6 +8024,16 @@ S:	Supported
 F:	drivers/ata/
 F:	include/linux/ata.h
 F:	include/linux/libata.h
+
+SERIAL ATA AHCI PLATFORM devices support
+M:	Hans de Goede <hdegoede@redhat.com>
+M:	Tejun Heo <tj@kernel.org>
+L:	linux-ide@vger.kernel.org
+T:	git git://git.kernel.org/pub/scm/linux/kernel/git/tj/libata.git
+S:	Supported
+F:	drivers/ata/ahci_platform.c
+F:	drivers/ata/libahci_platform.c
+F:	include/linux/ahci_platform.h
 
 SERVER ENGINES 10Gbps iSCSI - BladeEngine 2 DRIVER
 M:	Jayamohan Kallickal <jayamohan.kallickal@emulex.com>
@@ -8906,7 +8922,7 @@ M:	Stephen Warren <swarren@wwwdotorg.org>
 M:	Thierry Reding <thierry.reding@gmail.com>
 L:	linux-tegra@vger.kernel.org
 Q:	http://patchwork.ozlabs.org/project/linux-tegra/list/
-T:	git git://git.kernel.org/pub/scm/linux/kernel/git/swarren/linux-tegra.git
+T:	git git://git.kernel.org/pub/scm/linux/kernel/git/tegra/linux.git
 S:	Supported
 N:	[^a-z]tegra
 
