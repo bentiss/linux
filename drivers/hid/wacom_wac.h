@@ -46,6 +46,7 @@
 
 /* wacom data packet report IDs */
 #define WACOM_REPORT_PENABLED		2
+#define WACOM_REPORT_PENABLED_BT	3
 #define WACOM_REPORT_INTUOSREAD		5
 #define WACOM_REPORT_INTUOSWRITE	6
 #define WACOM_REPORT_INTUOSPAD		12
@@ -73,6 +74,7 @@
 enum {
 	PENPARTNER = 0,
 	GRAPHIRE,
+	GRAPHIRE_BT,
 	WACOM_G4,
 	PTU,
 	PL,
@@ -84,6 +86,7 @@ enum {
 	INTUOS3L,
 	INTUOS4S,
 	INTUOS4,
+	INTUOS4WL,
 	INTUOS4L,
 	INTUOS5S,
 	INTUOS5,
@@ -169,6 +172,8 @@ struct wacom_wac {
 	int num_contacts_left;
 	int bat_charging;
 	int ps_connected;
+	u8 bt_features;
+	u8 bt_high_speed;
 };
 
 #endif

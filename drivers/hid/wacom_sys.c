@@ -20,6 +20,7 @@
 #define WAC_CMD_LED_CONTROL	0x20
 #define WAC_CMD_ICON_START	0x21
 #define WAC_CMD_ICON_XFER	0x23
+#define WAC_CMD_ICON_BT_XFER	0x26
 #define WAC_CMD_RETRIES		10
 
 static int wacom_get_report(struct hid_device *hdev, u8 type, u8 id,
@@ -35,13 +36,13 @@ static int wacom_get_report(struct hid_device *hdev, u8 type, u8 id,
 	return retval;
 }
 
-static int wacom_set_report(struct hid_device *hdev, u8 type, u8 id,
-			    void *buf, size_t size, unsigned int retries)
+static int wacom_set_report(struct hid_device *hdev, u8 type, u8 *buf,
+			    size_t size, unsigned int retries)
 {
 	int retval;
 
 	do {
-		retval = hid_hw_raw_request(hdev, id, buf, size, type,
+		retval = hid_hw_raw_request(hdev, buf[0], buf, size, type,
 				HID_REQ_SET_REPORT);
 	} while ((retval == -ETIMEDOUT || retval == -EPIPE) && --retries);
 
@@ -250,8 +251,8 @@ static int wacom_set_device_mode(struct hid_device *hdev, int report_id,
 		rep_data[0] = report_id;
 		rep_data[1] = mode;
 
-		error = wacom_set_report(hdev, HID_FEATURE_REPORT,
-		                         report_id, rep_data, length, 1);
+		error = wacom_set_report(hdev, HID_FEATURE_REPORT, rep_data,
+					 length, 1);
 		if (error >= 0)
 			error = wacom_get_report(hdev, HID_FEATURE_REPORT,
 			                         report_id, rep_data, length, 1);
@@ -260,6 +261,59 @@ static int wacom_set_device_mode(struct hid_device *hdev, int report_id,
 	kfree(rep_data);
 
 	return error < 0 ? error : 0;
+}
+
+static int wacom_bt_query_tablet_data(struct hid_device *hdev, u8 speed,
+		struct wacom_features *features)
+{
+	struct wacom *wacom = hid_get_drvdata(hdev);
+	int ret;
+	u8 rep_data[2];
+
+	switch (features->type) {
+	case GRAPHIRE_BT:
+		rep_data[0] = 0x03;
+		rep_data[1] = 0x00;
+		ret = wacom_set_report(hdev, HID_FEATURE_REPORT, rep_data, 2,
+					3);
+
+		if (ret >= 0) {
+			rep_data[0] = speed == 0 ? 0x05 : 0x06;
+			rep_data[1] = 0x00;
+
+			ret = wacom_set_report(hdev, HID_FEATURE_REPORT,
+						rep_data, 2, 3);
+
+			if (ret >= 0) {
+				wacom->wacom_wac.bt_high_speed = speed;
+				return 0;
+			}
+		}
+
+		/*
+		 * Note that if the raw queries fail, it's not a hard failure
+		 * and it is safe to continue
+		 */
+		hid_warn(hdev, "failed to poke device, command %d, err %d\n",
+			 rep_data[0], ret);
+		break;
+	case INTUOS4WL:
+		if (speed == 1)
+			wacom->wacom_wac.bt_features &= ~0x20;
+		else
+			wacom->wacom_wac.bt_features |= 0x20;
+
+		rep_data[0] = 0x03;
+		rep_data[1] = wacom->wacom_wac.bt_features;
+
+		ret = wacom_set_report(hdev, HID_FEATURE_REPORT, rep_data, 2,
+					1);
+		if (ret >= 0)
+			wacom->wacom_wac.bt_high_speed = speed;
+		break;
+	}
+
+	return 0;
 }
 
 /*
@@ -272,6 +326,9 @@ static int wacom_set_device_mode(struct hid_device *hdev, int report_id,
 static int wacom_query_tablet_data(struct hid_device *hdev,
 		struct wacom_features *features)
 {
+	if (hdev->bus == BUS_BLUETOOTH)
+		return wacom_bt_query_tablet_data(hdev, 1, features);
+
 	if (features->device_type == BTN_TOOL_FINGER) {
 		if (features->type > TABLETPC) {
 			/* MT Tablet PC touch */
@@ -463,39 +520,40 @@ static int wacom_led_control(struct wacom *wacom)
 		buf[4] = wacom->led.img_lum;
 	}
 
-	retval = wacom_set_report(wacom->hdev, HID_FEATURE_REPORT,
-				  WAC_CMD_LED_CONTROL, buf, 9, WAC_CMD_RETRIES);
+	retval = wacom_set_report(wacom->hdev, HID_FEATURE_REPORT, buf, 9,
+				  WAC_CMD_RETRIES);
 	kfree(buf);
 
 	return retval;
 }
 
-static int wacom_led_putimage(struct wacom *wacom, int button_id, const void *img)
+static int wacom_led_putimage(struct wacom *wacom, int button_id, u8 xfer_id,
+		const unsigned len, const void *img)
 {
 	unsigned char *buf;
 	int i, retval;
+	const unsigned chunk_len = len / 4; /* 4 chunks are needed to be sent */
 
-	buf = kzalloc(259, GFP_KERNEL);
+	buf = kzalloc(chunk_len + 3 , GFP_KERNEL);
 	if (!buf)
 		return -ENOMEM;
 
 	/* Send 'start' command */
 	buf[0] = WAC_CMD_ICON_START;
 	buf[1] = 1;
-	retval = wacom_set_report(wacom->hdev, HID_FEATURE_REPORT,
-				  WAC_CMD_ICON_START, buf, 2, WAC_CMD_RETRIES);
+	retval = wacom_set_report(wacom->hdev, HID_FEATURE_REPORT, buf, 2,
+				  WAC_CMD_RETRIES);
 	if (retval < 0)
 		goto out;
 
-	buf[0] = WAC_CMD_ICON_XFER;
+	buf[0] = xfer_id;
 	buf[1] = button_id & 0x07;
 	for (i = 0; i < 4; i++) {
 		buf[2] = i;
-		memcpy(buf + 3, img + i * 256, 256);
+		memcpy(buf + 3, img + i * chunk_len, chunk_len);
 
 		retval = wacom_set_report(wacom->hdev, HID_FEATURE_REPORT,
-					  WAC_CMD_ICON_XFER,
-					  buf, 259, WAC_CMD_RETRIES);
+					  buf, chunk_len + 3, WAC_CMD_RETRIES);
 		if (retval < 0)
 			break;
 	}
@@ -503,8 +561,8 @@ static int wacom_led_putimage(struct wacom *wacom, int button_id, const void *im
 	/* Send 'stop' */
 	buf[0] = WAC_CMD_ICON_START;
 	buf[1] = 0;
-	wacom_set_report(wacom->hdev, HID_FEATURE_REPORT, WAC_CMD_ICON_START,
-			 buf, 2, WAC_CMD_RETRIES);
+	wacom_set_report(wacom->hdev, HID_FEATURE_REPORT, buf, 2,
+			 WAC_CMD_RETRIES);
 
 out:
 	kfree(buf);
@@ -596,13 +654,23 @@ static ssize_t wacom_button_image_store(struct device *dev, int button_id,
 	struct hid_device *hdev = container_of(dev, struct hid_device, dev);
 	struct wacom *wacom = hid_get_drvdata(hdev);
 	int err;
+	unsigned len;
+	u8 xfer_id;
 
-	if (count != 1024)
+	if (hdev->bus == BUS_BLUETOOTH) {
+		len = 256;
+		xfer_id = WAC_CMD_ICON_BT_XFER;
+	} else {
+		len = 1024;
+		xfer_id = WAC_CMD_ICON_XFER;
+	}
+
+	if (count != len)
 		return -EINVAL;
 
 	mutex_lock(&wacom->lock);
 
-	err = wacom_led_putimage(wacom, button_id, buf);
+	err = wacom_led_putimage(wacom, button_id, xfer_id, len, buf);
 
 	mutex_unlock(&wacom->lock);
 
@@ -678,6 +746,7 @@ static int wacom_initialize_leds(struct wacom *wacom)
 	switch (wacom->wacom_wac.features.type) {
 	case INTUOS4S:
 	case INTUOS4:
+	case INTUOS4WL:
 	case INTUOS4L:
 		wacom->led.select[0] = 0;
 		wacom->led.select[1] = 0;
@@ -744,6 +813,7 @@ static void wacom_destroy_leds(struct wacom *wacom)
 	switch (wacom->wacom_wac.features.type) {
 	case INTUOS4S:
 	case INTUOS4:
+	case INTUOS4WL:
 	case INTUOS4L:
 		sysfs_remove_group(&wacom->hdev->dev.kobj,
 				   &intuos4_led_attr_group);
@@ -889,6 +959,38 @@ static void wacom_destroy_battery(struct wacom *wacom)
 		wacom->ac.dev = NULL;
 	}
 }
+
+static ssize_t wacom_show_speed(struct device *dev,
+				struct device_attribute
+				*attr, char *buf)
+{
+	struct hid_device *hdev = container_of(dev, struct hid_device, dev);
+	struct wacom *wacom = hid_get_drvdata(hdev);
+
+	return snprintf(buf, PAGE_SIZE, "%i\n", wacom->wacom_wac.bt_high_speed);
+}
+
+static ssize_t wacom_store_speed(struct device *dev,
+				struct device_attribute *attr,
+				const char *buf, size_t count)
+{
+	struct hid_device *hdev = container_of(dev, struct hid_device, dev);
+	struct wacom *wacom = hid_get_drvdata(hdev);
+	u8 new_speed;
+
+	if (kstrtou8(buf, 0, &new_speed))
+		return -EINVAL;
+
+	if (new_speed != 0 && new_speed != 1)
+		return -EINVAL;
+
+	wacom_bt_query_tablet_data(hdev, new_speed, &wacom->wacom_wac.features);
+
+	return count;
+}
+
+static DEVICE_ATTR(speed, S_IRUGO | S_IWUSR | S_IWGRP,
+		wacom_show_speed, wacom_store_speed);
 
 static struct input_dev *wacom_allocate_input(struct wacom *wacom)
 {
@@ -1210,6 +1312,9 @@ static int wacom_probe(struct hid_device *hdev,
 		features->y_max = 4096;
 	}
 
+	if (hdev->bus == BUS_BLUETOOTH)
+		features->quirks |= WACOM_QUIRK_BATTERY;
+
 	wacom_setup_device_quirks(features);
 
 	/* set unit to "100th of a mm" for devices not reported by HID */
@@ -1241,10 +1346,25 @@ static int wacom_probe(struct hid_device *hdev,
 	if (error)
 		goto fail2;
 
+	if (!(features->quirks & WACOM_QUIRK_MONITOR) &&
+	     (features->quirks & WACOM_QUIRK_BATTERY)) {
+		error = wacom_initialize_battery(wacom);
+		if (error)
+			goto fail3;
+	}
+
 	if (!(features->quirks & WACOM_QUIRK_NO_INPUT)) {
 		error = wacom_register_inputs(wacom);
 		if (error)
-			goto fail3;
+			goto fail4;
+	}
+
+	if (hdev->bus == BUS_BLUETOOTH) {
+		error = device_create_file(&hdev->dev, &dev_attr_speed);
+		if (error)
+			hid_warn(hdev,
+				 "can't create sysfs speed attribute err: %d\n",
+				 error);
 	}
 
 	/* Note that if query fails it is not a hard failure */
@@ -1254,7 +1374,7 @@ static int wacom_probe(struct hid_device *hdev,
 	error = hid_hw_start(hdev, HID_CONNECT_HIDRAW);
 	if (error) {
 		hid_err(hdev, "hw start failed\n");
-		goto fail4;
+		goto fail5;
 	}
 
 	if (features->quirks & WACOM_QUIRK_MONITOR)
@@ -1267,7 +1387,10 @@ static int wacom_probe(struct hid_device *hdev,
 
 	return 0;
 
- fail4:	wacom_unregister_inputs(wacom);
+ fail5:	if (hdev->bus == BUS_BLUETOOTH)
+		device_remove_file(&hdev->dev, &dev_attr_speed);
+	wacom_unregister_inputs(wacom);
+ fail4:	wacom_destroy_battery(wacom);
  fail3:	wacom_destroy_leds(wacom);
  fail2:	wacom_remove_shared_data(wacom_wac);
  fail1:	kfree(wacom);
@@ -1283,6 +1406,8 @@ static void wacom_remove(struct hid_device *hdev)
 
 	cancel_work_sync(&wacom->work);
 	wacom_unregister_inputs(wacom);
+	if (hdev->bus == BUS_BLUETOOTH)
+		device_remove_file(&hdev->dev, &dev_attr_speed);
 	wacom_destroy_battery(wacom);
 	wacom_destroy_leds(wacom);
 	wacom_remove_shared_data(&wacom->wacom_wac);
@@ -1324,3 +1449,8 @@ static struct hid_driver wacom_driver = {
 	.raw_event =	wacom_raw_event,
 };
 module_hid_driver(wacom_driver);
+
+MODULE_VERSION(DRIVER_VERSION);
+MODULE_AUTHOR(DRIVER_AUTHOR);
+MODULE_DESCRIPTION(DRIVER_DESC);
+MODULE_LICENSE(DRIVER_LICENSE);
