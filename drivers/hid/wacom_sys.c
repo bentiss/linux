@@ -14,6 +14,7 @@
 #include "wacom_wac.h"
 #include "wacom.h"
 #include <linux/input/mt.h>
+#include <linux/firmware.h>
 
 #define WAC_MSG_RETRIES		5
 
@@ -438,6 +439,87 @@ static int wacom_query_tablet_data(struct hid_device *hdev,
 			return wacom_set_device_mode(hdev, 2, 2, 2);
 		}
 	}
+
+	return 0;
+}
+
+static void hid_fw_get_rdesc(struct hid_device *hdev, char *name)
+{
+	struct wacom *wacom = hid_get_drvdata(hdev);
+	const struct firmware *fw = wacom->fw;
+	u32 rdesc_size;
+	u32 size;
+	const u8 *data;
+	char type;
+	u8 *rdesc;
+	int ret;
+	size_t index = 0;
+	bool valid = true;
+	bool found = false;
+
+	hid_info(hdev, "loaded fw file: %s\n", name);
+
+	while (index < fw->size) {
+		data = &fw->data[index];
+
+		type = data[0];
+		data += 1;
+		index += 1;
+
+		size = get_unaligned_le32(data);
+		data += 4;
+		index += 4 + size;
+
+		if ((type != 'O' && type != 'R') || index > fw->size) {
+			hid_err(hdev, "fw '%s' is corrupted.\n", name);
+			ret = -ENODATA;
+			goto out_fw;
+		}
+
+		if (type == 'O') {
+			/* match against current report descriptor */
+			valid = (hdev->dev_rsize == size) &&
+				!memcmp(data, hdev->dev_rdesc, size);
+		} else if (valid && !found) {
+			rdesc_size = size;
+			rdesc = kmemdup(data, size, GFP_KERNEL);
+			if (!rdesc) {
+				ret = -ENOMEM;
+				goto out_fw;
+			}
+			found = true;
+		}
+	}
+
+	if (found) {
+		hid_info(hdev, "using report descriptor in %s\n", name);
+		kfree(hdev->dev_rdesc);
+		hdev->dev_rdesc = rdesc;
+		hdev->dev_rsize = rdesc_size;
+	}
+
+out_fw:
+	release_firmware(fw);
+	wacom->fw = NULL;
+	return;
+}
+
+static int hid_load_external_rdesc(struct hid_device *hdev)
+{
+	struct wacom *wacom = hid_get_drvdata(hdev);
+	char name[32];
+	int ret;
+
+	snprintf(name, sizeof(name) - 1,
+		 "hid/%04x_%04x_%04x.bin",
+		 hdev->bus, hdev->vendor, hdev->product);
+
+	ret = request_firmware(&wacom->fw, name, &hdev->dev);
+	if (ret)
+		return ret;
+
+	if (wacom->fw)
+		hid_fw_get_rdesc(hdev, name);
 
 	return 0;
 }
@@ -1710,6 +1792,13 @@ static int wacom_probe(struct hid_device *hdev,
 	hid_set_drvdata(hdev, wacom);
 	wacom->hdev = hdev;
 
+	wacom_wac = &wacom->wacom_wac;
+	wacom_wac->features = *((struct wacom_features *)id->driver_data);
+	features = &wacom_wac->features;
+
+	if (features->type == HID_GENERIC)
+		hid_load_external_rdesc(hdev);
+
 	/* ask for the report descriptor to be loaded by HID */
 	error = hid_parse(hdev);
 	if (error) {
@@ -1717,9 +1806,6 @@ static int wacom_probe(struct hid_device *hdev,
 		goto fail_parse;
 	}
 
-	wacom_wac = &wacom->wacom_wac;
-	wacom_wac->features = *((struct wacom_features *)id->driver_data);
-	features = &wacom_wac->features;
 	features->pktlen = wacom_compute_pktlen(hdev);
 	if (features->pktlen > WACOM_PKGLEN_MAX) {
 		error = -EINVAL;
