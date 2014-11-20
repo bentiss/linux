@@ -3060,13 +3060,10 @@ int wacom_setup_pad_input_capabilities(struct input_dev *input_dev,
 				   struct wacom_wac *wacom_wac)
 {
 	struct wacom_features *features = &wacom_wac->features;
+	bool generic_hid_configured = input_dev->evbit[0] == 0;
 
 	if (!(features->device_type & WACOM_DEVICETYPE_PAD))
 		return -ENODEV;
-
-	if (features->type == HID_GENERIC)
-		/* setup has already been done */
-		return input_dev->evbit[0] == 0;
 
 	input_dev->evbit[0] |= BIT_MASK(EV_KEY) | BIT_MASK(EV_ABS);
 
@@ -3079,6 +3076,10 @@ int wacom_setup_pad_input_capabilities(struct input_dev *input_dev,
 
 	/* kept for making udev and libwacom accepting the pad */
 	__set_bit(BTN_STYLUS, input_dev->keybit);
+
+	if (features->type == HID_GENERIC)
+		/* setup has already been done */
+		return generic_hid_configured;
 
 	wacom_setup_numbered_buttons(input_dev, features->numbered_buttons);
 
