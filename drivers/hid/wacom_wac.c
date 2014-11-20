@@ -1562,12 +1562,17 @@ static void wacom_wac_pen_usage_mapping(struct hid_device *hdev,
 		break;
 	case HID_DG_TOOL_ID:
 		wacom_map_usage(input, usage, field, EV_ABS, ABS_MISC, 0);
+		input_set_abs_params(input, ABS_MISC, 0, 0, 0, 0);
+		input_set_abs_params(input, ABS_RZ, -900, 899, 0, 0);
+		input_set_abs_params(input, ABS_THROTTLE, -1023, 1023, 0, 0);
+
 		input_set_capability(input, EV_KEY, BTN_TOOL_PEN);
 		input_set_capability(input, EV_KEY, BTN_TOOL_RUBBER);
 		input_set_capability(input, EV_KEY, BTN_TOOL_BRUSH);
 		input_set_capability(input, EV_KEY, BTN_TOOL_PENCIL);
 		input_set_capability(input, EV_KEY, BTN_TOOL_AIRBRUSH);
 		input_set_capability(input, EV_KEY, BTN_TOOL_MOUSE);
+		input_set_capability(input, EV_KEY, BTN_TOOL_LENS);
 		break;
 	}
 
@@ -1718,7 +1723,7 @@ static int wacom_wac_pen_event(struct hid_device *hdev, struct hid_field *field,
 		hdata->tool_id = wacom_replace_bits(hdata->tool_id, value,
 						    shift, size);
 		hdata->tool_type = wacom_intuos_get_tool_type(hdata->tool_id);
-		break;
+		return 0;
 	}
 
 	/* send pen events only when touch is up or forced out */
@@ -1787,9 +1792,9 @@ static void wacom_wac_pen_report(struct hid_device *hdev,
 	struct hid_data *hdata = &wacom_wac->hid_data;
 	bool prox = hdata->inrange_state;
 
-	if (!wacom_wac->shared->stylus_in_proximity) /* first in prox */
+	if (!wacom_wac->shared->stylus_in_proximity && !hdata->tool_type) /* first in prox */
 		/* Going into proximity select tool */
-		wacom_wac->tool[0] = hdata->invert_state ?
+		hdata->tool_type = hdata->invert_state ?
 						BTN_TOOL_RUBBER : BTN_TOOL_PEN;
 
 	/* keep pen state for touch events */
@@ -1799,7 +1804,7 @@ static void wacom_wac_pen_report(struct hid_device *hdev,
 	if (!wacom_wac->shared->touch_down) {
 		input_report_key(input, BTN_TOUCH,
 				hdata->tipswitch);
-		input_report_key(input, wacom_wac->tool[0], prox);
+		input_report_key(input, hdata->tool_type, prox);
 
 		input_event(input, EV_ABS, ABS_X, hdata->x);
 		input_event(input, EV_ABS, ABS_Y, hdata->y);
@@ -1811,11 +1816,16 @@ static void wacom_wac_pen_report(struct hid_device *hdev,
 		input_event(input, EV_ABS, ABS_TILT_X, hdata->x_tilt);
 		input_event(input, EV_ABS, ABS_TILT_Y, hdata->y_tilt);
 		input_event(input, EV_ABS, ABS_WHEEL, hdata->wheel);
+		input_event(input, EV_ABS, ABS_MISC, hdata->tool_id);
+		input_event(input, EV_MSC, MSC_SERIAL, hdata->hserial);
 
 		hdata->tipswitch = false;
 
 		input_sync(input);
 	}
+
+	if (!prox)
+		hdata->tool_type = 0;
 }
 
 static void wacom_wac_pad_report(struct hid_device *hdev,
