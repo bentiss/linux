@@ -221,6 +221,7 @@ struct hid_data {
 	int cc_value_index;
 	int num_expected;
 	int num_received;
+	int valuable_data;
 };
 
 struct wacom_wac {
