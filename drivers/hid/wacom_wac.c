@@ -1660,15 +1660,19 @@ static int wacom_wac_pen_event(struct hid_device *hdev, struct hid_field *field,
 	switch (usage_code) {
 	case HID_GD_X:
 		hdata->x = wacom_replace_bits(hdata->x, value, shift, size);
+		hdata->valuable_data = true;
 		return 0;
 	case HID_GD_Y:
 		hdata->y = wacom_replace_bits(hdata->y, value, shift, size);
+		hdata->valuable_data = true;
 		return 0;
 	case HID_GD_RX:
 		hdata->rx = wacom_replace_bits(hdata->rx, value, shift, size);
+		hdata->valuable_data = true;
 		return 0;
 	case HID_GD_RY:
 		hdata->ry = wacom_replace_bits(hdata->ry, value, shift, size);
+		hdata->valuable_data = true;
 		return 0;
 	case HID_GD_WHEEL:
 		if (field->flags & HID_MAIN_ITEM_RELATIVE) {
@@ -1678,17 +1682,21 @@ static int wacom_wac_pen_event(struct hid_device *hdev, struct hid_field *field,
 		} else {
 			hdata->wheel = wacom_replace_bits(hdata->wheel, value, shift, size);
 		}
+		hdata->valuable_data = true;
 		return 0;
 	case HID_DG_TIPPRESSURE:
 		hdata->pressure = wacom_replace_bits(hdata->pressure, value, shift, size);
+		hdata->valuable_data = true;
 		return 0;
 	case HID_DG_X_TILT:
 		hdata->x_tilt = wacom_replace_bits(hdata->x_tilt, value, shift,
 						   size);
+		hdata->valuable_data = true;
 		return 0;
 	case HID_DG_Y_TILT:
 		hdata->y_tilt = wacom_replace_bits(hdata->y_tilt, value, shift,
 						   size);
+		hdata->valuable_data = true;
 		return 0;
 	case HID_DG_TWIST:
 		hdata->raw_twist = wacom_replace_bits(hdata->raw_twist, value, shift, size);
@@ -1700,9 +1708,11 @@ static int wacom_wac_pen_event(struct hid_device *hdev, struct hid_field *field,
 		} else {
 			hdata->twist = 450 - hdata->twist;
 		}
+		hdata->valuable_data = true;
 		return 0;
 	case HID_DG_ALTITUDE:
 		hdata->distance = wacom_replace_bits(hdata->distance, value, shift, size);
+		hdata->valuable_data = true;
 		return 0;
 	case HID_DG_INRANGE:
 		hdata->inrange_state = value;
@@ -1732,6 +1742,7 @@ static int wacom_wac_pen_event(struct hid_device *hdev, struct hid_field *field,
 		return 0;
 
 	input_event(input, usage->type, usage->code, value);
+	hdata->valuable_data = true;
 
 	return 0;
 }
@@ -1793,6 +1804,13 @@ static void wacom_wac_pen_report(struct hid_device *hdev,
 	struct hid_data *hdata = &wacom_wac->hid_data;
 	bool prox = hdata->inrange_state;
 
+	if (prox && !hdata->valuable_data)
+		return;
+
+	/* the stylus is already out, and we received a not in prox event */
+	if (!prox && !wacom_wac->shared->stylus_in_proximity)
+		return;
+
 	if (!wacom_wac->shared->stylus_in_proximity && !hdata->tool_type) /* first in prox */
 		/* Going into proximity select tool */
 		hdata->tool_type = hdata->invert_state ?
@@ -1828,6 +1846,7 @@ static void wacom_wac_pen_report(struct hid_device *hdev,
 
 	if (!prox)
 		hdata->tool_type = 0;
+	hdata->valuable_data = false;
 }
 
 static void wacom_wac_pad_report(struct hid_device *hdev,
