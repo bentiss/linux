@@ -1525,6 +1525,7 @@ static void wacom_wac_pen_usage_mapping(struct hid_device *hdev,
 			wacom_map_usage(input, usage, field, EV_ABS, ABS_WHEEL, 0);
 		break;
 	case HID_DG_TIPPRESSURE:
+		wacom_map_usage(input, usage, field, EV_KEY, BTN_TOUCH, 0);
 		wacom_map_usage(input, usage, field, EV_ABS, ABS_PRESSURE, 0);
 		break;
 	case HID_DG_X_TILT:
@@ -1802,8 +1803,9 @@ static void wacom_wac_pen_report(struct hid_device *hdev,
 
 	/* send pen events only when touch is up or forced out */
 	if (!wacom_wac->shared->touch_down) {
-		input_report_key(input, BTN_TOUCH,
-				hdata->tipswitch);
+		if (!hdata->tipswitch && hdata->pressure > 0)
+			hdata->tipswitch = 1;
+		input_report_key(input, BTN_TOUCH, hdata->tipswitch);
 		input_report_key(input, hdata->tool_type, prox);
 
 		input_event(input, EV_ABS, ABS_X, hdata->x);
