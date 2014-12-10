@@ -13,6 +13,7 @@
 
 #include "wacom_wac.h"
 #include "wacom.h"
+#include <linux/input/mt.h>
 
 #define WAC_MSG_RETRIES		5
 
@@ -236,6 +237,21 @@ static void wacom_usage_mapping(struct hid_device *hdev,
 		wacom_wac_usage_mapping(hdev, field, usage);
 }
 
+static void wacom_post_parse_hid(struct hid_device *hdev,
+				 struct wacom_features *features)
+{
+	struct wacom *wacom = hid_get_drvdata(hdev);
+	struct wacom_wac *wacom_wac = &wacom->wacom_wac;
+
+	if (features->type == HID_GENERIC) {
+		/* Any last-minute generic device setup */
+		if (features->touch_max > 1) {
+			input_mt_init_slots(wacom_wac->input, wacom_wac->features.touch_max,
+				    INPUT_MT_DIRECT);
+		}
+	}
+}
+
 static void wacom_parse_hid(struct hid_device *hdev,
 			   struct wacom_features *features)
 {
@@ -270,6 +286,8 @@ static void wacom_parse_hid(struct hid_device *hdev,
 				wacom_usage_mapping(hdev, hreport->field[i],
 						hreport->field[i]->usage + j);
 	}
+
+	wacom_post_parse_hid(hdev, features);
 }
 
 static int wacom_hid_set_device_mode(struct hid_device *hdev)
@@ -1328,12 +1346,6 @@ static void wacom_calculate_res(struct wacom_features *features)
 						    features->unitExpo);
 }
 
-static int wacom_hid_report_len(struct hid_report *report)
-{
-	/* equivalent to DIV_ROUND_UP(report->size, 8) + !!(report->id > 0) */
-	return ((report->size - 1) >> 3) + 1 + (report->id > 0);
-}
-
 static size_t wacom_compute_pktlen(struct hid_device *hdev)
 {
 	struct hid_report_enum *report_enum;
@@ -1343,7 +1355,7 @@ static size_t wacom_compute_pktlen(struct hid_device *hdev)
 	report_enum = hdev->report_enum + HID_INPUT_REPORT;
 
 	list_for_each_entry(report, &report_enum->report_list, list) {
-		size_t report_size = wacom_hid_report_len(report);
+		size_t report_size = hid_report_len(report);
 		if (report_size > size)
 			size = report_size;
 	}
