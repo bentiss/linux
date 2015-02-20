@@ -171,7 +171,6 @@ static const char * const topbuttonpad_pnp_ids[] = {
 	"LEN0023",
 	"LEN002A",
 	"LEN002B",
-	"LEN002C",
 	"LEN002D",
 	"LEN002E",
 	"LEN0033", /* Helix */
