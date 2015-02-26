@@ -930,7 +930,8 @@ static int uclogic_raw_event(struct hid_device *hdev, struct hid_report *report,
 	struct usb_interface *intf = to_usb_interface(hdev->dev.parent);
 
 	/* If this is a pen input report */
-	if (intf->cur_altsetting->desc.bInterfaceNumber == 0 &&
+	if (hdev->product == USB_DEVICE_ID_HUION_TABLET &&
+	    intf->cur_altsetting->desc.bInterfaceNumber == 0 &&
 	    report->type == HID_INPUT_REPORT &&
 	    report->id == 0x07 && size >= 2)
 		/* Invert the in-range bit */
