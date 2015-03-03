@@ -83,6 +83,9 @@ static int _hid_sensor_power_state(struct hid_sensor_common *st, bool state)
 	sensor_hub_get_feature(st->hsdev, st->power_state.report_id,
 			       st->power_state.index,
 			       sizeof(state_val), &state_val);
+	if (state && poll_value)
+		msleep_interruptible(poll_value * 2);
+
 	return 0;
 }
 EXPORT_SYMBOL(hid_sensor_power_state);
