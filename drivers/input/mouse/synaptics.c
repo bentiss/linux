@@ -67,6 +67,9 @@
 #define X_MAX_POSITIVE 8176
 #define Y_MAX_POSITIVE 8176
 
+/* maximum ABS_MT_POSITION displacement (in mm) */
+#define DMAX 10
+
 /*****************************************************************************
  *	Stuff we need even when we do not want native Synaptics support
  ****************************************************************************/
@@ -135,8 +138,9 @@ static const struct min_max_quirk min_max_pnpid_table[] = {
 		1232, 5710, 1156, 4696
 	},
 	{
-		(const char * const []){"LEN0034", "LEN0036", "LEN0039",
-					"LEN2002", "LEN2004", NULL},
+		(const char * const []){"LEN0034", "LEN0036", "LEN0037",
+					"LEN0039", "LEN2002", "LEN2004",
+					NULL},
 		1024, 5112, 2024, 4832
 	},
 	{
@@ -165,7 +169,7 @@ static const char * const topbuttonpad_pnp_ids[] = {
 	"LEN0034", /* T431s, L440, L540, T540, W540, X1 Carbon 2nd */
 	"LEN0035", /* X240 */
 	"LEN0036", /* T440 */
-	"LEN0037",
+	"LEN0037", /* X1 Carbon 2nd */
 	"LEN0038",
 	"LEN0039", /* T440s */
 	"LEN0041",
@@ -809,7 +813,7 @@ static void synaptics_report_mt_data(struct psmouse *psmouse,
 		pos[i].y = synaptics_invert_y(hw[i]->y);
 	}
 
-	input_mt_assign_slots(dev, slot, pos, nsemi);
+	input_mt_assign_slots(dev, slot, pos, nsemi, DMAX * priv->x_res);
 
 	for (i = 0; i < nsemi; i++) {
 		input_mt_slot(dev, slot[i]);
@@ -1450,11 +1454,6 @@ int synaptics_init_relative(struct psmouse *psmouse)
 	return __synaptics_init(psmouse, false);
 }
 
-bool synaptics_supported(void)
-{
-	return true;
-}
-
 #else /* CONFIG_MOUSE_PS2_SYNAPTICS */
 
 void __init synaptics_module_init(void)
@@ -1464,11 +1463,6 @@ void __init synaptics_module_init(void)
 int synaptics_init(struct psmouse *psmouse)
 {
 	return -ENOSYS;
-}
-
-bool synaptics_supported(void)
-{
-	return false;
 }
 
 #endif /* CONFIG_MOUSE_PS2_SYNAPTICS */
