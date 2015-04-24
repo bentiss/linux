@@ -67,6 +67,9 @@
 #define X_MAX_POSITIVE 8176
 #define Y_MAX_POSITIVE 8176
 
+/* maximum ABS_MT_POSITION displacement (in mm) */
+#define DMAX 10
+
 /*****************************************************************************
  *	Stuff we need even when we do not want native Synaptics support
  ****************************************************************************/
@@ -922,7 +925,7 @@ static void synaptics_report_mt_data(struct psmouse *psmouse,
 		pos[i].y = synaptics_invert_y(hw[i]->y);
 	}
 
-	input_mt_assign_slots(dev, slot, pos, nsemi, 0);
+	input_mt_assign_slots(dev, slot, pos, nsemi, DMAX * priv->x_res);
 
 	for (i = 0; i < nsemi; i++) {
 		input_mt_slot(dev, slot[i]);
@@ -1191,7 +1194,7 @@ static void set_input_params(struct psmouse *psmouse,
 					ABS_MT_POSITION_Y);
 		/* Image sensors can report per-contact pressure */
 		input_set_abs_params(dev, ABS_MT_PRESSURE, 0, 255, 0, 0);
-		input_mt_init_slots(dev, 2, INPUT_MT_POINTER | INPUT_MT_TRACK);
+		input_mt_init_slots(dev, 3, INPUT_MT_POINTER | INPUT_MT_TRACK);
 
 		/* Image sensors can signal 4 and 5 finger clicks */
 		__set_bit(BTN_TOOL_QUADTAP, dev->keybit);
