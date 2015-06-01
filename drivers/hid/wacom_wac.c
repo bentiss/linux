@@ -1072,8 +1072,17 @@ static int wacom_wac_finger_count_touches(struct wacom_wac *wacom)
 	int count = 0;
 	int i;
 
+<<<<<<< HEAD
 	if (touch_max == 1)
 		return test_bit(BTN_TOUCH, input->key) &&
+=======
+	if (!touch_max)
+		return 0;
+
+	/* non-HID_GENERIC single touch input doesn't call this routine */
+	if ((touch_max == 1) && (wacom->features.type == HID_GENERIC))
+		return wacom->hid_data.tipswitch &&
+>>>>>>> v4.1-rc5
 		       !wacom->shared->stylus_in_proximity;
 
 	for (i = 0; i < input->mt->num_slots; i++) {
