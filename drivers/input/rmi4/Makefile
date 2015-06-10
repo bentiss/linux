@@ -6,6 +6,7 @@ obj-$(CONFIG_RMI4_F11) += rmi_f11.o
 
 # Transports
 obj-$(CONFIG_RMI4_I2C) += rmi_i2c.o
+obj-$(CONFIG_RMI4_SMB) += rmi_smbus.o
 
 ccflags-$(CONFIG_RMI4_DEBUG) += -DDEBUG
 
