@@ -84,7 +84,7 @@ struct psmouse {
 };
 
 enum psmouse_type {
-	PSMOUSE_NONE,
+	PSMOUSE_NONE = 0,
 	PSMOUSE_PS2,
 	PSMOUSE_PS2PP,
 	PSMOUSE_THINKPS,
