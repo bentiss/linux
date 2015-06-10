@@ -444,6 +444,8 @@ int rmi_read_pdt_entry(struct rmi_device *rmi_dev, struct pdt_entry *entry,
 	u8 buf[RMI_PDT_ENTRY_SIZE];
 	int error;
 
+	pr_err("%s  %s:%d\n", __func__, __FILE__, __LINE__);
+
 	error = rmi_read_block(rmi_dev, pdt_address, buf, RMI_PDT_ENTRY_SIZE);
 	if (error) {
 		dev_err(&rmi_dev->dev, "Read PDT entry at %#06x failed, code: %d.\n",
@@ -459,6 +461,8 @@ int rmi_read_pdt_entry(struct rmi_device *rmi_dev, struct pdt_entry *entry,
 	entry->interrupt_source_count = buf[4] & RMI_PDT_INT_SOURCE_COUNT_MASK;
 	entry->function_version = (buf[4] & RMI_PDT_FUNCTION_VERSION_MASK) >> 5;
 	entry->function_number = buf[5];
+
+	pr_err("%s  %s:%d\n", __func__, __FILE__, __LINE__);
 
 	return 0;
 }
@@ -495,18 +499,28 @@ static int rmi_scan_pdt_page(struct rmi_device *rmi_dev,
 	int error;
 	int retval;
 
+	pr_err("%s  %s:%d\n", __func__, __FILE__, __LINE__);
+
 	for (addr = pdt_start; addr >= pdt_end; addr -= RMI_PDT_ENTRY_SIZE) {
 		error = rmi_read_pdt_entry(rmi_dev, &pdt_entry, addr);
 		if (error)
 			return error;
 
+		pr_err("%s  %s:%d\n", __func__, __FILE__, __LINE__);
+
 		if (RMI4_END_OF_PDT(pdt_entry.function_number))
 			break;
+
+		pr_err("%s  %s:%d\n", __func__, __FILE__, __LINE__);
 
 		retval = callback(rmi_dev, ctx, &pdt_entry);
 		if (retval != RMI_SCAN_CONTINUE)
 			return retval;
+		pr_err("%s  %s:%d\n", __func__, __FILE__, __LINE__);
+
 	}
+
+	pr_err("%s  %s:%d\n", __func__, __FILE__, __LINE__);
 
 	return (data->f01_bootloader_mode || addr == pdt_start) ?
 					RMI_SCAN_DONE : RMI_SCAN_CONTINUE;
@@ -612,6 +626,8 @@ static int rmi_create_function(struct rmi_device *rmi_dev,
 
 	dev_dbg(dev, "Initializing F%02X for %s.\n",
 		pdt->function_number, pdata->sensor_name);
+
+	pr_err("%s Initializing F%02X for %s %s:%d\n", __func__, pdt->function_number, pdata->sensor_name, __FILE__, __LINE__);
 
 	fn = kzalloc(sizeof(struct rmi_function) +
 			BITS_TO_LONGS(data->irq_count) * sizeof(unsigned long),
@@ -847,6 +863,8 @@ static int rmi_driver_probe(struct device *dev)
 		goto err_destroy_functions;
 	}
 
+	pr_err("%s  %s:%d\n", __func__, __FILE__, __LINE__);
+
 	retval = rmi_read_block(rmi_dev,
 				data->f01_container->fd.control_base_addr + 1,
 				data->current_irq_mask, data->num_of_irq_regs);
@@ -855,6 +873,8 @@ static int rmi_driver_probe(struct device *dev)
 			__func__);
 		goto err_destroy_functions;
 	}
+
+	pr_err("%s  %s:%d\n", __func__, __FILE__, __LINE__);
 
 	if (IS_ENABLED(CONFIG_PM_SLEEP)) {
 		data->pm_data = pdata->pm_data;
@@ -866,9 +886,13 @@ static int rmi_driver_probe(struct device *dev)
 		mutex_init(&data->suspend_mutex);
 	}
 
+	pr_err("%s  %s:%d\n", __func__, __FILE__, __LINE__);
+
 	if (gpio_is_valid(pdata->attn_gpio)) {
 		static const char GPIO_LABEL[] = "attn";
 		unsigned long gpio_flags = GPIOF_DIR_IN;
+
+	pr_err("%s  %s:%d\n", __func__, __FILE__, __LINE__);
 
 		data->irq = gpio_to_irq(pdata->attn_gpio);
 		if (pdata->level_triggered) {
@@ -908,6 +932,8 @@ static int rmi_driver_probe(struct device *dev)
 			}
 		}
 	} else {
+	pr_err("%s  %s:%d\n", __func__, __FILE__, __LINE__);
+
 		data->poll_interval = ktime_set(0,
 			(pdata->poll_interval_ms ? pdata->poll_interval_ms :
 			DEFAULT_POLL_INTERVAL_MS) * 1000 * 1000);
@@ -915,6 +941,8 @@ static int rmi_driver_probe(struct device *dev)
 
 	if (data->f01_container->dev.driver) {
 		/* Driver already bound, so enable ATTN now. */
+	pr_err("%s  %s:%d\n", __func__, __FILE__, __LINE__);
+
 		enable_sensor(rmi_dev);
 	}
 
