@@ -110,6 +110,11 @@ static int rmi_smb_get_command_code(struct rmi_transport_dev *xport,
 	struct mapping_table_entry *mapping_data = NULL;
 	u8 test_read[16];
 
+	pr_err("%s rmiaddr: %#06x, bytecount: %d, isread: %s %s:%d\n", __func__,
+		rmiaddr,
+		bytecount,
+		isread ? "true" : "false",
+		__FILE__, __LINE__);
 	mutex_lock(&rmi_smb->mappingtable_mutex);
 	for (i = 0; i < RMI_SMB2_MAP_SIZE; i++) {
 		if (rmi_smb->mapping_table[i].rmiaddr == rmiaddr) {
@@ -152,6 +157,7 @@ static int rmi_smb_get_command_code(struct rmi_transport_dev *xport,
 		rmi_smb->mapping_table[i].rmiaddr = 0x0000;
 		rmi_smb->mapping_table[i].readcount = 0;
 		rmi_smb->mapping_table[i].flags = 0;
+		pr_err("%s  %s:%d\n", __func__, __FILE__, __LINE__);
 		goto exit;
 	}
 	/* save to the driver level mapping table */
@@ -162,10 +168,15 @@ static int rmi_smb_get_command_code(struct rmi_transport_dev *xport,
 
 	memset(test_read, 0, sizeof(test_read));
 	retval = i2c_smbus_read_block_data(client, i + 0x80, test_read);
+	if (retval >= 0)
+		pr_err("%s %04x: %*ph %s:%d\n", __func__, i, (int)sizeof(test_read), test_read, __FILE__, __LINE__);
+	else
+		pr_err("%s  %04x: retval: %d %s:%d\n", __func__, i, retval, __FILE__, __LINE__);
 
 exit:
 	kfree(mapping_data);
 	mutex_unlock(&rmi_smb->mappingtable_mutex);
+	pr_err("%s commandcode: %#04x %s:%d\n", __func__, *commandcode, __FILE__, __LINE__);
 
 	return retval;
 }
@@ -188,6 +199,8 @@ static int rmi_smb_write_block(struct rmi_transport_dev *xport, u16 rmiaddr,
 			false, &commandcode);
 		if (retval < 0)
 			goto exit;
+
+		pr_err("%s rmiaddr: %#06x commandcode: %#04x %s:%d\n", __func__, rmiaddr, commandcode, __FILE__, __LINE__);
 
 		/* write to smb device */
 		retval = smb_block_write(xport, commandcode,
@@ -233,6 +246,7 @@ static int rmi_smb_read_block(struct rmi_transport_dev *xport, u16 rmiaddr,
 	int retval;
 	u8 commandcode;
 	int cur_len = (int)len;
+	u8 *inputbuff = databuff;
 
 	mutex_lock(&rmi_smb->page_mutex);
 	memset(databuff, 0, len);
@@ -247,6 +261,7 @@ static int rmi_smb_read_block(struct rmi_transport_dev *xport, u16 rmiaddr,
 		if (retval < 0)
 			goto exit;
 
+		pr_err("%s rmiaddr: %#06x commandcode: %#04x %s:%d\n", __func__, rmiaddr, commandcode, __FILE__, __LINE__);
 		/* read to smb device */
 		retval = smb_block_read(xport, commandcode,
 					databuff, block_len);
@@ -262,6 +277,8 @@ static int rmi_smb_read_block(struct rmi_transport_dev *xport, u16 rmiaddr,
 	retval = 0;
 
 exit:
+	pr_err("%s retval: %d : %*ph (len: %d) %s:%d\n", __func__, retval, (int)len, inputbuff, (int)len, __FILE__, __LINE__);
+
 	mutex_unlock(&rmi_smb->page_mutex);
 	return retval;
 }
