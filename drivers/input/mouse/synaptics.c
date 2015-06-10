@@ -359,6 +359,12 @@ static int synaptics_capability(struct psmouse *psmouse)
 				     "device claims to have extended capability 0x0c, but I'm not able to read it.\n");
 		} else {
 			priv->ext_cap_0c = (cap[0] << 16) | (cap[1] << 8) | cap[2];
+
+			if (SYN_CAP_INTERTOUCH(priv->ext_cap_0c)) {
+				psmouse_info(psmouse,
+					     "device claims to be supported by an other bus, aborting.\n");
+				return -1;
+			}
 		}
 	}
 
@@ -1462,7 +1468,10 @@ static int __synaptics_init(struct psmouse *psmouse, bool absolute_mode)
 	psmouse_reset(psmouse);
 
 	if (synaptics_query_hardware(psmouse)) {
-		psmouse_err(psmouse, "Unable to query device.\n");
+		if (!SYN_CAP_INTERTOUCH(priv->ext_cap_0c))
+			psmouse_err(psmouse, "Unable to query device.\n");
+		else
+			err = -ENODEV;
 		goto init_fail;
 	}
 
