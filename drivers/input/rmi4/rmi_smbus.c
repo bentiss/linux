@@ -30,9 +30,9 @@
 struct mapping_table_entry {
 	union {
 		struct {
-			u16 rmiaddr;
-			u8 readcount;
 			u8 flags;
+			u8 readcount;
+			u16 rmiaddr;
 		};
 		u8 entry[4];
 	};
@@ -104,47 +104,27 @@ static int rmi_smb_get_command_code(struct rmi_transport_dev *xport,
 {
 	struct rmi_smb_xport *rmi_smb =
 		container_of(xport, struct rmi_smb_xport, xport);
-	struct i2c_client *client = rmi_smb->client;
 	int i;
 	int retval;
-	struct mapping_table_entry *mapping_data = NULL;
-	u8 test_read[16];
+	struct mapping_table_entry mapping_data[2];
 
 	mutex_lock(&rmi_smb->mappingtable_mutex);
-	for (i = 0; i < RMI_SMB2_MAP_SIZE; i++) {
-		if (rmi_smb->mapping_table[i].rmiaddr == rmiaddr) {
-			if (isread) {
-				if (rmi_smb->mapping_table[i].readcount
-							== bytecount) {
-					*commandcode = i;
-					retval = 0;
-					goto exit;
-				}
-			} else {
-				if (rmi_smb->mapping_table[i].flags &
-							RMI_SMB2_MAP_FLAGS_WE) {
-					*commandcode = i;
-					retval = 0;
-					goto exit;
-				}
-			}
-		}
-	}
-	i = rmi_smb->table_index;
-	rmi_smb->table_index = (i + 1) % RMI_SMB2_MAP_SIZE;
 
-	mapping_data = kzalloc(sizeof(struct mapping_table_entry), GFP_KERNEL);
-	if (!mapping_data) {
-		retval = -ENOMEM;
-		goto exit;
-	}
+	i = 0;
+
 	/* constructs mapping table data entry. 4 bytes each entry */
-	mapping_data->rmiaddr = rmiaddr;
-	mapping_data->readcount = bytecount;
-	mapping_data->flags = RMI_SMB2_MAP_FLAGS_WE; /* enable write */
+	memset(mapping_data, 0, sizeof(mapping_data));
+
+	mapping_data[0].rmiaddr = cpu_to_be16(rmiaddr);
+	mapping_data[0].readcount = 0x20;
+	mapping_data[0].flags = !isread ? RMI_SMB2_MAP_FLAGS_WE : 0; /* enable write */
+
+	mapping_data[1].rmiaddr = cpu_to_be16(rmiaddr);
+	mapping_data[1].readcount = bytecount;
+	mapping_data[1].flags = !isread ? RMI_SMB2_MAP_FLAGS_WE : 0; /* enable write */
 
 	retval = smb_block_write(xport, i + 0x80, mapping_data,
-				 sizeof(struct mapping_table_entry));
+				 sizeof(mapping_data));
 
 	if (retval < 0) {
 		/* if not written to device mapping table */
@@ -157,14 +137,11 @@ static int rmi_smb_get_command_code(struct rmi_transport_dev *xport,
 	/* save to the driver level mapping table */
 	rmi_smb->mapping_table[i].rmiaddr = rmiaddr;
 	rmi_smb->mapping_table[i].readcount = bytecount;
-	rmi_smb->mapping_table[i].flags = RMI_SMB2_MAP_FLAGS_WE;
-	*commandcode = i;
+	rmi_smb->mapping_table[i].flags = !isread ? RMI_SMB2_MAP_FLAGS_WE : 0;
+	*commandcode = i + 1;
 
-	memset(test_read, 0, sizeof(test_read));
-	retval = i2c_smbus_read_block_data(client, i + 0x80, test_read);
 
 exit:
-	kfree(mapping_data);
 	mutex_unlock(&rmi_smb->mappingtable_mutex);
 
 	return retval;
@@ -186,6 +163,7 @@ static int rmi_smb_write_block(struct rmi_transport_dev *xport, u16 rmiaddr,
 		int block_len = min((int)len, SMB_MAX_COUNT);
 		retval = rmi_smb_get_command_code(xport, rmiaddr, block_len,
 			false, &commandcode);
+		retval = -1;
 		if (retval < 0)
 			goto exit;
 
@@ -243,7 +221,7 @@ static int rmi_smb_read_block(struct rmi_transport_dev *xport, u16 rmiaddr,
 		int block_len = min(cur_len, SMB_MAX_COUNT);
 
 		retval = rmi_smb_get_command_code(xport, rmiaddr, block_len,
-						  false, &commandcode);
+						  true, &commandcode);
 		if (retval < 0)
 			goto exit;
 
