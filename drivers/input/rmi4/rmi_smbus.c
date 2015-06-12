@@ -25,8 +25,6 @@
 #define RMI_SMB2_MAP_SIZE		8 /* 8 entry of 4 bytes each */
 #define RMI_SMB2_MAP_FLAGS_WE		0x01
 
-#define BUFFER_SIZE_INCREMENT		32
-
 struct mapping_table_entry {
 	union {
 		struct {
@@ -48,44 +46,21 @@ struct rmi_smb_xport {
 	u8 table_index;
 	struct mutex mappingtable_mutex;
 	struct mapping_table_entry mapping_table[RMI_SMB2_MAP_SIZE];
-
-	u8 *tx_buf;
-	size_t tx_buf_size;
 };
 
-/*SMB block write - wrapper over ic2_smb_write_block */
+/* SMB block write - wrapper over ic2_smb_write_block */
 static int smb_block_write(struct rmi_transport_dev *xport,
 			      u8 commandcode, const void *buf, size_t len)
 {
 	struct rmi_smb_xport *rmi_smb =
 		container_of(xport, struct rmi_smb_xport, xport);
 	struct i2c_client *client = rmi_smb->client;
-	int tx_size = len + 1;
 	int retval;
 
-	if (!rmi_smb->tx_buf || rmi_smb->tx_buf_size < tx_size) {
-		if (rmi_smb->tx_buf)
-			devm_kfree(&client->dev, rmi_smb->tx_buf);
-		rmi_smb->tx_buf_size = tx_size + BUFFER_SIZE_INCREMENT;
-		rmi_smb->tx_buf = devm_kzalloc(&client->dev,
-					       rmi_smb->tx_buf_size,
-					       GFP_KERNEL);
-		if (!rmi_smb->tx_buf) {
-			rmi_smb->tx_buf_size = 0;
-			retval = -ENOMEM;
-			goto exit;
-		}
-	}
+	retval = i2c_smbus_write_block_data(client, commandcode, len, buf);
 
-	rmi_smb->tx_buf[0] = commandcode & 0xff;
-	memcpy(rmi_smb->tx_buf + 1, buf, len);
-
-	retval = i2c_smbus_write_block_data(client, commandcode,
-					    tx_size, rmi_smb->tx_buf);
-
-exit:
 	dev_dbg(&client->dev,
-		"write %zd bytes at %#04x: %d (%*ph)\n",
+		"wrote %zd bytes at %#04x: %d (%*ph)\n",
 		len, commandcode, retval, (int)len, buf);
 
 	xport->stats.tx_count++;
