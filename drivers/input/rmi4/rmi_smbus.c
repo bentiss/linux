@@ -308,6 +308,7 @@ static int rmi_smb_probe(struct i2c_client *client,
 		 * Wait 1500 ms for it to do so.
 		 */
 		pdata->reset_delay_ms = 1500;
+		pdata->attn_gpio = -1;
 		rmi_smb->pdata_created = true;
 
 		client->dev.platform_data = pdata;
