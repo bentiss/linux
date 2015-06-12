@@ -592,6 +592,14 @@ static int rmi_initial_reset(struct rmi_device *rmi_dev,
 
 		mdelay(pdata->reset_delay_ms ?: DEFAULT_RESET_DELAY_MS);
 
+		error = rmi_reset(rmi_dev);
+		if (error) {
+			dev_err(&rmi_dev->dev,
+				"Initial post-reset failed. Code = %d.\n",
+				error);
+			return error;
+		}
+
 		return RMI_SCAN_DONE;
 	}
 
