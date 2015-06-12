@@ -43,6 +43,20 @@ struct rmi_smb_xport {
 	struct mapping_table_entry mapping_table[RMI_SMB2_MAP_SIZE];
 };
 
+static int rmi_smb_get_version(struct rmi_smb_xport *rmi_smb)
+{
+	struct i2c_client *client = rmi_smb->client;
+	int retval;
+
+	/* Check if for SMBus new version device by reading version byte. */
+	retval = i2c_smbus_read_byte_data(client, SMB_PROTOCOL_VERSION_ADDRESS);
+	if (retval < 0) {
+		dev_err(&client->dev, "failed to get SMBus version number!\n");
+		return retval;
+	}
+	return retval + 1;
+}
+
 /* SMB block write - wrapper over ic2_smb_write_block */
 static int smb_block_write(struct rmi_transport_dev *xport,
 			      u8 commandcode, const void *buf, size_t len)
@@ -234,9 +248,29 @@ exit:
 	return retval;
 }
 
+static int rmi_smb_reset(struct rmi_transport_dev *xport)
+{
+	struct rmi_smb_xport *rmi_smb =
+		container_of(xport, struct rmi_smb_xport, xport);
+	int retval;
+
+	/* the mapping table has been flushed, discard the current one */
+	mutex_lock(&rmi_smb->mappingtable_mutex);
+	memset(rmi_smb->mapping_table, 0, sizeof(rmi_smb->mapping_table));
+	mutex_unlock(&rmi_smb->mappingtable_mutex);
+
+	/* we need to get the smbus version to activate the touchpad */
+	retval = rmi_smb_get_version(rmi_smb);
+	if (retval < 0)
+		return retval;
+
+	return 0;
+}
+
 static const struct rmi_transport_ops rmi_smb_ops = {
 	.write_block	= rmi_smb_write_block,
 	.read_block	= rmi_smb_read_block,
+	.reset		= rmi_smb_reset,
 };
 
 static int rmi_smb_probe(struct i2c_client *client,
@@ -267,6 +301,13 @@ static int rmi_smb_probe(struct i2c_client *client,
 			return -ENOMEM;
 
 		pdata->sensor_name = "Synaptics SMBus";
+
+		/*
+		 * FIXME: after a reset, the serio driver takes over the device
+		 * and blocks all communications until it releases it.
+		 * Wait 1500 ms for it to do so.
+		 */
+		pdata->reset_delay_ms = 1500;
 		rmi_smb->pdata_created = true;
 
 		client->dev.platform_data = pdata;
@@ -294,12 +335,11 @@ static int rmi_smb_probe(struct i2c_client *client,
 	rmi_smb->xport.ops = &rmi_smb_ops;
 
 	/* Check if for SMBus new version device by reading version byte. */
-	retval = i2c_smbus_read_byte_data(client, SMB_PROTOCOL_VERSION_ADDRESS);
-	if (retval < 0) {
-		dev_err(&client->dev, "failed to get SMBus version number!\n");
-		return retval;
-	}
-	smbus_version = retval + 1;
+	retval = rmi_smb_get_version(rmi_smb);
+	if (retval < 0)
+		goto err_gpio;
+
+	smbus_version = retval;
 	dev_dbg(&client->dev, "Smbus version is %d", smbus_version);
 
 	if (smbus_version != 2) {
