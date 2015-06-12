@@ -726,12 +726,12 @@ static void rmi_f11_finger_handler(struct f11_data *f11,
 		}
 
 		abs_bits = bitmap_and(f11->result_bits, irq_bits, f11->abs_mask,
-				      num_irq_regs);
+				      num_irq_regs * 8);
 		if (abs_bits)
 			rmi_f11_abs_pos_report(f11, sensor, finger_state, i);
 
 		rel_bits = bitmap_and(f11->result_bits, irq_bits, f11->rel_mask,
-				      num_irq_regs);
+				      num_irq_regs * 8);
 		if (rel_bits)
 			rmi_f11_rel_pos_report(sensor, i);
 	}
@@ -1440,9 +1440,13 @@ static int rmi_f11_config(struct rmi_function *fn)
 
 	if (!sensor->report_abs)
 		drv->clear_irq_bits(fn->rmi_dev, f11->abs_mask);
+	else
+		drv->set_irq_bits(fn->rmi_dev, f11->abs_mask);
 
 	if (!sensor->report_rel)
 		drv->clear_irq_bits(fn->rmi_dev, f11->rel_mask);
+	else
+		drv->set_irq_bits(fn->rmi_dev, f11->rel_mask);
 
 	rc = f11_write_control_regs(fn, &f11->sensor.sens_query,
 			   &f11->dev_controls, fn->fd.query_base_addr);

@@ -855,6 +855,10 @@ static int rmi_driver_probe(struct device *dev)
 		goto err_destroy_functions;
 	}
 
+	retval = rmi_driver_process_config_requests(rmi_dev);
+	if (retval < 0)
+		goto err_destroy_functions;
+
 	retval = rmi_read_block(rmi_dev,
 				data->f01_container->fd.control_base_addr + 1,
 				data->current_irq_mask, data->num_of_irq_regs);

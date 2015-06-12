@@ -209,9 +209,6 @@ static int rmi_smb_read_block(struct rmi_transport_dev *xport, u16 rmiaddr,
 	int retval;
 	u8 commandcode;
 	int cur_len = (int)len;
-	u8 *inputbuff = databuff;
-	int read = 0;
-	u16 orig_rmiaddr = rmiaddr;
 
 	mutex_lock(&rmi_smb->page_mutex);
 	memset(databuff, 0, len);
@@ -229,7 +226,6 @@ static int rmi_smb_read_block(struct rmi_transport_dev *xport, u16 rmiaddr,
 		/* read to smb device */
 		retval = smb_block_read(xport, commandcode,
 					databuff, block_len);
-		read += retval;
 		if (retval < 0)
 			goto exit;
 
@@ -242,8 +238,6 @@ static int rmi_smb_read_block(struct rmi_transport_dev *xport, u16 rmiaddr,
 	retval = 0;
 
 exit:
-	pr_err("%s rmiaddr: %#06x retval: %d : %*ph (len: %d) %s:%d\n", __func__, orig_rmiaddr, retval, (int)len, inputbuff, (int)read, __FILE__, __LINE__);
-
 	mutex_unlock(&rmi_smb->page_mutex);
 	return retval;
 }
@@ -308,7 +302,17 @@ static int rmi_smb_probe(struct i2c_client *client,
 		 * Wait 1500 ms for it to do so.
 		 */
 		pdata->reset_delay_ms = 1500;
+
+		/* set an unvalid gpio to enable polling mode */
 		pdata->attn_gpio = -1;
+
+		pdata->f11_sensor_data = devm_kzalloc(&client->dev,
+				sizeof(*pdata->f11_sensor_data), GFP_KERNEL);
+		if (pdata->f11_sensor_data) {
+			pdata->f11_sensor_data->sensor_type = rmi_f11_sensor_touchpad;
+			pdata->f11_sensor_data->axis_align.flip_y = true;
+		}
+
 		rmi_smb->pdata_created = true;
 
 		client->dev.platform_data = pdata;
