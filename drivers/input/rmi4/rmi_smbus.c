@@ -138,27 +138,27 @@ static int rmi_smb_write_block(struct rmi_transport_dev *xport, u16 rmiaddr,
 	u8 commandcode;
 	struct rmi_smb_xport *rmi_smb =
 		container_of(xport, struct rmi_smb_xport, xport);
+	int cur_len = (int)len;
 
 	mutex_lock(&rmi_smb->page_mutex);
 
-	while (len > 0) {  /* while more than 32 bytes */
+	while (cur_len > 0) {
 		/* break into 32 butes chunks to write */
 		/* get command code */
 		int block_len = min((int)len, SMB_MAX_COUNT);
 		retval = rmi_smb_get_command_code(xport, rmiaddr, block_len,
-			false, &commandcode);
-		retval = -1;
+						  false, &commandcode);
 		if (retval < 0)
 			goto exit;
 
 		/* write to smb device */
 		retval = smb_block_write(xport, commandcode,
-					    databuff, block_len);
+					 databuff, block_len);
 		if (retval < 0)
 			goto exit;
 
 		/* prepare to write next block of bytes */
-		len -= SMB_MAX_COUNT;
+		cur_len -= SMB_MAX_COUNT;
 		databuff += SMB_MAX_COUNT;
 		rmiaddr += SMB_MAX_COUNT;
 	}
