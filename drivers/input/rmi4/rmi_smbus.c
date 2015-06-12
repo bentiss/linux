@@ -79,8 +79,27 @@ static int rmi_smb_get_command_code(struct rmi_transport_dev *xport,
 	struct mapping_table_entry mapping_data[1];
 
 	mutex_lock(&rmi_smb->mappingtable_mutex);
-
-	i = 0;
+	for (i = 0; i < RMI_SMB2_MAP_SIZE; i++) {
+		if (rmi_smb->mapping_table[i].rmiaddr == rmiaddr) {
+			if (isread) {
+				if (rmi_smb->mapping_table[i].readcount
+							== bytecount) {
+					*commandcode = i;
+					retval = 0;
+					goto exit;
+				}
+			} else {
+				if (rmi_smb->mapping_table[i].flags &
+							RMI_SMB2_MAP_FLAGS_WE) {
+					*commandcode = i;
+					retval = 0;
+					goto exit;
+				}
+			}
+		}
+	}
+	i = rmi_smb->table_index;
+	rmi_smb->table_index = (i + 1) % RMI_SMB2_MAP_SIZE;
 
 	/* constructs mapping table data entry. 4 bytes each entry */
 	memset(mapping_data, 0, sizeof(mapping_data));
@@ -105,7 +124,6 @@ static int rmi_smb_get_command_code(struct rmi_transport_dev *xport,
 	rmi_smb->mapping_table[i].readcount = bytecount;
 	rmi_smb->mapping_table[i].flags = !isread ? RMI_SMB2_MAP_FLAGS_WE : 0;
 	*commandcode = i;
-
 
 exit:
 	mutex_unlock(&rmi_smb->mappingtable_mutex);
