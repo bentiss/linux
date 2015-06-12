@@ -196,6 +196,7 @@ static int rmi_f30_register_device(struct rmi_function *fn)
 static int rmi_f30_config(struct rmi_function *fn)
 {
 	struct f30_data *f30 = dev_get_drvdata(&fn->dev);
+	struct rmi_driver *drv = fn->rmi_dev->driver;
 	int error;
 
 	/* Write Control Register values back to device */
@@ -207,6 +208,8 @@ static int rmi_f30_config(struct rmi_function *fn)
 			__func__, fn->fd.control_base_addr, error);
 		return error;
 	}
+
+	drv->set_irq_bits(fn->rmi_dev, fn->irq_mask);
 
 	return 0;
 }
