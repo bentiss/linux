@@ -311,6 +311,14 @@ static int rmi_smb_probe(struct i2c_client *client,
 
 		/* set an unvalid gpio to enable polling mode */
 		pdata->attn_gpio = -1;
+
+		pdata->f11_sensor_data = devm_kzalloc(&client->dev,
+				sizeof(*pdata->f11_sensor_data), GFP_KERNEL);
+		if (pdata->f11_sensor_data) {
+			pdata->f11_sensor_data->sensor_type = rmi_f11_sensor_touchpad;
+			pdata->f11_sensor_data->axis_align.flip_y = true;
+		}
+
 		rmi_smb->pdata_created = true;
 
 		client->dev.platform_data = pdata;
