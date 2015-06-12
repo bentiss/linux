@@ -1440,9 +1440,13 @@ static int rmi_f11_config(struct rmi_function *fn)
 
 	if (!sensor->report_abs)
 		drv->clear_irq_bits(fn->rmi_dev, f11->abs_mask);
+	else
+		drv->set_irq_bits(fn->rmi_dev, f11->abs_mask);
 
 	if (!sensor->report_rel)
 		drv->clear_irq_bits(fn->rmi_dev, f11->rel_mask);
+	else
+		drv->set_irq_bits(fn->rmi_dev, f11->rel_mask);
 
 	rc = f11_write_control_regs(fn, &f11->sensor.sens_query,
 			   &f11->dev_controls, fn->fd.query_base_addr);

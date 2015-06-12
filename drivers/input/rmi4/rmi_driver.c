@@ -136,42 +136,6 @@ static void disable_sensor(struct rmi_device *rmi_dev)
 	data->enabled = false;
 }
 
-static int enable_sensor(struct rmi_device *rmi_dev)
-{
-	struct rmi_driver_data *data = dev_get_drvdata(&rmi_dev->dev);
-	struct rmi_transport_dev *xport;
-	int retval = 0;
-
-	if (data->enabled)
-		return 0;
-
-	if (rmi_dev->xport->ops->enable_device) {
-		retval = rmi_dev->xport->ops->enable_device(rmi_dev->xport);
-		if (retval)
-			return retval;
-	}
-
-	xport = rmi_dev->xport;
-	if (data->irq) {
-		retval = request_threaded_irq(data->irq,
-				xport->hard_irq ? xport->hard_irq : NULL,
-				xport->irq_thread ?
-					xport->irq_thread : rmi_irq_thread,
-				data->irq_flags,
-				dev_name(&rmi_dev->dev), xport);
-		if (retval)
-			return retval;
-	} else if (data->polling) {
-		retval = enable_polling(rmi_dev);
-		if (retval < 0)
-			return retval;
-	}
-
-	data->enabled = true;
-
-	return rmi_process_interrupt_requests(rmi_dev);
-}
-
 static void rmi_free_function_list(struct rmi_device *rmi_dev)
 {
 	struct rmi_function *fn, *tmp;
@@ -317,6 +281,46 @@ int rmi_process_interrupt_requests(struct rmi_device *rmi_dev)
 	return 0;
 }
 EXPORT_SYMBOL_GPL(rmi_process_interrupt_requests);
+
+static int enable_sensor(struct rmi_device *rmi_dev)
+{
+	struct rmi_driver_data *data = dev_get_drvdata(&rmi_dev->dev);
+	struct rmi_transport_dev *xport;
+	int retval = 0;
+
+	if (data->enabled)
+		return 0;
+
+	if (rmi_dev->xport->ops->enable_device) {
+		retval = rmi_dev->xport->ops->enable_device(rmi_dev->xport);
+		if (retval)
+			return retval;
+	}
+
+	retval = rmi_driver_process_config_requests(rmi_dev);
+	if (retval < 0)
+		return retval;
+
+	xport = rmi_dev->xport;
+	if (data->irq) {
+		retval = request_threaded_irq(data->irq,
+				xport->hard_irq ? xport->hard_irq : NULL,
+				xport->irq_thread ?
+					xport->irq_thread : rmi_irq_thread,
+				data->irq_flags,
+				dev_name(&rmi_dev->dev), xport);
+		if (retval)
+			return retval;
+	} else if (data->polling) {
+		retval = enable_polling(rmi_dev);
+		if (retval < 0)
+			return retval;
+	}
+
+	data->enabled = true;
+
+	return rmi_process_interrupt_requests(rmi_dev);
+}
 
 /**
  * rmi_driver_set_input_params - set input device id and other data.
@@ -960,7 +964,7 @@ static int rmi_driver_probe(struct device *dev)
 
 	if (data->f01_container->dev.driver) {
 		/* Driver already bound, so enable ATTN now. */
-		enable_sensor(rmi_dev);
+		return enable_sensor(rmi_dev);
 	}
 
 	return 0;
