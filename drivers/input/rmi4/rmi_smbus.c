@@ -26,14 +26,9 @@
 #define RMI_SMB2_MAP_FLAGS_WE		0x01
 
 struct mapping_table_entry {
-	union {
-		struct {
-			u8 flags;
-			u8 readcount;
-			u16 rmiaddr;
-		};
-		u8 entry[4];
-	};
+	u16 rmiaddr;
+	u8 readcount;
+	u8 flags;
 };
 
 struct rmi_smb_xport {
@@ -81,7 +76,7 @@ static int rmi_smb_get_command_code(struct rmi_transport_dev *xport,
 		container_of(xport, struct rmi_smb_xport, xport);
 	int i;
 	int retval;
-	struct mapping_table_entry mapping_data[2];
+	struct mapping_table_entry mapping_data[1];
 
 	mutex_lock(&rmi_smb->mappingtable_mutex);
 
@@ -90,13 +85,9 @@ static int rmi_smb_get_command_code(struct rmi_transport_dev *xport,
 	/* constructs mapping table data entry. 4 bytes each entry */
 	memset(mapping_data, 0, sizeof(mapping_data));
 
-	mapping_data[0].rmiaddr = cpu_to_be16(rmiaddr);
-	mapping_data[0].readcount = 0x20;
+	mapping_data[0].rmiaddr = cpu_to_le16(rmiaddr);
+	mapping_data[0].readcount = bytecount;
 	mapping_data[0].flags = !isread ? RMI_SMB2_MAP_FLAGS_WE : 0; /* enable write */
-
-	mapping_data[1].rmiaddr = cpu_to_be16(rmiaddr);
-	mapping_data[1].readcount = bytecount;
-	mapping_data[1].flags = !isread ? RMI_SMB2_MAP_FLAGS_WE : 0; /* enable write */
 
 	retval = smb_block_write(xport, i + 0x80, mapping_data,
 				 sizeof(mapping_data));
@@ -113,7 +104,7 @@ static int rmi_smb_get_command_code(struct rmi_transport_dev *xport,
 	rmi_smb->mapping_table[i].rmiaddr = rmiaddr;
 	rmi_smb->mapping_table[i].readcount = bytecount;
 	rmi_smb->mapping_table[i].flags = !isread ? RMI_SMB2_MAP_FLAGS_WE : 0;
-	*commandcode = i + 1;
+	*commandcode = i;
 
 
 exit:
