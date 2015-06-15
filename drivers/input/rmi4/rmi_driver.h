@@ -113,4 +113,20 @@ void rmi_unregister_physical_driver(void);
 int rmi_register_f01_handler(void);
 void rmi_unregister_f01_handler(void);
 
+#ifdef CONFIG_RMI4_F11
+int rmi_register_f11_handler(void);
+void rmi_unregister_f11_handler(void);
+#else
+static inline int rmi_register_f11_handler(void) {return 0;}
+static inline void rmi_unregister_f11_handler(void) {}
+#endif
+
+#ifdef CONFIG_RMI4_F30
+int rmi_register_f30_handler(void);
+void rmi_unregister_f30_handler(void);
+#else
+static inline int rmi_register_f30_handler(void) {return 0;}
+static inline void rmi_unregister_f30_handler(void) {}
+#endif
+
 #endif
