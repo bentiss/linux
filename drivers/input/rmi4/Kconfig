@@ -46,7 +46,7 @@ config RMI4_SMB
 	  If unsure, say Y.
 
 config RMI4_F11
-	tristate "RMI4 Function 11 (2D pointing)"
+	bool "RMI4 Function 11 (2D pointing)"
 	depends on RMI4_CORE
 	help
 	  Say Y here if you want to add support for RMI4 function 11.
@@ -74,7 +74,7 @@ config RMI4_F11_PEN
 	  off.
 
 config RMI4_F30
-        tristate "RMI4 Function 30 (GPIO LED)"
+        bool "RMI4 Function 30 (GPIO LED)"
         depends on RMI4_CORE
         help
           Say Y here if you want to add support for RMI4 function 30.

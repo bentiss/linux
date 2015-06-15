@@ -395,7 +395,15 @@ static struct rmi_function_handler rmi_f30_handler = {
 	.attention = rmi_f30_attention,
 };
 
-module_rmi_driver(rmi_f30_handler);
+int __init rmi_register_f30_handler(void)
+{
+	return rmi_register_function_handler(&rmi_f30_handler);
+}
+
+void rmi_unregister_f30_handler(void)
+{
+	rmi_unregister_function_handler(&rmi_f30_handler);
+}
 
 MODULE_AUTHOR("Allie Xiong <axiong@synaptics.com>");
 MODULE_AUTHOR("Andrew Duggan <aduggan@synaptics.com>");
