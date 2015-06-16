@@ -1564,10 +1564,8 @@ static int psmouse_connect(struct serio *serio, struct serio_driver *drv)
 	psmouse->resync_time = parent ? 0 : psmouse_resync_time;
 	psmouse->smartscroll = psmouse_smartscroll;
 
-	if (psmouse_switch_protocol(psmouse, NULL)) {
-		psmouse_reset(psmouse);
+	if (psmouse_switch_protocol(psmouse, NULL))
 		goto err_close_serio;
-	}
 
 	psmouse_set_state(psmouse, PSMOUSE_CMD_MODE);
 	psmouse_initialize(psmouse);
