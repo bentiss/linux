@@ -208,5 +208,6 @@ void synaptics_reset(struct psmouse *psmouse);
 int synaptics_fast_detect(void);
 void synaptics_reset_fast_detect(void);
 int synaptics_wait_for_fast_detect(int timeout);
+int synaptics_wait_for_intertouch_detect(int timeout);
 
 #endif /* _SYNAPTICS_H */
