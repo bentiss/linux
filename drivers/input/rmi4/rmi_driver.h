@@ -28,6 +28,7 @@
 #define BSR_LOCATION 0x00FE
 
 #define RMI_PDT_PROPS_HAS_BSR 0x02
+#define RMI_DEVICE_RESET_CMD	0x01
 
 struct rmi_driver_data {
 	struct list_head function_list;
