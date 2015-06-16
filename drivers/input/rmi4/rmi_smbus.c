@@ -312,6 +312,12 @@ static int rmi_smb_probe(struct i2c_client *client,
 		return -ENODEV;
 	}
 
+	/*
+	 * Wait for PS/2 to notify that the device is available
+	 */
+	if (!synaptics_wait_for_intertouch_detect(5000))
+		return -ENODEV;
+
 	rmi_smb = devm_kzalloc(&client->dev, sizeof(struct rmi_smb_xport),
 				GFP_KERNEL);
 	if (!rmi_smb)

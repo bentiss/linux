@@ -148,6 +148,12 @@ int synaptics_wait_for_fast_detect(int timeout)
 }
 EXPORT_SYMBOL_GPL(synaptics_wait_for_fast_detect);
 
+int synaptics_wait_for_intertouch_detect(int timeout)
+{
+	return wait_event_timeout(intertouch_wait, claimed_other_bus, timeout);
+}
+EXPORT_SYMBOL_GPL(synaptics_wait_for_intertouch_detect);
+
 #ifdef CONFIG_MOUSE_PS2_SYNAPTICS
 
 static bool cr48_profile_sensor;
@@ -389,6 +395,7 @@ static int synaptics_capability(struct psmouse *psmouse)
 					     "device claims to be supported by an other bus, aborting.\n");
 				psmouse_reset(psmouse);
 				claimed_other_bus = true;
+				wake_up(&intertouch_wait);
 				return -1;
 			}
 		}
