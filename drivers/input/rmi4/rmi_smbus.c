@@ -20,6 +20,9 @@
 #include <linux/slab.h>
 #include "rmi_driver.h"
 
+struct psmouse;
+#include "../mouse/synaptics.h"
+
 #define SMB_PROTOCOL_VERSION_ADDRESS	0xfd
 #define SMB_MAX_COUNT			32
 #define RMI_SMB2_MAP_SIZE		8 /* 8 entry of 4 bytes each */
@@ -255,17 +258,16 @@ static int rmi_smb_reset(struct rmi_transport_dev *xport, u16 reset_addr)
 	memset(rmi_smb->mapping_table, 0, sizeof(rmi_smb->mapping_table));
 	mutex_unlock(&rmi_smb->mappingtable_mutex);
 
+	synaptics_reset_fast_detect();
+
 	retval = rmi_smb_write_block(xport, reset_addr, &cmd_buf, 1);
 	if (retval)
 		dev_info(&client->dev,
 			 "Reset CMD failed. Code = %d. Ignoring\n", retval);
 
-	/*
-	 * FIXME: after a reset, the serio driver takes over the device
-	 * and blocks all communications until it releases it.
-	 * Wait 1500 ms for it to do so.
-	 */
-	mdelay(1500);
+	if (!synaptics_wait_for_fast_detect(msecs_to_jiffies(5000)))
+		dev_err(&client->dev,
+			"Timeout while waiting for ACK after reset.\n");
 
 	/* we need to get the smbus version to activate the touchpad */
 	retval = rmi_smb_get_version(rmi_smb);
