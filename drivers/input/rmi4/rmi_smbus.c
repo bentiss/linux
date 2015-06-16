@@ -242,16 +242,30 @@ exit:
 	return retval;
 }
 
-static int rmi_smb_reset(struct rmi_transport_dev *xport)
+static int rmi_smb_reset(struct rmi_transport_dev *xport, u16 reset_addr)
 {
 	struct rmi_smb_xport *rmi_smb =
 		container_of(xport, struct rmi_smb_xport, xport);
+	struct i2c_client *client = rmi_smb->client;
 	int retval;
+	u8 cmd_buf = RMI_DEVICE_RESET_CMD;
 
 	/* the mapping table has been flushed, discard the current one */
 	mutex_lock(&rmi_smb->mappingtable_mutex);
 	memset(rmi_smb->mapping_table, 0, sizeof(rmi_smb->mapping_table));
 	mutex_unlock(&rmi_smb->mappingtable_mutex);
+
+	retval = rmi_smb_write_block(xport, reset_addr, &cmd_buf, 1);
+	if (retval)
+		dev_info(&client->dev,
+			 "Reset CMD failed. Code = %d. Ignoring\n", retval);
+
+	/*
+	 * FIXME: after a reset, the serio driver takes over the device
+	 * and blocks all communications until it releases it.
+	 * Wait 1500 ms for it to do so.
+	 */
+	mdelay(1500);
 
 	/* we need to get the smbus version to activate the touchpad */
 	retval = rmi_smb_get_version(rmi_smb);
@@ -309,13 +323,6 @@ static int rmi_smb_probe(struct i2c_client *client,
 			return -ENOMEM;
 
 		pdata->sensor_name = "Synaptics SMBus";
-
-		/*
-		 * FIXME: after a reset, the serio driver takes over the device
-		 * and blocks all communications until it releases it.
-		 * Wait 1500 ms for it to do so.
-		 */
-		pdata->reset_delay_ms = 1500;
 
 		/* set an unvalid gpio to enable polling mode */
 		pdata->attn_gpio = -1;
