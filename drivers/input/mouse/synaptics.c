@@ -387,6 +387,7 @@ static int synaptics_capability(struct psmouse *psmouse)
 			if (SYN_CAP_INTERTOUCH(priv->ext_cap_0c)) {
 				psmouse_info(psmouse,
 					     "device claims to be supported by an other bus, aborting.\n");
+				psmouse_reset(psmouse);
 				claimed_other_bus = true;
 				return -1;
 			}
