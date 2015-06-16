@@ -343,6 +343,8 @@ static int rmi_smb_probe(struct i2c_client *client,
 		}
 		pdata->gpioled_map = &tp_gpioled_map;
 
+		pdata->unified_input = true;
+
 		rmi_smb->pdata_created = true;
 
 		client->dev.platform_data = pdata;

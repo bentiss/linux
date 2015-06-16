@@ -13,6 +13,7 @@
 #include <linux/ctype.h>
 #include <linux/hrtimer.h>
 #include <linux/ktime.h>
+#include <linux/input.h>
 #include "rmi_bus.h"
 
 #define RMI_DRIVER_VERSION "1.6"
@@ -29,6 +30,8 @@
 
 #define RMI_PDT_PROPS_HAS_BSR 0x02
 #define RMI_DEVICE_RESET_CMD	0x01
+
+#define NAME_BUFFER_SIZE 256
 
 struct rmi_driver_data {
 	struct list_head function_list;
@@ -50,6 +53,8 @@ struct rmi_driver_data {
 	unsigned long *current_irq_mask;
 	unsigned long *new_irq_mask;
 	struct mutex irq_mutex;
+	struct input_dev *input;
+	char input_phys[NAME_BUFFER_SIZE];
 
 	/* Following are used when polling. */
 	struct hrtimer poll_timer;
