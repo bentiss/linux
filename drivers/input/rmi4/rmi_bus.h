@@ -197,7 +197,7 @@ struct rmi_transport_ops {
 
 	int (*enable_device) (struct rmi_transport_dev *xport);
 	void (*disable_device) (struct rmi_transport_dev *xport);
-	int (*reset) (struct rmi_transport_dev *xport);
+	int (*reset) (struct rmi_transport_dev *xport, u16 reset_addr);
 };
 
 /**
@@ -292,18 +292,6 @@ static inline int rmi_write_block(struct rmi_device *d, u16 addr,
 				  const void *buf, size_t len)
 {
 	return d->xport->ops->write_block(d->xport, addr, buf, len);
-}
-
-/**
- * rmi_reset - reset the xport internal state
- * @d: Pointer to an RMI device
- *
- * Called after a successful reset. Useful to discard internal state if the
- * reset occurs after probe. It returns 0 on success, < 0 on error.
- */
-static inline int rmi_reset(struct rmi_device *d)
-{
-	return d->xport->ops->reset(d->xport);
 }
 
 int rmi_register_transport_device(struct rmi_transport_dev *xport);

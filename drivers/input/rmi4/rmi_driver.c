@@ -37,7 +37,6 @@
 #define RMI4_PAGE_SIZE 0x100
 #define RMI4_PAGE_MASK 0xFF00
 
-#define RMI_DEVICE_RESET_CMD	0x01
 #define DEFAULT_RESET_DELAY_MS	100
 
 #define DEFAULT_POLL_INTERVAL_MS	13
@@ -583,22 +582,23 @@ static int rmi_initial_reset(struct rmi_device *rmi_dev,
 		const struct rmi_device_platform_data *pdata =
 				rmi_get_platform_data(rmi_dev);
 
+		if (rmi_dev->xport->ops->reset) {
+			if (rmi_dev->xport->ops->reset(rmi_dev->xport,
+						       cmd_addr))
+				return error;
+
+			return RMI_SCAN_DONE;
+		}
+
 		error = rmi_write_block(rmi_dev, cmd_addr, &cmd_buf, 1);
 		if (error) {
 			dev_err(&rmi_dev->dev,
-				"Initial reset failed. Code = %d.\n", error);
+				"Initial reset failed. Code = %d.\n",
+				error);
 			return error;
 		}
 
 		mdelay(pdata->reset_delay_ms ?: DEFAULT_RESET_DELAY_MS);
-
-		error = rmi_reset(rmi_dev);
-		if (error) {
-			dev_err(&rmi_dev->dev,
-				"Initial post-reset failed. Code = %d.\n",
-				error);
-			return error;
-		}
 
 		return RMI_SCAN_DONE;
 	}
