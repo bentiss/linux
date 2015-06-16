@@ -14,7 +14,6 @@
 #include <linux/leds.h>
 #include "rmi_driver.h"
 
-#define NAME_BUFFER_SIZE			256
 #define RMI_F30_QUERY_SIZE			2
 
 /* Defs for Query 0 */
@@ -81,6 +80,7 @@ struct f30_data {
 
 	char input_phys[NAME_BUFFER_SIZE];
 	struct input_dev *input;
+	bool unified_input;
 };
 
 static int rmi_f30_read_control_parameters(struct rmi_function *fn,
@@ -138,7 +138,9 @@ static int rmi_f30_attention(struct rmi_function *fn, unsigned long *irq_bits)
 		}
 	}
 
-	input_sync(f30->input); /* sync after groups of events */
+	if (!f30->unified_input)
+		input_sync(f30->input); /* sync after groups of events */
+
 	return 0;
 }
 
@@ -147,11 +149,17 @@ static int rmi_f30_register_device(struct rmi_function *fn)
 	int i;
 	int rc;
 	struct rmi_device *rmi_dev = fn->rmi_dev;
+	struct rmi_driver_data *drv_data = dev_get_drvdata(&rmi_dev->dev);
 	struct f30_data *f30 = dev_get_drvdata(&fn->dev);
 	struct rmi_driver *driver = fn->rmi_dev->driver;
 	struct input_dev *input_dev;
 
-	input_dev = devm_input_allocate_device(&fn->dev);
+	if (drv_data->input) {
+		input_dev = drv_data->input;
+		f30->unified_input = true;
+	} else {
+		input_dev = devm_input_allocate_device(&fn->dev);
+	}
 	if (!input_dev) {
 		dev_err(&fn->dev, "Failed to allocate input device.\n");
 		return -ENOMEM;
@@ -159,20 +167,21 @@ static int rmi_f30_register_device(struct rmi_function *fn)
 
 	f30->input = input_dev;
 
-	if (driver->set_input_params) {
-		rc = driver->set_input_params(rmi_dev, input_dev);
-		if (rc < 0) {
-			dev_err(&fn->dev, "%s: Error in setting input device.\n",
-				__func__);
-			return rc;
+	if (!f30->unified_input) {
+		if (driver->set_input_params) {
+			rc = driver->set_input_params(rmi_dev, input_dev);
+			if (rc < 0) {
+				dev_err(&fn->dev,
+					"%s: Error in setting input device.\n",
+					__func__);
+				return rc;
+			}
 		}
+		sprintf(f30->input_phys, "%s/input0", dev_name(&fn->dev));
+		input_dev->phys = f30->input_phys;
+		input_dev->dev.parent = &rmi_dev->dev;
 	}
-	sprintf(f30->input_phys, "%s/input0", dev_name(&fn->dev));
-	input_dev->phys = f30->input_phys;
-	input_dev->dev.parent = &rmi_dev->dev;
-	input_set_drvdata(input_dev, f30);
 
-	set_bit(EV_SYN, input_dev->evbit);
 	set_bit(EV_KEY, input_dev->evbit);
 
 	input_dev->keycode = f30->gpioled_key_map;
@@ -185,10 +194,12 @@ static int rmi_f30_register_device(struct rmi_function *fn)
 						f30->gpioled_key_map[i]);
 	}
 
-	rc = input_register_device(input_dev);
-	if (rc < 0) {
-		dev_err(&fn->dev, "Failed to register input device.\n");
-		return rc;
+	if (!f30->unified_input) {
+		rc = input_register_device(input_dev);
+		if (rc < 0) {
+			dev_err(&fn->dev, "Failed to register input device.\n");
+			return rc;
+		}
 	}
 	return 0;
 }
