@@ -29,6 +29,7 @@
 #include <linux/input/mt.h>
 #include <linux/serio.h>
 #include <linux/libps2.h>
+#include <linux/sched.h>
 #include <linux/slab.h>
 #include "psmouse.h"
 #include "synaptics.h"
@@ -69,6 +70,11 @@
 
 /* maximum ABS_MT_POSITION displacement (in mm) */
 #define DMAX 10
+
+static bool claimed_other_bus;
+static bool fast_detected;
+static wait_queue_head_t intertouch_wait;
+
 
 /*****************************************************************************
  *	Stuff we need even when we do not want native Synaptics support
@@ -118,6 +124,29 @@ void synaptics_reset(struct psmouse *psmouse)
 	/* reset touchpad back to relative mode, gestures enabled */
 	synaptics_mode_cmd(psmouse, 0);
 }
+
+int synaptics_fast_detect(void)
+{
+	if (claimed_other_bus) {
+		fast_detected = true;
+		wake_up(&intertouch_wait);
+		return -ENODEV;
+	}
+	return 0;
+}
+EXPORT_SYMBOL_GPL(synaptics_fast_detect);
+
+void synaptics_reset_fast_detect(void)
+{
+	fast_detected = false;
+}
+EXPORT_SYMBOL_GPL(synaptics_reset_fast_detect);
+
+int synaptics_wait_for_fast_detect(int timeout)
+{
+	return wait_event_timeout(intertouch_wait, fast_detected, timeout);
+}
+EXPORT_SYMBOL_GPL(synaptics_wait_for_fast_detect);
 
 #ifdef CONFIG_MOUSE_PS2_SYNAPTICS
 
@@ -363,6 +392,7 @@ static int synaptics_capability(struct psmouse *psmouse)
 			if (SYN_CAP_INTERTOUCH(priv->ext_cap_0c)) {
 				psmouse_info(psmouse,
 					     "device claims to be supported by an other bus, aborting.\n");
+				claimed_other_bus = true;
 				return -1;
 			}
 		}
@@ -1442,6 +1472,7 @@ void __init synaptics_module_init(void)
 	impaired_toshiba_kbc = dmi_check_system(toshiba_dmi_table);
 	broken_olpc_ec = dmi_check_system(olpc_dmi_table);
 	cr48_profile_sensor = dmi_check_system(cr48_dmi_table);
+	init_waitqueue_head(&intertouch_wait);
 }
 
 static int __synaptics_init(struct psmouse *psmouse, bool absolute_mode)
