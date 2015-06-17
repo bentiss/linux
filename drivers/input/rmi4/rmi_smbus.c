@@ -283,6 +283,14 @@ static const struct rmi_transport_ops rmi_smb_ops = {
 	.reset		= rmi_smb_reset,
 };
 
+static void rmi_smb_alert(struct i2c_client *client, unsigned int data)
+{
+	struct rmi_smb_xport *rmi_smb = i2c_get_clientdata(client);
+	struct rmi_device *rmi_dev = rmi_smb->xport.rmi_dev;
+
+	rmi_process_interrupt_requests(rmi_dev);
+}
+
 static int rmi_smb_probe(struct i2c_client *client,
 			 const struct i2c_device_id *id)
 {
@@ -319,7 +327,7 @@ static int rmi_smb_probe(struct i2c_client *client,
 		pdata->sensor_name = "Synaptics SMBus";
 
 		/* set an unvalid gpio to enable polling mode */
-		pdata->attn_gpio = RMI_POLLING;
+		pdata->attn_gpio = RMI_CUSTOM_IRQ;
 
 		pdata->f11_sensor_data = devm_kzalloc(&client->dev,
 				sizeof(*pdata->f11_sensor_data), GFP_KERNEL);
@@ -380,6 +388,9 @@ static int rmi_smb_probe(struct i2c_client *client,
 
 	i2c_set_clientdata(client, rmi_smb);
 
+	/* enable Host Notify */
+	i2c_toggle_smbus_host_notify(client, true);
+
 	dev_info(&client->dev, "registered rmi smb driver at %#04x.\n",
 			client->addr);
 	return 0;
@@ -423,6 +434,7 @@ static struct i2c_driver rmi_smb_driver = {
 	.id_table	= rmi_id,
 	.probe		= rmi_smb_probe,
 	.remove		= rmi_smb_remove,
+	.alert		= rmi_smb_alert,
 };
 
 module_i2c_driver(rmi_smb_driver);
