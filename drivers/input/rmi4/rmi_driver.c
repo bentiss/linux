@@ -123,7 +123,7 @@ static void disable_sensor(struct rmi_device *rmi_dev)
 	if (!data->enabled)
 		return;
 
-	if (!data->irq)
+	if (data->polling)
 		disable_polling(rmi_dev);
 
 	if (rmi_dev->xport->ops->disable_device)
@@ -162,7 +162,7 @@ static int enable_sensor(struct rmi_device *rmi_dev)
 				dev_name(&rmi_dev->dev), xport);
 		if (retval)
 			return retval;
-	} else {
+	} else if (data->polling) {
 		retval = enable_polling(rmi_dev);
 		if (retval < 0)
 			return retval;
@@ -961,10 +961,11 @@ static int rmi_driver_probe(struct device *dev)
 				}
 			}
 		}
-	} else {
+	} else if (pdata->attn_gpio == RMI_POLLING) {
 		data->poll_interval = ktime_set(0,
 			(pdata->poll_interval_ms ? pdata->poll_interval_ms :
 			DEFAULT_POLL_INTERVAL_MS) * 1000 * 1000);
+		data->polling = true;
 	}
 
 	if (data->f01_container->dev.driver) {
