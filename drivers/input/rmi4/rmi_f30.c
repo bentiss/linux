@@ -153,6 +153,7 @@ static int rmi_f30_register_device(struct rmi_function *fn)
 	struct f30_data *f30 = dev_get_drvdata(&fn->dev);
 	struct rmi_driver *driver = fn->rmi_dev->driver;
 	struct input_dev *input_dev;
+	int button_count = 0;
 
 	if (drv_data->input) {
 		input_dev = drv_data->input;
@@ -189,10 +190,15 @@ static int rmi_f30_register_device(struct rmi_function *fn)
 	input_dev->keycodemax = f30->gpioled_count;
 
 	for (i = 0; i < f30->gpioled_count; i++) {
-		if (f30->gpioled_key_map[i] != 0)
+		if (f30->gpioled_key_map[i] != 0) {
 			input_set_capability(input_dev, EV_KEY,
 						f30->gpioled_key_map[i]);
+			button_count++;
+		}
 	}
+
+	if (button_count == 1)
+		__set_bit(INPUT_PROP_BUTTONPAD, input_dev->propbit);
 
 	if (!f30->unified_input) {
 		rc = input_register_device(input_dev);
@@ -377,6 +383,9 @@ static inline int rmi_f30_initialize(struct rmi_function *fn)
 				if (rmi_f30_is_valid_button(i, f30->ctrl)) {
 					f30->gpioled_key_map[i] = button++;
 					f30->gpioled_sense_map[i] = 0;
+
+					if (!f30->has_mech_mouse_btns)
+						break;
 				}
 			}
 		} else if (!pdata->gpioled_map->map) {
