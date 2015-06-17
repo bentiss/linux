@@ -332,6 +332,25 @@ static int rmi_driver_set_input_params(struct rmi_device *rmi_dev,
 	return 0;
 }
 
+static void rmi_driver_set_input_name(struct rmi_device *rmi_dev,
+				struct input_dev *input)
+{
+	struct rmi_driver_data *data = dev_get_drvdata(&rmi_dev->dev);
+	char *device_name = rmi_f01_get_product_ID(data->f01_container);
+	char *name;
+
+	if (!device_name)
+		return;
+
+	name = devm_kasprintf(&rmi_dev->dev, GFP_KERNEL,
+			      "Synaptics %s", device_name);
+	if (!name)
+		return;
+
+	input->name = name;
+}
+
+
 static int rmi_driver_set_irq_bits(struct rmi_device *rmi_dev,
 				   unsigned long *mask)
 {
@@ -892,10 +911,13 @@ static int rmi_driver_probe(struct device *dev)
 		mutex_init(&data->suspend_mutex);
 	}
 
-	if (data->input && input_register_device(data->input)) {
-		dev_err(dev, "%s: Failed to register input device.\n",
-			__func__);
-		goto err_destroy_functions;
+	if (data->input) {
+		rmi_driver_set_input_name(rmi_dev, data->input);
+		if (input_register_device(data->input)) {
+			dev_err(dev, "%s: Failed to register input device.\n",
+				__func__);
+			goto err_destroy_functions;
+		}
 	}
 
 	if (gpio_is_valid(pdata->attn_gpio)) {
