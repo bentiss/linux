@@ -290,20 +290,6 @@ static int rmi_smb_probe(struct i2c_client *client,
 	struct rmi_smb_xport *rmi_smb;
 	int retval;
 	int smbus_version;
-	struct rmi_f30_button tp_button_map[] = {
-		{ KEY_RESERVED, 0 },
-		{ KEY_RESERVED, 0 },
-		{ BTN_LEFT, 0 },
-		{ BTN_0, 0 },
-		{ BTN_1, 0 },
-		{ BTN_2, 0 },
-		{ KEY_RESERVED, 0 },
-		{ KEY_RESERVED, 0 },
-	};
-	struct rmi_f30_gpioled_map tp_gpioled_map = {
-		.ngpioleds = ARRAY_SIZE(tp_button_map),
-		.map = tp_button_map,
-	};
 
 	if (!i2c_check_functionality(client->adapter,
 				     I2C_FUNC_SMBUS_READ_BLOCK_DATA)) {
@@ -341,7 +327,6 @@ static int rmi_smb_probe(struct i2c_client *client,
 			pdata->f11_sensor_data->sensor_type = rmi_f11_sensor_touchpad;
 			pdata->f11_sensor_data->axis_align.flip_y = true;
 		}
-		pdata->gpioled_map = &tp_gpioled_map;
 
 		pdata->unified_input = true;
 

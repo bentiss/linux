@@ -235,6 +235,20 @@ static inline void rmi_f30_set_ctrl_data(struct rmi_f30_ctrl_data *ctrl,
 	*reg += len;
 }
 
+static inline bool rmi_f30_is_valid_button(int button,
+		struct rmi_f30_ctrl_data *ctrl)
+{
+	int byte_position = button >> 3;
+	int bit_position = button & 0x07;
+
+	/*
+	 * ctrl2 -> dir == 0 -> input mode
+	 * ctrl3 -> data == 1 -> actual button
+	 */
+	return !(ctrl[2].regs[byte_position] & BIT(bit_position)) &&
+		(ctrl[3].regs[byte_position] & BIT(bit_position));
+}
+
 static inline int rmi_f30_initialize(struct rmi_function *fn)
 {
 	struct f30_data *f30;
@@ -334,6 +348,13 @@ static inline int rmi_f30_initialize(struct rmi_function *fn)
 	f30->ctrl_regs_size = ctrl_reg - f30->ctrl_regs
 				?: RMI_F30_CTRL_REGS_MAX_SIZE;
 
+	retval = rmi_f30_read_control_parameters(fn, f30);
+	if (retval < 0) {
+		dev_err(&fn->dev,
+			"Failed to initialize F19 control params.\n");
+		return retval;
+	}
+
 	map_memory = devm_kzalloc(&fn->dev,
 				(f30->gpioled_count
 				* (sizeof(u16) + sizeof(u8))),
@@ -348,15 +369,20 @@ static inline int rmi_f30_initialize(struct rmi_function *fn)
 					* f30->gpioled_count;
 
 	pdata = rmi_get_platform_data(rmi_dev);
-	if (pdata) {
+	if (pdata && f30->has_gpio) {
+		int i;
+		int button = BTN_LEFT;
 		if (!pdata->gpioled_map) {
-			dev_warn(&fn->dev,
-				"%s - gpioled_map is NULL", __func__);
+			for (i = 0; i < f30->gpioled_count; i++) {
+				if (rmi_f30_is_valid_button(i, f30->ctrl)) {
+					f30->gpioled_key_map[i] = button++;
+					f30->gpioled_sense_map[i] = 0;
+				}
+			}
 		} else if (!pdata->gpioled_map->map) {
 			dev_warn(&fn->dev,
 				 "Platform Data button map is missing!\n");
 		} else {
-			int i;
 			for (i = 0; i < f30->gpioled_count
 				|| i < pdata->gpioled_map->ngpioleds; i++) {
 				f30->gpioled_key_map[i] =
@@ -365,13 +391,6 @@ static inline int rmi_f30_initialize(struct rmi_function *fn)
 					pdata->gpioled_map->map[i].sense;
 			}
 		}
-	}
-
-	retval = rmi_f30_read_control_parameters(fn, f30);
-	if (retval < 0) {
-		dev_err(&fn->dev,
-			"Failed to initialize F19 control params.\n");
-		return retval;
 	}
 
 	return 0;
