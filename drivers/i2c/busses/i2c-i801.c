@@ -84,6 +84,7 @@
 #include <linux/i2c.h>
 #include <linux/acpi.h>
 #include <linux/io.h>
+#include <linux/kfifo.h>
 #include <linux/dmi.h>
 #include <linux/slab.h>
 #include <linux/wait.h>
@@ -107,6 +108,11 @@
 #define SMBPEC(p)	(8 + (p)->smba)		/* ICH3 and later */
 #define SMBAUXSTS(p)	(12 + (p)->smba)	/* ICH4 and later */
 #define SMBAUXCTL(p)	(13 + (p)->smba)	/* ICH4 and later */
+#define SMBAUXCTL(p)	(13 + (p)->smba)	/* ICH4 and later */
+#define SMBSLVSTS(p)	(16 + (p)->smba)
+#define SMBSLVCMD(p)	(17 + (p)->smba)
+#define SMBNTFDADD(p)	(20 + (p)->smba)
+#define SMBNTFDDAT(p)	(22 + (p)->smba)
 
 /* PCI Address Constants */
 #define SMBBAR		4
@@ -157,6 +163,13 @@
 #define SMBHSTSTS_DEV_ERR	0x04
 #define SMBHSTSTS_INTR		0x02
 #define SMBHSTSTS_HOST_BUSY	0x01
+
+/* Host Notify Status registers bits */
+#define SMBSLVSTS_HST_NTFY_STS	1
+
+/* Host Notify Command registers bits */
+#define SMBSLVCMD_HST_NTFY_INTREN	0x01
+
 
 #define STATUS_ERROR_FLAGS	(SMBHSTSTS_FAILED | SMBHSTSTS_BUS_ERR | \
 				 SMBHSTSTS_DEV_ERR)
@@ -221,6 +234,9 @@ struct i801_priv {
 	const struct i801_mux_config *mux_drvdata;
 	struct platform_device *mux_pdev;
 #endif
+
+	struct work_struct	host_notify;
+	struct kfifo		host_notify_fifo;
 };
 
 #define FEATURE_SMBUS_PEC	(1 << 0)
@@ -228,6 +244,7 @@ struct i801_priv {
 #define FEATURE_BLOCK_PROC	(1 << 2)
 #define FEATURE_I2C_BLOCK_READ	(1 << 3)
 #define FEATURE_IRQ		(1 << 4)
+#define FEATURE_HOST_NOTIFY	(1 << 5)
 /* Not really a feature, but it's convenient to handle it as such */
 #define FEATURE_IDF		(1 << 15)
 
@@ -479,8 +496,74 @@ static void i801_isr_byte_done(struct i801_priv *priv)
 	outb_p(SMBHSTSTS_BYTE_DONE, SMBHSTSTS(priv));
 }
 
+/* If this is the alerting device, notify its driver */
+static int i801_do_host_notify(struct device *dev, void *addrp)
+{
+	struct i2c_client *client = i2c_verify_client(dev);
+	u8* addr = addrp;
+	struct i2c_driver *driver;
+
+	if (!client || client->addr != *addr)
+		return 0;
+	if (client->flags & I2C_CLIENT_TEN)
+		return 0;
+
+	/*
+	 * Drivers should either disable alerts, or provide at least
+	 * a minimal handler.  Lock so the driver won't change.
+	 */
+	device_lock(dev);
+	if (client->dev.driver) {
+		driver = to_i2c_driver(client->dev.driver);
+		if (driver->alert)
+			driver->alert(client, 0);
+		else
+			dev_warn(&client->dev, "no driver alert()!\n");
+	} else
+		dev_dbg(&client->dev, "alert with no driver\n");
+	device_unlock(dev);
+
+	/* Stop iterating after we find the device */
+	return -EBUSY;
+}
+
 /*
- * There are two kinds of interrupts:
+ * The alert IRQ handler needs to hand work off to a task which can issue
+ * SMBus calls, because those sleeping calls can't be made in IRQ context.
+ */
+static void i801_host_notify(struct work_struct *work)
+{
+	struct i801_priv *priv;
+	u8 addr;
+	int count;
+
+	priv = container_of(work, struct i801_priv, host_notify);
+
+	count = kfifo_out(&priv->host_notify_fifo, &addr, sizeof(u8));
+
+	if (count != sizeof(u8)) {
+		dev_err(&priv->pci_dev->dev, "%s: workitem triggered without "
+			"notifications available\n", __func__);
+		return;
+	}
+
+	device_for_each_child(&priv->adapter.dev, &addr, i801_do_host_notify);
+}
+
+static irqreturn_t i801_host_notify_isr(struct i801_priv *priv)
+{
+	u8 addr = inb_p(SMBNTFDADD(priv)) >> 1;
+
+	kfifo_in(&priv->host_notify_fifo, &addr, sizeof(u8));
+	schedule_work(&priv->host_notify);
+
+	/* clear Host Notify bit and return */
+	outb_p(SMBSLVSTS_HST_NTFY_STS, SMBSLVSTS(priv));
+	return IRQ_HANDLED;
+}
+
+/*
+ * There are three kinds of interrupts:
  *
  * 1) i801 signals transaction completion with one of these interrupts:
  *      INTR - Success
@@ -492,6 +575,8 @@ static void i801_isr_byte_done(struct i801_priv *priv)
  *
  * 2) For byte-by-byte (I2C read/write) transactions, one BYTE_DONE interrupt
  *    occurs for each byte of a byte-by-byte to prepare the next byte.
+ *
+ * 3) Host Notify interrupts
  */
 static irqreturn_t i801_isr(int irq, void *dev_id)
 {
@@ -503,6 +588,11 @@ static irqreturn_t i801_isr(int irq, void *dev_id)
 	pci_read_config_word(priv->pci_dev, SMBPCISTS, &pcists);
 	if (!(pcists & SMBPCISTS_INTS))
 		return IRQ_NONE;
+
+	status = inb_p(SMBSLVSTS(priv));
+	if (status & SMBSLVSTS_HST_NTFY_STS) {
+		return i801_host_notify_isr(priv);
+	}
 
 	status = inb_p(SMBHSTSTS(priv));
 	if (status & SMBHSTSTS_BYTE_DONE)
@@ -1259,6 +1349,19 @@ static int i801_probe(struct pci_dev *dev, const struct pci_device_id *id)
 		}
 	}
 
+	INIT_WORK(&priv->host_notify, i801_host_notify);
+	if (kfifo_alloc(&priv->host_notify_fifo, 12 * sizeof(u8), GFP_KERNEL)) {
+		dev_err(&dev->dev,
+			"%s:failed allocating host_notify_fifo\n", __func__);
+		return -ENOMEM;
+	}
+
+	priv->features |= FEATURE_HOST_NOTIFY;
+	if (priv->features & FEATURE_HOST_NOTIFY) {
+		outb_p(SMBSLVCMD_HST_NTFY_INTREN, SMBSLVCMD(priv));
+	}
+
+
 	if (priv->features & FEATURE_IRQ) {
 		init_waitqueue_head(&priv->waitq);
 
@@ -1300,6 +1403,9 @@ static int i801_probe(struct pci_dev *dev, const struct pci_device_id *id)
 static void i801_remove(struct pci_dev *dev)
 {
 	struct i801_priv *priv = pci_get_drvdata(dev);
+
+	cancel_work_sync(&priv->host_notify);
+	kfifo_free(&priv->host_notify_fifo);
 
 	i801_del_mux(priv);
 	i2c_del_adapter(&priv->adapter);
