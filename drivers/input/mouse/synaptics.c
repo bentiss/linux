@@ -71,10 +71,6 @@
 /* maximum ABS_MT_POSITION displacement (in mm) */
 #define DMAX 10
 
-static bool claimed_other_bus;
-static bool fast_detected;
-static wait_queue_head_t intertouch_wait;
-
 
 /*****************************************************************************
  *	Stuff we need even when we do not want native Synaptics support
@@ -125,6 +121,13 @@ void synaptics_reset(struct psmouse *psmouse)
 	synaptics_mode_cmd(psmouse, 0);
 }
 
+#ifdef CONFIG_MOUSE_PS2_SYNAPTICS
+
+static bool cr48_profile_sensor;
+static bool claimed_other_bus;
+static bool fast_detected;
+static wait_queue_head_t intertouch_wait;
+
 int synaptics_fast_detect(void)
 {
 	if (claimed_other_bus) {
@@ -154,9 +157,6 @@ int synaptics_wait_for_intertouch_detect(int timeout)
 }
 EXPORT_SYMBOL_GPL(synaptics_wait_for_intertouch_detect);
 
-#ifdef CONFIG_MOUSE_PS2_SYNAPTICS
-
-static bool cr48_profile_sensor;
 
 #define ANY_BOARD_ID 0
 struct min_max_quirk {
