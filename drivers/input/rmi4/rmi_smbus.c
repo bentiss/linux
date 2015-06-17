@@ -319,7 +319,7 @@ static int rmi_smb_probe(struct i2c_client *client,
 		pdata->sensor_name = "Synaptics SMBus";
 
 		/* set an unvalid gpio to enable polling mode */
-		pdata->attn_gpio = -1;
+		pdata->attn_gpio = RMI_POLLING;
 
 		pdata->f11_sensor_data = devm_kzalloc(&client->dev,
 				sizeof(*pdata->f11_sensor_data), GFP_KERNEL);
