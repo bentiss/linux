@@ -177,6 +177,8 @@ struct i2c_driver {
 	 * The format and meaning of the data value depends on the protocol.
 	 * For the SMBus alert protocol, there is a single bit of data passed
 	 * as the alert response's low bit ("event flag").
+	 * For the SMBus Host Notify protocol, the data corresponds to the
+	 * 16-bits payload data reported by the external device.
 	 */
 	void (*alert)(struct i2c_client *, unsigned int data);
 
@@ -269,6 +271,9 @@ static inline int i2c_slave_event(struct i2c_client *client,
 	return client->slave_cb(client, event, val);
 }
 #endif
+
+
+extern int i2c_toggle_smbus_host_notify(struct i2c_client *client, bool state);
 
 /**
  * struct i2c_board_info - template for device creation
@@ -378,6 +383,8 @@ i2c_register_board_info(int busnum, struct i2c_board_info const *info,
  *   from the I2C_FUNC_* flags.
  * @reg_slave: Register given client to I2C slave mode of this adapter
  * @unreg_slave: Unregister given client from I2C slave mode of this adapter
+ * @toggle_smbus_host_notify: toggle the SMBus Host Notify support of this
+ *   adapter.
  *
  * The following structs are for those who like to implement new bus drivers:
  * i2c_algorithm is the interface to a class of hardware solutions which can
@@ -408,6 +415,7 @@ struct i2c_algorithm {
 	int (*reg_slave)(struct i2c_client *client);
 	int (*unreg_slave)(struct i2c_client *client);
 #endif
+	int (*toggle_smbus_host_notify)(struct i2c_adapter *adap, bool state);
 };
 
 /**
