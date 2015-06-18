@@ -245,25 +245,18 @@ exit:
 	return retval;
 }
 
-static int rmi_smb_reset(struct rmi_transport_dev *xport, u16 reset_addr)
+static void rmi_smb_clear_state(struct rmi_smb_xport *rmi_smb)
 {
-	struct rmi_smb_xport *rmi_smb =
-		container_of(xport, struct rmi_smb_xport, xport);
-	struct i2c_client *client = rmi_smb->client;
-	int retval;
-	u8 cmd_buf = RMI_DEVICE_RESET_CMD;
-
 	/* the mapping table has been flushed, discard the current one */
 	mutex_lock(&rmi_smb->mappingtable_mutex);
 	memset(rmi_smb->mapping_table, 0, sizeof(rmi_smb->mapping_table));
 	mutex_unlock(&rmi_smb->mappingtable_mutex);
+}
 
-	synaptics_reset_fast_detect();
-
-	retval = rmi_smb_write_block(xport, reset_addr, &cmd_buf, 1);
-	if (retval)
-		dev_info(&client->dev,
-			 "Reset CMD failed. Code = %d. Ignoring\n", retval);
+static int rmi_smb_reset_state(struct rmi_smb_xport *rmi_smb)
+{
+	struct i2c_client *client = rmi_smb->client;
+	int retval;
 
 	if (!synaptics_wait_for_fast_detect(msecs_to_jiffies(5000)))
 		dev_err(&client->dev,
@@ -277,10 +270,54 @@ static int rmi_smb_reset(struct rmi_transport_dev *xport, u16 reset_addr)
 	return 0;
 }
 
+static int rmi_smb_reset(struct rmi_transport_dev *xport, u16 reset_addr)
+{
+	struct rmi_smb_xport *rmi_smb =
+		container_of(xport, struct rmi_smb_xport, xport);
+	struct i2c_client *client = rmi_smb->client;
+	int retval;
+	u8 cmd_buf = RMI_DEVICE_RESET_CMD;
+
+	rmi_smb_clear_state(rmi_smb);
+
+	synaptics_reset_fast_detect();
+
+	retval = rmi_smb_write_block(xport, reset_addr, &cmd_buf, 1);
+	if (retval)
+		dev_info(&client->dev,
+			 "Reset CMD failed. Code = %d. Ignoring\n", retval);
+
+
+	return rmi_smb_reset_state(rmi_smb);
+}
+
+static void rmi_smb_disable_device(struct rmi_transport_dev *xport)
+{
+	struct rmi_smb_xport *rmi_smb =
+		container_of(xport, struct rmi_smb_xport, xport);
+
+	synaptics_reset_fast_detect();
+
+	rmi_smb_clear_state(rmi_smb);
+}
+
+static int rmi_smb_enable_device(struct rmi_transport_dev *xport)
+{
+	struct rmi_smb_xport *rmi_smb =
+		container_of(xport, struct rmi_smb_xport, xport);
+	struct i2c_client *client = rmi_smb->client;
+
+	i2c_toggle_smbus_host_notify(client, true);
+
+	return rmi_smb_reset_state(rmi_smb);
+}
+
 static const struct rmi_transport_ops rmi_smb_ops = {
 	.write_block	= rmi_smb_write_block,
 	.read_block	= rmi_smb_read_block,
 	.reset		= rmi_smb_reset,
+	.disable_device	= rmi_smb_disable_device,
+	.enable_device	= rmi_smb_enable_device,
 };
 
 static void rmi_smb_alert(struct i2c_client *client, unsigned int data)
