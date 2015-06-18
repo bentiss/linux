@@ -2959,6 +2959,32 @@ int i2c_slave_unregister(struct i2c_client *client)
 EXPORT_SYMBOL_GPL(i2c_slave_unregister);
 #endif
 
+int i2c_toggle_smbus_host_notify(struct i2c_client *client, bool state)
+{
+	int ret;
+
+	if (!client)
+		return -EINVAL;
+
+	if (!(client->flags & I2C_CLIENT_TEN)) {
+		/* Enforce stricter address checking */
+		ret = i2c_check_addr_validity(client->addr);
+		if (ret)
+			return ret;
+	}
+
+	if (!client->adapter->algo->toggle_smbus_host_notify)
+		return -EOPNOTSUPP;
+
+	i2c_lock_adapter(client->adapter);
+	ret = client->adapter->algo->toggle_smbus_host_notify(client->adapter,
+							      state);
+	i2c_unlock_adapter(client->adapter);
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(i2c_toggle_smbus_host_notify);
+
 MODULE_AUTHOR("Simon G. Vogl <simon@tk.uni-linz.ac.at>");
 MODULE_DESCRIPTION("I2C-Bus main module");
 MODULE_LICENSE("GPL");
