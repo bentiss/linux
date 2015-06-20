@@ -278,10 +278,34 @@ static int rmi_smb_reset(struct rmi_transport_dev *xport, u16 reset_addr)
 	return rmi_smb_enable_smbus_mode(rmi_smb);
 }
 
+static void rmi_smb_disable_device(struct rmi_transport_dev *xport)
+{
+	struct rmi_smb_xport *rmi_smb =
+		container_of(xport, struct rmi_smb_xport, xport);
+	struct i2c_client *client = rmi_smb->client;
+
+	i2c_toggle_smbus_host_notify(client, false);
+
+	rmi_smb_clear_state(rmi_smb);
+}
+
+static int rmi_smb_enable_device(struct rmi_transport_dev *xport)
+{
+	struct rmi_smb_xport *rmi_smb =
+		container_of(xport, struct rmi_smb_xport, xport);
+	struct i2c_client *client = rmi_smb->client;
+
+	i2c_toggle_smbus_host_notify(client, true);
+
+	return rmi_smb_enable_smbus_mode(rmi_smb);
+}
+
 static const struct rmi_transport_ops rmi_smb_ops = {
 	.write_block	= rmi_smb_write_block,
 	.read_block	= rmi_smb_read_block,
 	.reset		= rmi_smb_reset,
+	.disable_device	= rmi_smb_disable_device,
+	.enable_device	= rmi_smb_enable_device,
 };
 
 static void rmi_smb_alert(struct i2c_client *client, unsigned int data)
