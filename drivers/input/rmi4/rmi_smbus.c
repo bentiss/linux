@@ -20,9 +20,6 @@
 #include <linux/slab.h>
 #include "rmi_driver.h"
 
-struct psmouse;
-#include "../mouse/synaptics.h"
-
 #define SMB_PROTOCOL_VERSION_ADDRESS	0xfd
 #define SMB_MAX_COUNT			32
 #define RMI_SMB2_MAP_SIZE		8 /* 8 entry of 4 bytes each */
@@ -37,7 +34,6 @@ struct mapping_table_entry {
 struct rmi_smb_xport {
 	struct rmi_transport_dev xport;
 	struct i2c_client *client;
-	bool pdata_created;
 
 	struct mutex page_mutex;
 	int page;
@@ -258,8 +254,6 @@ static int rmi_smb_reset(struct rmi_transport_dev *xport, u16 reset_addr)
 	memset(rmi_smb->mapping_table, 0, sizeof(rmi_smb->mapping_table));
 	mutex_unlock(&rmi_smb->mappingtable_mutex);
 
-	synaptics_reset_fast_detect();
-
 	retval = rmi_smb_write_block(xport, reset_addr, &cmd_buf, 1);
 	if (retval)
 		dev_info(&client->dev,
@@ -306,41 +300,14 @@ static int rmi_smb_probe(struct i2c_client *client,
 		return -ENODEV;
 	}
 
-	/*
-	 * Wait for PS/2 to notify that the device is available
-	 */
-	if (!synaptics_wait_for_intertouch_detect(5000))
-		return -ENODEV;
-
 	rmi_smb = devm_kzalloc(&client->dev, sizeof(struct rmi_smb_xport),
 				GFP_KERNEL);
 	if (!rmi_smb)
 		return -ENOMEM;
 
 	if (!pdata) {
-		dev_info(&client->dev, "no platform data, allocating one\n");
-		pdata = devm_kzalloc(&client->dev, sizeof(*pdata),
-				     GFP_KERNEL);
-		if (!pdata)
-			return -ENOMEM;
-
-		pdata->sensor_name = "Synaptics SMBus";
-
-		/* set an unvalid gpio to enable polling mode */
-		pdata->attn_gpio = RMI_CUSTOM_IRQ;
-
-		pdata->f11_sensor_data = devm_kzalloc(&client->dev,
-				sizeof(*pdata->f11_sensor_data), GFP_KERNEL);
-		if (pdata->f11_sensor_data) {
-			pdata->f11_sensor_data->sensor_type = rmi_f11_sensor_touchpad;
-			pdata->f11_sensor_data->axis_align.flip_y = true;
-		}
-
-		pdata->unified_input = true;
-
-		rmi_smb->pdata_created = true;
-
-		client->dev.platform_data = pdata;
+		dev_err(&client->dev, "no platform data, aborting\n");
+		return -ENOMEM;
 	}
 
 	dev_dbg(&client->dev, "Probing %s at %#02x (GPIO %d).\n",
@@ -398,8 +365,6 @@ static int rmi_smb_probe(struct i2c_client *client,
 err_gpio:
 	if (pdata->gpio_config)
 		pdata->gpio_config(pdata->gpio_data, false);
-	if (rmi_smb->pdata_created)
-		client->dev.platform_data = NULL;
 
 	return retval;
 }
@@ -412,8 +377,6 @@ static int rmi_smb_remove(struct i2c_client *client)
 
 	rmi_unregister_transport_device(&rmi_smb->xport);
 
-	if (rmi_smb->pdata_created)
-		client->dev.platform_data = NULL;
 	if (pdata && pdata->gpio_config)
 		pdata->gpio_config(pdata->gpio_data, false);
 

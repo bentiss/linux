@@ -124,39 +124,6 @@ void synaptics_reset(struct psmouse *psmouse)
 #ifdef CONFIG_MOUSE_PS2_SYNAPTICS
 
 static bool cr48_profile_sensor;
-static bool claimed_other_bus;
-static bool fast_detected;
-static wait_queue_head_t intertouch_wait;
-
-int synaptics_fast_detect(void)
-{
-	if (claimed_other_bus) {
-		fast_detected = true;
-		wake_up(&intertouch_wait);
-		return -ENODEV;
-	}
-	return 0;
-}
-EXPORT_SYMBOL_GPL(synaptics_fast_detect);
-
-void synaptics_reset_fast_detect(void)
-{
-	fast_detected = false;
-}
-EXPORT_SYMBOL_GPL(synaptics_reset_fast_detect);
-
-int synaptics_wait_for_fast_detect(int timeout)
-{
-	return wait_event_timeout(intertouch_wait, fast_detected, timeout);
-}
-EXPORT_SYMBOL_GPL(synaptics_wait_for_fast_detect);
-
-int synaptics_wait_for_intertouch_detect(int timeout)
-{
-	return wait_event_timeout(intertouch_wait, claimed_other_bus, timeout);
-}
-EXPORT_SYMBOL_GPL(synaptics_wait_for_intertouch_detect);
-
 
 #define ANY_BOARD_ID 0
 struct min_max_quirk {
@@ -399,8 +366,6 @@ static int synaptics_capability(struct psmouse *psmouse)
 				psmouse_info(psmouse,
 					     "device claims to be supported by an other bus, aborting.\n");
 				psmouse_reset(psmouse);
-				claimed_other_bus = true;
-				wake_up(&intertouch_wait);
 				return -1;
 			}
 		}
@@ -1480,7 +1445,6 @@ void __init synaptics_module_init(void)
 	impaired_toshiba_kbc = dmi_check_system(toshiba_dmi_table);
 	broken_olpc_ec = dmi_check_system(olpc_dmi_table);
 	cr48_profile_sensor = dmi_check_system(cr48_dmi_table);
-	init_waitqueue_head(&intertouch_wait);
 }
 
 static int __synaptics_init(struct psmouse *psmouse, bool absolute_mode)

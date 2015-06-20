@@ -1080,15 +1080,6 @@ static void i801_probe_optional_slaves(struct i801_priv *priv)
 		i2c_new_device(&priv->adapter, &info);
 	}
 
-	{
-		struct i2c_board_info info;
-
-		memset(&info, 0, sizeof(struct i2c_board_info));
-		info.addr = 0x2c;
-		strlcpy(info.type, "rmi_smbus", I2C_NAME_SIZE);
-		i2c_new_device(&priv->adapter, &info);
-	}
-
 	if (dmi_name_in_vendors("FUJITSU"))
 		dmi_walk(dmi_check_onboard_devices, &priv->adapter);
 }

@@ -205,16 +205,5 @@ int synaptics_detect(struct psmouse *psmouse, bool set_properties);
 int synaptics_init(struct psmouse *psmouse);
 int synaptics_init_relative(struct psmouse *psmouse);
 void synaptics_reset(struct psmouse *psmouse);
-#ifdef CONFIG_MOUSE_PS2_SYNAPTICS
-int synaptics_fast_detect(void);
-void synaptics_reset_fast_detect(void);
-int synaptics_wait_for_fast_detect(int timeout);
-int synaptics_wait_for_intertouch_detect(int timeout);
-#else
-static inline int synaptics_fast_detect(void) {return 0;}
-static inline void synaptics_reset_fast_detect(void) {}
-static inline int synaptics_wait_for_fast_detect(int timeout) {return 0;}
-static inline int synaptics_wait_for_intertouch_detect(int timeout) {return 0;}
-#endif
 
 #endif /* _SYNAPTICS_H */

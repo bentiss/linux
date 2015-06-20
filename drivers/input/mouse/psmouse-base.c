@@ -1522,10 +1522,6 @@ static int psmouse_connect(struct serio *serio, struct serio_driver *drv)
 
 	mutex_lock(&psmouse_mutex);
 
-	retval = synaptics_fast_detect();
-	if (retval)
-		goto out;
-
 	/*
 	 * If this is a pass-through port deactivate parent so the device
 	 * connected to this port can be successfully identified
