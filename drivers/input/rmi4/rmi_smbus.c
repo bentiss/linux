@@ -241,27 +241,17 @@ exit:
 	return retval;
 }
 
-static int rmi_smb_reset(struct rmi_transport_dev *xport, u16 reset_addr)
+static void rmi_smb_clear_state(struct rmi_smb_xport *rmi_smb)
 {
-	struct rmi_smb_xport *rmi_smb =
-		container_of(xport, struct rmi_smb_xport, xport);
-	struct i2c_client *client = rmi_smb->client;
-	int retval;
-	u8 cmd_buf = RMI_DEVICE_RESET_CMD;
-
 	/* the mapping table has been flushed, discard the current one */
 	mutex_lock(&rmi_smb->mappingtable_mutex);
 	memset(rmi_smb->mapping_table, 0, sizeof(rmi_smb->mapping_table));
 	mutex_unlock(&rmi_smb->mappingtable_mutex);
+}
 
-	retval = rmi_smb_write_block(xport, reset_addr, &cmd_buf, 1);
-	if (retval)
-		dev_info(&client->dev,
-			 "Reset CMD failed. Code = %d. Ignoring\n", retval);
-
-	if (!synaptics_wait_for_fast_detect(msecs_to_jiffies(5000)))
-		dev_err(&client->dev,
-			"Timeout while waiting for ACK after reset.\n");
+static int rmi_smb_enable_smbus_mode(struct rmi_smb_xport *rmi_smb)
+{
+	int retval;
 
 	/* we need to get the smbus version to activate the touchpad */
 	retval = rmi_smb_get_version(rmi_smb);
@@ -269,6 +259,23 @@ static int rmi_smb_reset(struct rmi_transport_dev *xport, u16 reset_addr)
 		return retval;
 
 	return 0;
+}
+
+static int rmi_smb_reset(struct rmi_transport_dev *xport, u16 reset_addr)
+{
+	struct rmi_smb_xport *rmi_smb =
+		container_of(xport, struct rmi_smb_xport, xport);
+
+	rmi_smb_clear_state(rmi_smb);
+
+	/*
+	 * we do not call the actual reset command, it has to be handled in
+	 * PS/2 or there will be races between PS/2 and SMBus.
+	 * PS/2 should ensure that a psmouse_reset is called before
+	 * intializing the device and after it has been removed to be in a known
+	 * state.
+	 */
+	return rmi_smb_enable_smbus_mode(rmi_smb);
 }
 
 static const struct rmi_transport_ops rmi_smb_ops = {

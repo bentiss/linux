@@ -30,6 +30,7 @@
 #include <linux/input/mt.h>
 #include <linux/serio.h>
 #include <linux/libps2.h>
+#include <linux/rmi.h>
 #include <linux/sched.h>
 #include <linux/slab.h>
 #include "psmouse.h"
@@ -125,6 +126,7 @@ void synaptics_reset(struct psmouse *psmouse)
 #ifdef CONFIG_MOUSE_PS2_SYNAPTICS
 
 static bool cr48_profile_sensor;
+static struct i2c_client *synaptics_smbus_client;
 static bool i2c_bus_registered;
 
 #define ANY_BOARD_ID 0
@@ -222,6 +224,32 @@ static const char * const forcepad_pnp_ids[] = {
 	NULL
 };
 
+static struct rmi_f11_sensor_data rmi_smbus_f11_sensor_data = {
+	.sensor_type = rmi_f11_sensor_touchpad,
+	.axis_align.flip_y = true,
+};
+
+static struct rmi_device_platform_data rmi_smbus_pdata = {
+	.sensor_name = "Synaptics SMBus",
+	/* set an unvalid gpio to enable polling mode */
+	.attn_gpio = RMI_CUSTOM_IRQ,
+	.f11_sensor_data = &rmi_smbus_f11_sensor_data,
+	.unified_input = true,
+};
+
+static void synaptics_create_intertouch(struct i2c_adapter *adap)
+{
+	if (!synaptics_smbus_client) {
+		struct i2c_board_info info;
+
+		memset(&info, 0, sizeof(struct i2c_board_info));
+		info.addr = 0x2c;
+		info.platform_data = &rmi_smbus_pdata;
+		strlcpy(info.type, "rmi_smbus", I2C_NAME_SIZE);
+		synaptics_smbus_client = i2c_new_device(adap, &info);
+	}
+}
+
 static int synaptics_attach_i2c_device(struct device *dev, void *dummy)
 {
 	struct i2c_adapter *adap;
@@ -234,7 +262,26 @@ static int synaptics_attach_i2c_device(struct device *dev, void *dummy)
 	if (!i2c_check_functionality(adap, I2C_FUNC_SMBUS_HOST_NOTIFY))
 		return 0;
 
+	synaptics_create_intertouch(adap);
+
 	pr_debug("synaptics: adapter [%s] registered\n", adap->name);
+	return 0;
+}
+
+static int synaptics_detach_i2c_device(struct device *dev, void *dummy)
+{
+	struct i2c_client *client;
+
+	if (dev->type == &i2c_adapter_type)
+		return 0;
+
+	client = to_i2c_client(dev);
+	if (client == synaptics_smbus_client) {
+		//psmouse_reset
+		synaptics_smbus_client = NULL;
+	}
+
+	pr_debug("synaptics: client [%s] unregistered\n", client->name);
 	return 0;
 }
 
@@ -246,6 +293,8 @@ static int synaptics_notifier_call(struct notifier_block *nb,
 	switch (action) {
 	case BUS_NOTIFY_ADD_DEVICE:
 		return synaptics_attach_i2c_device(dev, NULL);
+	case BUS_NOTIFY_DEL_DEVICE:
+		return synaptics_detach_i2c_device(dev, NULL);
 	}
 
 	return 0;
@@ -258,6 +307,11 @@ static struct notifier_block synaptics_notifier = {
 static int synaptics_setup_intertouch(struct psmouse *psmouse)
 {
 	int res;
+
+	if (synaptics_smbus_client) {
+		i2c_alert(synaptics_smbus_client, 0xffff);
+		return 0;
+	}
 
 	if (i2c_bus_registered)
 		return 0;
@@ -1634,6 +1688,8 @@ void synaptics_exit(void)
 {
 	if (i2c_bus_registered)
 		bus_unregister_notifier(&i2c_bus_type, &synaptics_notifier);
+	if (synaptics_smbus_client)
+		i2c_unregister_device(synaptics_smbus_client);
 }
 
 #else /* CONFIG_MOUSE_PS2_SYNAPTICS */
