@@ -308,23 +308,25 @@ static int synaptics_setup_intertouch(struct psmouse *psmouse)
 {
 	int res;
 
-	if (synaptics_smbus_client) {
-		i2c_alert(synaptics_smbus_client, 0xffff);
-		return 0;
+	if (unlikely(synaptics_smbus_client)) {
+		/*
+		 * The PS/2 port has been reset and the device is in an unkown
+		 * state. Remove it and re-instantiate it.
+		 */
+		i2c_unregister_device(synaptics_smbus_client);
+		synaptics_smbus_client = NULL;
 	}
 
-	if (i2c_bus_registered)
-		return 0;
-
-	/* Keep track of adapters which will be added or removed later */
-	res = bus_register_notifier(&i2c_bus_type, &synaptics_notifier);
-	if (res)
-		return 0;
+	if (!i2c_bus_registered) {
+		/* Keep track of adapters which will be added or removed later */
+		res = bus_register_notifier(&i2c_bus_type, &synaptics_notifier);
+		if (res)
+			return 0;
+		i2c_bus_registered = true;
+	}
 
 	/* Bind to already existing adapters right away */
 	i2c_for_each_dev(NULL, synaptics_attach_i2c_device);
-
-	i2c_bus_registered = true;
 
 	return 0;
 }
