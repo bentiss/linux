@@ -279,6 +279,9 @@ int rmi_process_interrupt_requests(struct rmi_device *rmi_dev)
 	struct rmi_function *entry;
 	int error;
 
+	if (!data || !data->f01_container || !data->irq_status)
+		return 0;
+
 	error = rmi_read_block(rmi_dev,
 				data->f01_container->fd.data_base_addr + 1,
 				data->irq_status, data->num_of_irq_regs);
