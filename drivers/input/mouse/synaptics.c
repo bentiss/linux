@@ -26,6 +26,7 @@
 #include <linux/module.h>
 #include <linux/delay.h>
 #include <linux/dmi.h>
+#include <linux/i2c.h>
 #include <linux/input/mt.h>
 #include <linux/serio.h>
 #include <linux/libps2.h>
@@ -124,6 +125,7 @@ void synaptics_reset(struct psmouse *psmouse)
 #ifdef CONFIG_MOUSE_PS2_SYNAPTICS
 
 static bool cr48_profile_sensor;
+static bool i2c_bus_registered;
 
 #define ANY_BOARD_ID 0
 struct min_max_quirk {
@@ -219,6 +221,59 @@ static const char * const forcepad_pnp_ids[] = {
 	"SYN3014",
 	NULL
 };
+
+static int synaptics_attach_i2c_device(struct device *dev, void *dummy)
+{
+	struct i2c_adapter *adap;
+
+	if (dev->type != &i2c_adapter_type)
+		return 0;
+
+	adap = to_i2c_adapter(dev);
+
+	if (!i2c_check_functionality(adap, I2C_FUNC_SMBUS_HOST_NOTIFY))
+		return 0;
+
+	pr_debug("synaptics: adapter [%s] registered\n", adap->name);
+	return 0;
+}
+
+static int synaptics_notifier_call(struct notifier_block *nb,
+				   unsigned long action, void *data)
+{
+	struct device *dev = data;
+
+	switch (action) {
+	case BUS_NOTIFY_ADD_DEVICE:
+		return synaptics_attach_i2c_device(dev, NULL);
+	}
+
+	return 0;
+}
+
+static struct notifier_block synaptics_notifier = {
+	.notifier_call = synaptics_notifier_call,
+};
+
+static int synaptics_setup_intertouch(struct psmouse *psmouse)
+{
+	int res;
+
+	if (i2c_bus_registered)
+		return 0;
+
+	/* Keep track of adapters which will be added or removed later */
+	res = bus_register_notifier(&i2c_bus_type, &synaptics_notifier);
+	if (res)
+		return 0;
+
+	/* Bind to already existing adapters right away */
+	i2c_for_each_dev(NULL, synaptics_attach_i2c_device);
+
+	i2c_bus_registered = true;
+
+	return 0;
+}
 
 /*****************************************************************************
  *	Synaptics communications functions
@@ -366,6 +421,7 @@ static int synaptics_capability(struct psmouse *psmouse)
 				psmouse_info(psmouse,
 					     "device claims to be supported by an other bus, aborting.\n");
 				psmouse_reset(psmouse);
+				synaptics_setup_intertouch(psmouse);
 				return -1;
 			}
 		}
@@ -1574,6 +1630,12 @@ int synaptics_init_relative(struct psmouse *psmouse)
 	return __synaptics_init(psmouse, false);
 }
 
+void synaptics_exit(void)
+{
+	if (i2c_bus_registered)
+		bus_unregister_notifier(&i2c_bus_type, &synaptics_notifier);
+}
+
 #else /* CONFIG_MOUSE_PS2_SYNAPTICS */
 
 void __init synaptics_module_init(void)
@@ -1583,6 +1645,10 @@ void __init synaptics_module_init(void)
 int synaptics_init(struct psmouse *psmouse)
 {
 	return -ENOSYS;
+}
+
+void synaptics_exit(void)
+{
 }
 
 #endif /* CONFIG_MOUSE_PS2_SYNAPTICS */
