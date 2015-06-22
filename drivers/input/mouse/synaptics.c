@@ -252,6 +252,7 @@ static const char * const smbus_pnp_ids[] = {
 static struct rmi_f11_sensor_data rmi_smbus_f11_sensor_data = {
 	.sensor_type = rmi_f11_sensor_touchpad,
 	.axis_align.flip_y = true,
+	.kernel_tracking = true, /* to prevent cursors jumps */
 };
 
 static struct rmi_f30_data rmi_smbus_f30_data = {
