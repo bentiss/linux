@@ -73,6 +73,20 @@
 /* maximum ABS_MT_POSITION displacement (in mm) */
 #define DMAX 10
 
+/*
+ * The newest Synaptics device can use a secondary bus (called InterTouch) which
+ * provides a better bandwidth and allow a better control of the touchpads.
+ * This is used to decide if we need to use this bus or not.
+ */
+enum {
+	SYNAPTICS_INTERTOUCH_NOT_SET = -1,
+	SYNAPTICS_INTERTOUCH_OFF,
+	SYNAPTICS_INTERTOUCH_ON,
+};
+
+static int synaptics_intertouch = SYNAPTICS_INTERTOUCH_NOT_SET;
+module_param_named(synaptics_intertouch, synaptics_intertouch, int, 0644);
+MODULE_PARM_DESC(synaptics_intertouch, "Use a secondary bus for the Synaptics device.");
 
 /*****************************************************************************
  *	Stuff we need even when we do not want native Synaptics support
@@ -217,6 +231,14 @@ static const char * const topbuttonpad_pnp_ids[] = {
 	NULL
 };
 
+static const char * const smbus_pnp_ids[] = {
+	/* all of the topbuttonpad_pnp_ids are valid, we just add some extras */
+	"LEN0048", /* X1 Carbon 3 */
+	"LEN0046", /* X250 */
+	"LEN004a", /* W541 */
+	"LEN200f", /* T450s */
+};
+
 /* This list has been kindly provided by Synaptics. */
 static const char * const forcepad_pnp_ids[] = {
 	"SYN300D",
@@ -304,9 +326,27 @@ static struct notifier_block synaptics_notifier = {
 	.notifier_call = synaptics_notifier_call,
 };
 
+/**
+ * synaptics_setup_intertouch - called by synaptics_query_hardware()
+ *    and decides whether or not instantiating a SMBus InterTouch device.
+ *
+ * @returns -1 if a SMBus device is needed (to abort PS/2), and 0 to continue
+ * with PS/2.
+ */
 static int synaptics_setup_intertouch(struct psmouse *psmouse)
 {
 	int res;
+
+	if (synaptics_intertouch == SYNAPTICS_INTERTOUCH_OFF)
+		return 0;
+
+	if (synaptics_intertouch == SYNAPTICS_INTERTOUCH_NOT_SET) {
+		if (!psmouse_matches_pnp_id(psmouse, topbuttonpad_pnp_ids) &&
+		    !psmouse_matches_pnp_id(psmouse, smbus_pnp_ids))
+			return 0;
+	}
+
+	psmouse_reset(psmouse);
 
 	if (unlikely(synaptics_smbus_client)) {
 		/*
@@ -321,14 +361,17 @@ static int synaptics_setup_intertouch(struct psmouse *psmouse)
 		/* Keep track of adapters which will be added or removed later */
 		res = bus_register_notifier(&i2c_bus_type, &synaptics_notifier);
 		if (res)
-			return 0;
+			return 0; /* error, so keep on PS/2 */
 		i2c_bus_registered = true;
 	}
 
 	/* Bind to already existing adapters right away */
 	i2c_for_each_dev(NULL, synaptics_attach_i2c_device);
 
-	return 0;
+	/* abort the PS/2 enumeration */
+	psmouse_info(psmouse,
+		     "device supported by an other bus, aborting.\n");
+	return -1;
 }
 
 /*****************************************************************************
@@ -473,13 +516,9 @@ static int synaptics_capability(struct psmouse *psmouse)
 		} else {
 			priv->ext_cap_0c = (cap[0] << 16) | (cap[1] << 8) | cap[2];
 
-			if (SYN_CAP_INTERTOUCH(priv->ext_cap_0c)) {
-				psmouse_info(psmouse,
-					     "device claims to be supported by an other bus, aborting.\n");
-				psmouse_reset(psmouse);
-				synaptics_setup_intertouch(psmouse);
-				return -1;
-			}
+			if (SYN_CAP_INTERTOUCH(priv->ext_cap_0c))
+				return synaptics_setup_intertouch(psmouse);
+
 		}
 	}
 
