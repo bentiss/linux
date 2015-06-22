@@ -113,6 +113,7 @@ struct rmi_f11_sensor_data {
  */
 struct rmi_f30_data {
 	bool buttonpad;
+	bool trackstick_buttons;
 };
 
 /**
