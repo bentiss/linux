@@ -140,8 +140,6 @@ void synaptics_reset(struct psmouse *psmouse)
 #ifdef CONFIG_MOUSE_PS2_SYNAPTICS
 
 static bool cr48_profile_sensor;
-static struct i2c_client *synaptics_smbus_client;
-static bool i2c_bus_registered;
 
 #define ANY_BOARD_ID 0
 struct min_max_quirk {
@@ -231,19 +229,24 @@ static const char * const topbuttonpad_pnp_ids[] = {
 	NULL
 };
 
+/* This list has been kindly provided by Synaptics. */
+static const char * const forcepad_pnp_ids[] = {
+	"SYN300D",
+	"SYN3014",
+	NULL
+};
+
+#if defined(CONFIG_I2C) || defined(CONFIG_I2C_MODULE)
+
+static struct i2c_client *synaptics_smbus_client;
+static bool i2c_bus_registered;
+
 static const char * const smbus_pnp_ids[] = {
 	/* all of the topbuttonpad_pnp_ids are valid, we just add some extras */
 	"LEN0048", /* X1 Carbon 3 */
 	"LEN0046", /* X250 */
 	"LEN004a", /* W541 */
 	"LEN200f", /* T450s */
-};
-
-/* This list has been kindly provided by Synaptics. */
-static const char * const forcepad_pnp_ids[] = {
-	"SYN300D",
-	"SYN3014",
-	NULL
 };
 
 static struct rmi_f11_sensor_data rmi_smbus_f11_sensor_data = {
@@ -385,6 +388,13 @@ static int synaptics_setup_intertouch(struct psmouse *psmouse)
 		     "device supported by an other bus, aborting.\n");
 	return -1;
 }
+
+#else /* I2C */
+static inline int synaptics_setup_intertouch(struct psmouse *psmouse)
+{
+	return 0;
+}
+#endif /* I2C */
 
 /*****************************************************************************
  *	Synaptics communications functions
@@ -1739,10 +1749,12 @@ int synaptics_init_relative(struct psmouse *psmouse)
 
 void synaptics_exit(void)
 {
+#if defined(CONFIG_I2C) || defined(CONFIG_I2C_MODULE)
 	if (i2c_bus_registered)
 		bus_unregister_notifier(&i2c_bus_type, &synaptics_notifier);
 	if (synaptics_smbus_client)
 		i2c_unregister_device(synaptics_smbus_client);
+#endif
 }
 
 #else /* CONFIG_MOUSE_PS2_SYNAPTICS */
