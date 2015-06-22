@@ -251,10 +251,14 @@ static struct rmi_f11_sensor_data rmi_smbus_f11_sensor_data = {
 	.axis_align.flip_y = true,
 };
 
+static struct rmi_f30_data rmi_smbus_f30_data = {
+};
+
 static struct rmi_device_platform_data rmi_smbus_pdata = {
 	.sensor_name = "Synaptics SMBus",
 	.attn_gpio = RMI_CUSTOM_IRQ,
 	.f11_sensor_data = &rmi_smbus_f11_sensor_data,
+	.f30_data = &rmi_smbus_f30_data,
 	.unified_input = true,
 };
 
@@ -349,6 +353,8 @@ static int synaptics_setup_intertouch(struct psmouse *psmouse)
 	if (psmouse_matches_pnp_id(psmouse, topbuttonpad_pnp_ids) &&
 	    !SYN_CAP_EXT_BUTTONS_STICK(priv->ext_cap_10))
 		rmi_smbus_f11_sensor_data.topbuttonpad = true;
+
+	rmi_smbus_f30_data.buttonpad = !!SYN_CAP_CLICKPAD(priv->ext_cap_0c);
 
 	psmouse_reset(psmouse);
 

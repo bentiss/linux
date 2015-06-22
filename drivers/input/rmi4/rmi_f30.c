@@ -384,7 +384,13 @@ static inline int rmi_f30_initialize(struct rmi_function *fn)
 					f30->gpioled_key_map[i] = button++;
 					f30->gpioled_sense_map[i] = 0;
 
-					if (!f30->has_mech_mouse_btns)
+					/*
+					 * buttonpad might be given by
+					 * f30->has_mech_mouse_btns, but I am
+					 * not sure so use only the pdata info
+					 */
+					if (pdata->f30_data &&
+					    pdata->f30_data->buttonpad)
 						break;
 				}
 			}

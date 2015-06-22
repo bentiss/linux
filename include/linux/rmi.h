@@ -105,6 +105,17 @@ struct rmi_f11_sensor_data {
 };
 
 /**
+ * struct rmi_f30_data - overrides defaults for a single F30 GPIOs/LED chip.
+ * @buttonpad - the touchpad is a buttonpad, so enable only the first actual
+ * button that is found.
+ * @trackstick_buttons - Set when the function 30 is handling the physical
+ * buttons of the trackstick (as a PD/2 passthrough device.
+ */
+struct rmi_f30_data {
+	bool buttonpad;
+};
+
+/**
  * struct rmi_f01_power - override default power management settings.
  *
  */
@@ -283,6 +294,7 @@ struct rmi_device_platform_data {
 	struct rmi_f01_power_management power_management;
 	struct rmi_button_map *f19_button_map;
 	struct rmi_button_map *f1a_button_map;
+	struct rmi_f30_data *f30_data;
 	struct rmi_f30_gpioled_map *gpioled_map;
 	struct rmi_button_map *f41_button_map;
 
