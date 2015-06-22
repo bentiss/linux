@@ -253,7 +253,6 @@ static struct rmi_f11_sensor_data rmi_smbus_f11_sensor_data = {
 
 static struct rmi_device_platform_data rmi_smbus_pdata = {
 	.sensor_name = "Synaptics SMBus",
-	/* set an unvalid gpio to enable polling mode */
 	.attn_gpio = RMI_CUSTOM_IRQ,
 	.f11_sensor_data = &rmi_smbus_f11_sensor_data,
 	.unified_input = true,
