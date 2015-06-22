@@ -335,6 +335,7 @@ static struct notifier_block synaptics_notifier = {
 static int synaptics_setup_intertouch(struct psmouse *psmouse)
 {
 	int res;
+	struct synaptics_data *priv = psmouse->private;
 
 	if (synaptics_intertouch == SYNAPTICS_INTERTOUCH_OFF)
 		return 0;
@@ -344,6 +345,10 @@ static int synaptics_setup_intertouch(struct psmouse *psmouse)
 		    !psmouse_matches_pnp_id(psmouse, smbus_pnp_ids))
 			return 0;
 	}
+
+	if (psmouse_matches_pnp_id(psmouse, topbuttonpad_pnp_ids) &&
+	    !SYN_CAP_EXT_BUTTONS_STICK(priv->ext_cap_10))
+		rmi_smbus_f11_sensor_data.topbuttonpad = true;
 
 	psmouse_reset(psmouse);
 

@@ -101,6 +101,7 @@ struct rmi_f11_sensor_data {
 	int x_mm;
 	int y_mm;
 	int disable_report_mask;
+	bool topbuttonpad;
 };
 
 /**
