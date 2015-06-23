@@ -1947,6 +1947,7 @@ static int __init psmouse_init(void)
 
 static void __exit psmouse_exit(void)
 {
+	synaptics_exit();
 	serio_unregister_driver(&psmouse_drv);
 	destroy_workqueue(kpsmoused_wq);
 }
