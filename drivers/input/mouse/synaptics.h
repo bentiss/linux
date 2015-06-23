@@ -205,5 +205,6 @@ int synaptics_detect(struct psmouse *psmouse, bool set_properties);
 int synaptics_init(struct psmouse *psmouse);
 int synaptics_init_relative(struct psmouse *psmouse);
 void synaptics_reset(struct psmouse *psmouse);
+void synaptics_exit(void);
 
 #endif /* _SYNAPTICS_H */
