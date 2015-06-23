@@ -370,6 +370,15 @@ static int synaptics_setup_intertouch(struct psmouse *psmouse)
 
 	psmouse_reset(psmouse);
 
+	if (unlikely(synaptics_smbus_client)) {
+		/*
+		 * The PS/2 port has been reset and the device is in an unknown
+		 * state. Remove it and re-instantiate it.
+		 */
+		i2c_unregister_device(synaptics_smbus_client);
+		synaptics_smbus_client = NULL;
+	}
+
 	/* Bind to already existing adapters right away */
 	i2c_for_each_dev(NULL, synaptics_attach_i2c_device);
 
