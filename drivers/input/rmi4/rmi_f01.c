@@ -176,6 +176,13 @@ static int rmi_f01_read_properties(struct rmi_device *rmi_dev,
 	return 0;
 }
 
+char *rmi_f01_get_product_ID(struct rmi_function *fn)
+{
+	struct f01_data *f01 = dev_get_drvdata(&fn->dev);
+
+	return f01->properties.product_id;
+}
+
 static int rmi_f01_probe(struct rmi_function *fn)
 {
 	struct rmi_device *rmi_dev = fn->rmi_dev;
