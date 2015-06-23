@@ -93,6 +93,8 @@ enum rmi_f11_sensor_type {
  * available.
  * @disable_report_mask - Force data to not be reported even if it is supported
  * by the firware.
+ * @topbuttonpad - Used with the "5 buttons touchpads" found on the Lenovo 40
+ * series
  */
 struct rmi_f11_sensor_data {
 	struct rmi_f11_2d_axis_alignment axis_align;
@@ -101,6 +103,7 @@ struct rmi_f11_sensor_data {
 	int x_mm;
 	int y_mm;
 	int disable_report_mask;
+	bool topbuttonpad;
 };
 
 /**
