@@ -199,6 +199,10 @@ alerting device's address.
 
 [S] [HostAddr] [Wr] A [DevAddr] A [DataLow] A [DataHigh] A [P]
 
+I2C drivers for devices which can trigger SMBus Host Notify should call
+i2c_smbus_toggle_host_notify() to enable SMBUS Host Notify on the adapter
+and implement the optional alert() callback.
+
 
 Packet Error Checking (PEC)
 ===========================
