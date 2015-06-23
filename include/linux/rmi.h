@@ -23,6 +23,9 @@
 #include <linux/wait.h>
 #include <linux/debugfs.h>
 
+#define RMI_POLLING	-1
+#define RMI_CUSTOM_IRQ	-2
+
 enum rmi_attn_polarity {
 	RMI_ATTN_ACTIVE_LOW = 0,
 	RMI_ATTN_ACTIVE_HIGH = 1
