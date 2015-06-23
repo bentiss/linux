@@ -197,6 +197,7 @@ struct rmi_transport_ops {
 
 	int (*enable_device) (struct rmi_transport_dev *xport);
 	void (*disable_device) (struct rmi_transport_dev *xport);
+	int (*reset)(struct rmi_transport_dev *xport, u16 reset_addr);
 };
 
 /**
