@@ -277,6 +277,8 @@ struct rmi_device_platform_data {
 	struct rmi_f30_gpioled_map *gpioled_map;
 	struct rmi_button_map *f41_button_map;
 
+	bool unified_input;
+
 #ifdef CONFIG_RMI4_FWLIB
 	char *firmware_name;
 #endif
