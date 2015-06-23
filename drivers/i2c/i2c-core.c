@@ -2145,6 +2145,40 @@ int i2c_master_send(const struct i2c_client *client, const char *buf, int count)
 EXPORT_SYMBOL(i2c_master_send);
 
 /**
+ * i2c_alert - call an alert for the given i2c_client.
+ * @client: Handle to slave device
+ * @data: Payload data that will be sent to the slave
+ *
+ * Returns negative errno, or 0.
+ */
+int i2c_alert(struct i2c_client *client, unsigned int data)
+{
+	struct i2c_driver *driver;
+
+	if (!client)
+		return -EINVAL;
+
+	/*
+	 * Drivers should either disable alerts, or provide at least
+	 * a minimal handler.  Lock so the driver won't change.
+	 */
+	device_lock(&client->adapter->dev);
+	if (client->dev.driver) {
+		driver = to_i2c_driver(client->dev.driver);
+		if (driver->alert)
+			driver->alert(client, data);
+		else
+			dev_warn(&client->dev, "no driver alert()!\n");
+	} else
+		dev_dbg(&client->dev, "alert with no driver\n");
+	device_unlock(&client->adapter->dev);
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(i2c_alert);
+
+
+/**
  * i2c_master_recv - issue a single I2C message in master receive mode
  * @client: Handle to slave device
  * @buf: Where to store data read from slave
