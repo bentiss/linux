@@ -611,6 +611,14 @@ static int rmi_initial_reset(struct rmi_device *rmi_dev,
 		const struct rmi_device_platform_data *pdata =
 				rmi_get_platform_data(rmi_dev);
 
+		if (rmi_dev->xport->ops->reset) {
+			if (rmi_dev->xport->ops->reset(rmi_dev->xport,
+						       cmd_addr))
+				return error;
+
+			return RMI_SCAN_DONE;
+		}
+
 		error = rmi_write_block(rmi_dev, cmd_addr, &cmd_buf, 1);
 		if (error) {
 			dev_err(&rmi_dev->dev,
