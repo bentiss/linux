@@ -358,6 +358,8 @@ static int synaptics_setup_intertouch(struct psmouse *psmouse)
 		rmi_smbus_f11_sensor_data.topbuttonpad = true;
 
 	rmi_smbus_f30_data.buttonpad = !!SYN_CAP_CLICKPAD(priv->ext_cap_0c);
+	rmi_smbus_f30_data.trackstick_buttons =
+				!!SYN_CAP_EXT_BUTTONS_STICK(priv->ext_cap_10);
 
 	if (!i2c_bus_registered) {
 		/* Keep track of devices which will be added or removed later */
