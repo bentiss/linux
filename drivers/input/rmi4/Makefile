@@ -7,6 +7,7 @@ rmi_core-$(CONFIG_RMI4_F30) += rmi_f30.o
 
 # Transports
 obj-$(CONFIG_RMI4_I2C) += rmi_i2c.o
+obj-$(CONFIG_RMI4_SMB) += rmi_smbus.o
 
 ccflags-$(CONFIG_RMI4_DEBUG) += -DDEBUG
 
