@@ -340,6 +340,7 @@ static int synaptics_setup_intertouch(struct psmouse *psmouse)
 {
 	int res;
 	struct synaptics_data *priv = psmouse->private;
+	struct device_driver *driver;
 
 	if (synaptics_intertouch == SYNAPTICS_INTERTOUCH_OFF)
 		return 0;
@@ -366,6 +367,26 @@ static int synaptics_setup_intertouch(struct psmouse *psmouse)
 	}
 
 	psmouse_reset(psmouse);
+
+	if (synaptics_smbus_client) {
+		if (synaptics_smbus_client->dev.driver) {
+			/*
+			 * The PS/2 port has been reset and the device is in an
+			 * unknown state. Send a resume command.
+			 */
+			driver = synaptics_smbus_client->dev.driver;
+			if (driver->resume)
+				driver->resume(&synaptics_smbus_client->dev);
+			return -1;
+		} else {
+			/*
+			 * The driver was unbound from the device but never
+			 * unregistered, unregister it ourselves before
+			 * registering it again
+			 */
+			i2c_unregister_device(synaptics_smbus_client);
+		}
+	}
 
 	/* Bind to already existing adapters right away */
 	i2c_for_each_dev(NULL, synaptics_attach_i2c_device);
