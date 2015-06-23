@@ -67,15 +67,13 @@ static irqreturn_t rmi_irq_thread(int irq, void *p)
 	return IRQ_HANDLED;
 }
 
-static int process_interrupt_requests(struct rmi_device *rmi_dev);
-
 static void rmi_poll_work(struct work_struct *work)
 {
 	struct rmi_driver_data *data =
 			container_of(work, struct rmi_driver_data, poll_work);
 	struct rmi_device *rmi_dev = data->rmi_dev;
 
-	process_interrupt_requests(rmi_dev);
+	rmi_process_interrupt_requests(rmi_dev);
 }
 
 /*
@@ -124,7 +122,7 @@ static void disable_sensor(struct rmi_device *rmi_dev)
 	if (!data->enabled)
 		return;
 
-	if (!data->irq)
+	if (data->polling)
 		disable_polling(rmi_dev);
 
 	if (rmi_dev->xport->ops->disable_device)
@@ -163,7 +161,7 @@ static int enable_sensor(struct rmi_device *rmi_dev)
 				dev_name(&rmi_dev->dev), xport);
 		if (retval)
 			return retval;
-	} else {
+	} else if (data->polling) {
 		retval = enable_polling(rmi_dev);
 		if (retval < 0)
 			return retval;
@@ -171,7 +169,7 @@ static int enable_sensor(struct rmi_device *rmi_dev)
 
 	data->enabled = true;
 
-	return process_interrupt_requests(rmi_dev);
+	return rmi_process_interrupt_requests(rmi_dev);
 }
 
 static void rmi_free_function_list(struct rmi_device *rmi_dev)
@@ -274,7 +272,7 @@ static void process_one_interrupt(struct rmi_driver_data *data,
 	}
 }
 
-static int process_interrupt_requests(struct rmi_device *rmi_dev)
+int rmi_process_interrupt_requests(struct rmi_device *rmi_dev)
 {
 	struct rmi_driver_data *data = dev_get_drvdata(&rmi_dev->dev);
 	struct device *dev = &rmi_dev->dev;
@@ -315,6 +313,7 @@ static int process_interrupt_requests(struct rmi_device *rmi_dev)
 
 	return 0;
 }
+EXPORT_SYMBOL_GPL(rmi_process_interrupt_requests);
 
 /**
  * rmi_driver_set_input_params - set input device id and other data.
@@ -421,7 +420,7 @@ static int rmi_driver_irq_handler(struct rmi_device *rmi_dev, int irq)
 		return 0;
 	}
 
-	return process_interrupt_requests(rmi_dev);
+	return rmi_process_interrupt_requests(rmi_dev);
 }
 
 static int rmi_driver_reset_handler(struct rmi_device *rmi_dev)
@@ -949,10 +948,11 @@ static int rmi_driver_probe(struct device *dev)
 				}
 			}
 		}
-	} else {
+	} else if (pdata->attn_gpio == RMI_POLLING) {
 		data->poll_interval = ktime_set(0,
 			(pdata->poll_interval_ms ? pdata->poll_interval_ms :
 			DEFAULT_POLL_INTERVAL_MS) * 1000 * 1000);
+		data->polling = true;
 	}
 
 	if (data->f01_container->dev.driver) {
