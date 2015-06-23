@@ -43,6 +43,7 @@ struct rmi_driver_data {
 	u32 attn_count;
 	u32 irq_debug;	/* Should be bool, but debugfs wants u32 */
 	bool gpio_held;
+	bool polling;
 	int irq;
 	int irq_flags;
 	int num_of_irq_regs;
@@ -114,6 +115,8 @@ int rmi_read_pdt_entry(struct rmi_device *rmi_dev, struct pdt_entry *entry,
 bool rmi_is_physical_driver(struct device_driver *);
 int rmi_register_physical_driver(void);
 void rmi_unregister_physical_driver(void);
+
+int rmi_process_interrupt_requests(struct rmi_device *rmi_dev);
 
 int rmi_register_f01_handler(void);
 void rmi_unregister_f01_handler(void);
