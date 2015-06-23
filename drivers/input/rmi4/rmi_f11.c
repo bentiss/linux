@@ -515,6 +515,7 @@ struct f11_2d_sensor {
 	int pkt_size;
 	u8 sensor_index;
 	u32 type_a;	/* boolean but debugfs API requires u32 */
+	bool topbuttonpad;
 	enum rmi_f11_sensor_type sensor_type;
 	struct input_dev *input;
 	bool unified_input;
@@ -1285,6 +1286,7 @@ static int rmi_f11_initialize(struct rmi_function *fn)
 		sensor->axis_align =
 			pdata->f11_sensor_data->axis_align;
 		sensor->type_a = pdata->f11_sensor_data->type_a;
+		sensor->topbuttonpad = pdata->f11_sensor_data->topbuttonpad;
 
 		if (sensor->sens_query.has_physical_props) {
 			sensor->x_mm = sensor->sens_query.x_sensor_size_mm;
@@ -1408,6 +1410,9 @@ static int rmi_f11_register_devices(struct rmi_function *fn)
 
 	if (sensor->report_abs)
 		f11_set_abs_params(fn, f11);
+
+	if (sensor->topbuttonpad)
+		set_bit(INPUT_PROP_TOPBUTTONPAD, input_dev->propbit);
 
 	if (sensor->report_rel) {
 		set_bit(EV_REL, input_dev->evbit);
