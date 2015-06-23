@@ -84,9 +84,6 @@ enum rmi_f11_sensor_type {
 /**
  * struct rmi_f11_sensor_data - overrides defaults for a single F11 2D sensor.
  * @axis_align - provides axis alignment overrides (see above).
- * @type_a - all modern RMI F11 firmwares implement Multifinger Type B
- * protocol.  Set this to true to force MF Type A behavior, in case you find
- * an older sensor.
  * @sensor_type - Forces the driver to treat the sensor as an indirect
  * pointing device (touchpad) rather than a direct pointing device
  * (touchscreen).  This is useful when F11_2D_QUERY14 register is not
@@ -95,15 +92,24 @@ enum rmi_f11_sensor_type {
  * by the firware.
  * @topbuttonpad - Used with the "5 buttons touchpads" found on the Lenovo 40
  * series
+ * @kernel_tracking - most moderns RMI f11 firmwares implement Multifinger
+ * Type B protocol. However, there are some corner cases where the user
+ * triggers some jumps by tapping with two fingers on the touchpad.
+ * Use this setting and dmax to filter out these jumps.
+ * Also, when using an old sensor using MF Type A behavior, set to true to
+ * report an actual MT protocol B.
+ * @dmax - the maximum distance (in sensor units) the kernel tracking allows two
+ * distincts fingers to be considered the same.
  */
 struct rmi_f11_sensor_data {
 	struct rmi_f11_2d_axis_alignment axis_align;
-	bool type_a;
 	enum rmi_f11_sensor_type sensor_type;
 	int x_mm;
 	int y_mm;
 	int disable_report_mask;
 	bool topbuttonpad;
+	bool kernel_tracking;
+	int dmax;
 };
 
 /**
