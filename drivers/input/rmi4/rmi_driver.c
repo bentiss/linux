@@ -310,6 +310,9 @@ static int process_interrupt_requests(struct rmi_device *rmi_dev)
 		if (entry->irq_mask)
 			process_one_interrupt(data, entry);
 
+	if (data->input)
+		input_sync(data->input);
+
 	return 0;
 }
 
@@ -329,6 +332,25 @@ static int rmi_driver_set_input_params(struct rmi_device *rmi_dev,
 	input->id.bustype = BUS_RMI;
 	return 0;
 }
+
+static void rmi_driver_set_input_name(struct rmi_device *rmi_dev,
+				struct input_dev *input)
+{
+	struct rmi_driver_data *data = dev_get_drvdata(&rmi_dev->dev);
+	char *device_name = rmi_f01_get_product_ID(data->f01_container);
+	char *name;
+
+	if (!device_name)
+		return;
+
+	name = devm_kasprintf(&rmi_dev->dev, GFP_KERNEL,
+			      "Synaptics %s", device_name);
+	if (!name)
+		return;
+
+	input->name = name;
+}
+
 
 static int rmi_driver_set_irq_bits(struct rmi_device *rmi_dev,
 				   unsigned long *mask)
@@ -720,6 +742,8 @@ static int rmi_driver_remove(struct device *dev)
 	const struct rmi_device_platform_data *pdata =
 					rmi_get_platform_data(rmi_dev);
 
+	if (data->input)
+		input_unregister_device(data->input);
 	disable_sensor(rmi_dev);
 	rmi_free_function_list(rmi_dev);
 
@@ -832,6 +856,15 @@ static int rmi_driver_probe(struct device *dev)
 	data->current_irq_mask	= irq_memory + size * 2;
 	data->new_irq_mask	= irq_memory + size * 3;
 
+	if (pdata->unified_input) {
+		data->input = input_allocate_device();
+		if (data->input) {
+			rmi_driver_set_input_params(rmi_dev, data->input);
+			sprintf(data->input_phys, "%s/input0", dev_name(dev));
+			data->input->phys = data->input_phys;
+		}
+	}
+
 	irq_count = 0;
 	dev_dbg(dev, "Creating functions.");
 	retval = rmi_scan_pdt(rmi_dev, &irq_count, rmi_create_function);
@@ -864,6 +897,15 @@ static int rmi_driver_probe(struct device *dev)
 		data->post_resume = pdata->post_resume;
 
 		mutex_init(&data->suspend_mutex);
+	}
+
+	if (data->input) {
+		rmi_driver_set_input_name(rmi_dev, data->input);
+		if (input_register_device(data->input)) {
+			dev_err(dev, "%s: Failed to register input device.\n",
+				__func__);
+			goto err_destroy_functions;
+		}
 	}
 
 	if (gpio_is_valid(pdata->attn_gpio)) {
@@ -921,6 +963,7 @@ static int rmi_driver_probe(struct device *dev)
 	return 0;
 
 err_destroy_functions:
+	input_free_device(data->input);
 	rmi_free_function_list(rmi_dev);
 	kfree(irq_memory);
 err_free_mem:
