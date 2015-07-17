@@ -30,6 +30,7 @@
 #define SERIO_HIL_MLC	0x03
 #define SERIO_PS_PSTHRU	0x05
 #define SERIO_8042_XL	0x06
+#define SERIO_RMI_PSTHRU	0x07
 
 /*
  * Serio protocols
