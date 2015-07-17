@@ -383,6 +383,13 @@ static int __init rmi_bus_init(void)
 		goto err_unregister_bus;
 	}
 
+	error = rmi_register_f03_handler();
+	if (error) {
+		pr_err("%s: error registering the RMI F03 handler: %d\n",
+			__func__, error);
+		goto err_unregister_f03;
+	}
+
 	error = rmi_register_f11_handler();
 	if (error) {
 		pr_err("%s: error registering the RMI F11 handler: %d\n",
@@ -410,6 +417,8 @@ err_unregister_f30:
 	rmi_unregister_f30_handler();
 err_unregister_f11:
 	rmi_unregister_f11_handler();
+err_unregister_f03:
+	rmi_unregister_f03_handler();
 err_unregister_f01:
 	rmi_unregister_f01_handler();
 err_unregister_bus:
