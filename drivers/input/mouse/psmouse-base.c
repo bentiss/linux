@@ -1663,6 +1663,12 @@ static struct serio_device_id psmouse_serio_ids[] = {
 		.id	= SERIO_ANY,
 		.extra	= SERIO_ANY,
 	},
+	{
+		.type	= SERIO_RMI_PSTHRU,
+		.proto	= SERIO_ANY,
+		.id	= SERIO_ANY,
+		.extra	= SERIO_ANY,
+	},
 	{ 0 }
 };
 
