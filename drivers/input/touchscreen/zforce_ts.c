@@ -510,7 +510,7 @@ static irqreturn_t zforce_irq_thread(int irq, void *dev_id)
 	if (!ts->suspending && device_may_wakeup(&client->dev))
 		pm_stay_awake(&client->dev);
 
-	while (!gpiod_get_value_cansleep(ts->gpio_int)) {
+	while (gpiod_get_value_cansleep(ts->gpio_int)) {
 		ret = zforce_read_packet(ts, payload_buffer);
 		if (ret < 0) {
 			dev_err(&client->dev,
@@ -919,7 +919,6 @@ MODULE_DEVICE_TABLE(of, zforce_dt_idtable);
 
 static struct i2c_driver zforce_driver = {
 	.driver = {
-		.owner	= THIS_MODULE,
 		.name	= "zforce-ts",
 		.pm	= &zforce_pm_ops,
 		.of_match_table	= of_match_ptr(zforce_dt_idtable),
