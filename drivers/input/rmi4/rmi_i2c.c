@@ -183,6 +183,41 @@ static const struct rmi_transport_ops rmi_i2c_ops = {
 	.read_block	= rmi_i2c_read_block,
 };
 
+#ifdef CONFIG_OF
+static struct rmi_f11_sensor_data rmi_i2c_f11_sensor_data = {
+	.sensor_type = rmi_f11_sensor_touchscreen,
+	.axis_align.flip_y = true,
+	.kernel_tracking = false,
+};
+
+static struct rmi_f30_data rmi_i2c_f30_data = {
+};
+
+static struct rmi_device_platform_data rmi_i2c_pdata = {
+	.sensor_name = "Synaptics I2C",
+	.attn_gpio = RMI_CUSTOM_IRQ,
+	.f11_sensor_data = &rmi_i2c_f11_sensor_data,
+	.f30_data = &rmi_i2c_f30_data,
+	.unified_input = false,
+};
+
+static const struct of_device_id rmi_i2c_of_match[] = {
+	{ .compatible = "synaptics,rmi_i2c" },
+	{},
+};
+MODULE_DEVICE_TABLE(of, rmi_i2c_of_match);
+#endif
+
+static irqreturn_t rmi_i2c_irq(int irq, void *dev_id)
+{
+	struct rmi_i2c_xport *rmi_i2c = dev_id;
+	struct rmi_device *rmi_dev = rmi_i2c->xport.rmi_dev;
+
+	rmi_process_interrupt_requests(rmi_dev);
+
+	return IRQ_HANDLED;
+}
+
 static int rmi_i2c_probe(struct i2c_client *client,
 			 const struct i2c_device_id *id)
 {
@@ -190,6 +225,11 @@ static int rmi_i2c_probe(struct i2c_client *client,
 				dev_get_platdata(&client->dev);
 	struct rmi_i2c_xport *rmi_i2c;
 	int retval;
+
+#ifdef CONFIG_OF
+	if (client->dev.of_node)
+		pdata = &rmi_i2c_pdata;
+#endif
 
 	if (!pdata) {
 		dev_err(&client->dev, "no platform data\n");
@@ -220,6 +260,7 @@ static int rmi_i2c_probe(struct i2c_client *client,
 	if (!rmi_i2c)
 		return -ENOMEM;
 
+	rmi_i2c->xport.pdata = *pdata;
 	rmi_i2c->client = client;
 	mutex_init(&rmi_i2c->page_mutex);
 
@@ -235,6 +276,18 @@ static int rmi_i2c_probe(struct i2c_client *client,
 	if (retval) {
 		dev_err(&client->dev, "Failed to set page select to 0.\n");
 		return retval;
+	}
+
+	if (pdata->attn_gpio == RMI_CUSTOM_IRQ && client->irq > 0) {
+		retval = devm_request_threaded_irq(&client->dev, client->irq, NULL,
+					rmi_i2c_irq,
+					IRQF_TRIGGER_LOW | IRQF_ONESHOT,
+					client->name, rmi_i2c);
+		if (retval < 0)
+			dev_warn(&client->dev,
+				"Could not register for %s interrupt, irq = %d,"
+				" ret = %d\n",
+				client->name, client->irq, retval);
 	}
 
 	retval = rmi_register_transport_device(&rmi_i2c->xport);
@@ -280,7 +333,8 @@ MODULE_DEVICE_TABLE(i2c, rmi_id);
 static struct i2c_driver rmi_i2c_driver = {
 	.driver = {
 		.owner	= THIS_MODULE,
-		.name	= "rmi_i2c"
+		.name	= "rmi_i2c",
+		.of_match_table = of_match_ptr(rmi_i2c_of_match),
 	},
 	.id_table	= rmi_id,
 	.probe		= rmi_i2c_probe,
