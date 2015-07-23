@@ -199,6 +199,9 @@ alerting device's address.
 
 [S] [HostAddr] [Wr] A [DevAddr] A [DataLow] A [DataHigh] A [P]
 
+I2C drivers for devices which can trigger SMBus Host Notify should implement
+the optional alert() callback.
+
 
 Packet Error Checking (PEC)
 ===========================
