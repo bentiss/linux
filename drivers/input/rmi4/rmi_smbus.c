@@ -337,6 +337,8 @@ static int rmi_smb_probe(struct i2c_client *client,
 		return -ENOMEM;
 	}
 
+	rmi_smb->xport.pdata = *pdata;
+
 	dev_dbg(&client->dev, "Probing %s at %#02x (GPIO %d).\n",
 		pdata->sensor_name ? pdata->sensor_name : "-no name-",
 		client->addr, pdata->attn_gpio);

@@ -181,6 +181,7 @@ struct rmi_transport_dev {
 	const char *proto_name;
 	const struct rmi_transport_ops *ops;
 	struct rmi_transport_stats stats;
+	struct rmi_device_platform_data pdata;
 };
 
 /**
@@ -227,7 +228,7 @@ struct rmi_device {
 static inline const struct rmi_device_platform_data *
 rmi_get_platform_data(struct rmi_device *d)
 {
-	return dev_get_platdata(d->xport->dev);
+	return &d->xport->pdata;
 }
 
 bool rmi_is_physical_device(struct device *dev);
