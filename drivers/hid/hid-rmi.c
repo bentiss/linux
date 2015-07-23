@@ -205,7 +205,7 @@ static int rmi_write_report(struct hid_device *hdev, u8 *report, int len)
 {
 	int ret;
 
-	ret = hid_hw_output_report(hdev, (void *)report, len);
+	ret = hid_hw_raw_request(hdev, report[0], report, len, HID_OUTPUT_REPORT, HID_REQ_SET_REPORT);
 	if (ret < 0) {
 		dev_err(&hdev->dev, "failed to write hid report (%d)\n", ret);
 		return ret;
