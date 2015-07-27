@@ -76,6 +76,7 @@ struct f30_data {
 
 	u8 data_regs[RMI_F30_CTRL_MAX_BYTES];
 	u16 *gpioled_key_map;
+	u16 *gpio_passthrough_key_map;
 
 	struct input_dev *input;
 };
@@ -100,6 +101,7 @@ static int rmi_f30_read_control_parameters(struct rmi_function *fn,
 static int rmi_f30_attention(struct rmi_function *fn, unsigned long *irq_bits)
 {
 	struct f30_data *f30 = dev_get_drvdata(&fn->dev);
+	struct rmi_driver_data *data = dev_get_drvdata(&fn->rmi_dev->dev);
 	int retval;
 	int gpiled = 0;
 	int value = 0;
@@ -131,13 +133,22 @@ static int rmi_f30_attention(struct rmi_function *fn, unsigned long *irq_bits)
 					"%s: call input report key (0x%04x) value (0x%02x)",
 					__func__,
 					f30->gpioled_key_map[gpiled], value);
+
 				input_report_key(f30->input,
 						 f30->gpioled_key_map[gpiled],
 						 value);
+			} else if (f30->gpio_passthrough_key_map[gpiled] &&
+				   data->ps2_guest) {
+				psmouse_overwrite_button(
+						data->ps2_guest,
+						f30->gpio_passthrough_key_map[gpiled],
+						value);
 			}
-
 		}
 	}
+
+	if (data->ps2_guest)
+		psmouse_input_sync(data->ps2_guest);
 
 	return 0;
 }
@@ -231,10 +242,9 @@ static inline int rmi_f30_initialize(struct rmi_function *fn)
 	int retval = 0;
 	int control_address;
 	int i;
-	int button;
+	int button, extra_button;
 	u8 buf[RMI_F30_QUERY_SIZE];
 	u8 *ctrl_reg;
-	u8 *map_memory;
 
 	f30 = devm_kzalloc(&fn->dev, sizeof(struct f30_data),
 			   GFP_KERNEL);
@@ -330,31 +340,35 @@ static inline int rmi_f30_initialize(struct rmi_function *fn)
 		return retval;
 	}
 
-	map_memory = devm_kzalloc(&fn->dev,
-				  (f30->gpioled_count * (sizeof(u16))),
-				  GFP_KERNEL);
-	if (!map_memory) {
+	f30->gpioled_key_map = devm_kzalloc(&fn->dev,
+					(f30->gpioled_count * (sizeof(u16))),
+					GFP_KERNEL);
+	f30->gpio_passthrough_key_map = devm_kzalloc(&fn->dev,
+					(f30->gpioled_count * (sizeof(u16))),
+					GFP_KERNEL);
+	if (!f30->gpioled_key_map || !f30->gpio_passthrough_key_map) {
 		dev_err(&fn->dev, "Failed to allocate gpioled map memory.\n");
 		return -ENOMEM;
 	}
 
-	f30->gpioled_key_map = (u16 *)map_memory;
-
 	pdata = rmi_get_platform_data(rmi_dev);
 	if (pdata && f30->has_gpio) {
 		button = BTN_LEFT;
+		extra_button = BTN_LEFT;
 		for (i = 0; i < f30->gpioled_count; i++) {
+			/*
+			 * If we have a buttonpad reporting more than one
+			 * button, we assume each additional button is a button
+			 * for the PS/2 guest.
+			 */
 			if (rmi_f30_is_valid_button(i, f30->ctrl)) {
 				f30->gpioled_key_map[i] = button++;
 
-				/*
-				 * buttonpad might be given by
-				 * f30->has_mech_mouse_btns, but I am
-				 * not sure, so use only the pdata info
-				 */
 				if (pdata->f30_data &&
-				    pdata->f30_data->buttonpad)
-					break;
+				    pdata->f30_data->buttonpad) {
+					if (pdata->f30_data->trackstick_buttons)
+						f30->gpio_passthrough_key_map[i] = button++;
+				}
 			}
 		}
 	}
