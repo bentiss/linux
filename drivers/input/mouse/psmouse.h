@@ -1,6 +1,8 @@
 #ifndef _PSMOUSE_H
 #define _PSMOUSE_H
 
+#include <linux/psmouse.h>
+
 #define PSMOUSE_CMD_SETSCALE11	0x00e6
 #define PSMOUSE_CMD_SETSCALE21	0x00e7
 #define PSMOUSE_CMD_SETRES	0x10e8
@@ -63,6 +65,8 @@ struct psmouse {
 	char devname[64];
 	char phys[32];
 
+	u8 overwrite_buttons;
+
 	unsigned int rate;
 	unsigned int resolution;
 	unsigned int resetafter;
@@ -81,30 +85,6 @@ struct psmouse {
 
 	void (*pt_activate)(struct psmouse *psmouse);
 	void (*pt_deactivate)(struct psmouse *psmouse);
-};
-
-enum psmouse_type {
-	PSMOUSE_NONE = 0,
-	PSMOUSE_PS2,
-	PSMOUSE_PS2PP,
-	PSMOUSE_THINKPS,
-	PSMOUSE_GENPS,
-	PSMOUSE_IMPS,
-	PSMOUSE_IMEX,
-	PSMOUSE_SYNAPTICS,
-	PSMOUSE_ALPS,
-	PSMOUSE_LIFEBOOK,
-	PSMOUSE_TRACKPOINT,
-	PSMOUSE_TOUCHKIT_PS2,
-	PSMOUSE_CORTRON,
-	PSMOUSE_HGPK,
-	PSMOUSE_ELANTECH,
-	PSMOUSE_FSP,
-	PSMOUSE_SYNAPTICS_RELATIVE,
-	PSMOUSE_CYPRESS,
-	PSMOUSE_FOCALTECH,
-	PSMOUSE_VMMOUSE,
-	PSMOUSE_AUTO		/* This one should always be last */
 };
 
 void psmouse_queue_work(struct psmouse *psmouse, struct delayed_work *work,
