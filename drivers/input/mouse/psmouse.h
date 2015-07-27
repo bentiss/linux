@@ -1,6 +1,8 @@
 #ifndef _PSMOUSE_H
 #define _PSMOUSE_H
 
+#include <linux/psmouse.h>
+
 #define PSMOUSE_CMD_SETSCALE11	0x00e6
 #define PSMOUSE_CMD_SETSCALE21	0x00e7
 #define PSMOUSE_CMD_SETRES	0x10e8
@@ -62,6 +64,8 @@ struct psmouse {
 	enum psmouse_state state;
 	char devname[64];
 	char phys[32];
+
+	unsigned char overwrite_buttons;
 
 	unsigned int rate;
 	unsigned int resolution;
