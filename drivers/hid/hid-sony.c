@@ -1277,6 +1277,17 @@ static int sony_raw_event(struct hid_device *hdev, struct hid_report *report,
 	 * has to be BYTE_SWAPPED before passing up to joystick interface
 	 */
 	if ((sc->quirks & SIXAXIS_CONTROLLER) && rd[0] == 0x01 && size == 49) {
+		/*
+		 * When connected via Bluetooth the Sixaxis occasionally sends
+		 * a report with the second byte 0xff and the rest zeroed.
+		 *
+		 * This report does not reflect the actual state of the
+		 * controller must be ignored to avoid generating false input
+		 * events.
+		 */
+		if (rd[1] == 0xff)
+			return -EINVAL;
+
 		swap(rd[41], rd[42]);
 		swap(rd[43], rd[44]);
 		swap(rd[45], rd[46]);
@@ -1843,7 +1854,7 @@ static void dualshock4_state_worker(struct work_struct *work)
 	} else {
 		memset(buf, 0, DS4_REPORT_0x11_SIZE);
 		buf[0] = 0x11;
-		buf[1] = 0xB0;
+		buf[1] = 0x80;
 		buf[3] = 0x0F;
 		offset = 6;
 	}
