@@ -30,6 +30,7 @@
 #include <linux/input/mt.h>
 #include <linux/serio.h>
 #include <linux/libps2.h>
+#include <linux/rmi.h>
 #include <linux/slab.h>
 #include "psmouse.h"
 #include "synaptics.h"
@@ -70,6 +71,21 @@
 
 /* maximum ABS_MT_POSITION displacement (in mm) */
 #define DMAX 10
+
+/*
+ * The newest Synaptics device can use a secondary bus (called InterTouch) which
+ * provides a better bandwidth and allow a better control of the touchpads.
+ * This is used to decide if we need to use this bus or not.
+ */
+enum {
+	SYNAPTICS_INTERTOUCH_NOT_SET = -1,
+	SYNAPTICS_INTERTOUCH_OFF,
+	SYNAPTICS_INTERTOUCH_ON,
+};
+
+static int synaptics_intertouch = SYNAPTICS_INTERTOUCH_NOT_SET;
+module_param_named(synaptics_intertouch, synaptics_intertouch, int, 0644);
+MODULE_PARM_DESC(synaptics_intertouch, "Use a secondary bus for the Synaptics device.");
 
 /*****************************************************************************
  *	Stuff we need even when we do not want native Synaptics support
@@ -221,7 +237,46 @@ static const char * const forcepad_pnp_ids[] = {
 
 #if defined(CONFIG_I2C) || defined(CONFIG_I2C_MODULE)
 
+static struct i2c_client *synaptics_smbus_client;
 static bool i2c_bus_registered;
+
+static const char * const smbus_pnp_ids[] = {
+	/* all of the topbuttonpad_pnp_ids are valid, we just add some extras */
+	"LEN0048", /* X1 Carbon 3 */
+	"LEN0046", /* X250 */
+	"LEN004a", /* W541 */
+	"LEN200f", /* T450s */
+};
+
+static struct rmi_f11_sensor_data rmi_smbus_f11_sensor_data = {
+	.sensor_type = rmi_f11_sensor_touchpad,
+	.axis_align.flip_y = true,
+	.kernel_tracking = true, /* to prevent cursors jumps */
+};
+
+static struct rmi_f30_data rmi_smbus_f30_data = {
+};
+
+static struct rmi_device_platform_data rmi_smbus_pdata = {
+	.sensor_name = "Synaptics SMBus",
+	.attn_gpio = RMI_CUSTOM_IRQ,
+	.f11_sensor_data = &rmi_smbus_f11_sensor_data,
+	.f30_data = &rmi_smbus_f30_data,
+	.unified_input = true,
+};
+
+static void synaptics_create_intertouch(struct i2c_adapter *adap)
+{
+	if (!synaptics_smbus_client) {
+		struct i2c_board_info info;
+
+		memset(&info, 0, sizeof(struct i2c_board_info));
+		info.addr = 0x2c;
+		info.platform_data = &rmi_smbus_pdata;
+		strlcpy(info.type, "rmi_smbus", I2C_NAME_SIZE);
+		synaptics_smbus_client = i2c_new_device(adap, &info);
+	}
+}
 
 static int synaptics_attach_i2c_device(struct device *dev, void *dummy)
 {
@@ -235,7 +290,26 @@ static int synaptics_attach_i2c_device(struct device *dev, void *dummy)
 	if (!i2c_check_functionality(adap, I2C_FUNC_SMBUS_HOST_NOTIFY))
 		return 0;
 
+	synaptics_create_intertouch(adap);
+
 	pr_debug("synaptics: adapter [%s] registered\n", adap->name);
+	return 0;
+}
+
+static int synaptics_detach_i2c_device(struct device *dev, void *dummy)
+{
+	struct i2c_client *client;
+
+	if (dev->type == &i2c_adapter_type)
+		return 0;
+
+	client = to_i2c_client(dev);
+	if (client == synaptics_smbus_client) {
+		/* FIXME: call psmouse_reset() here */
+		synaptics_smbus_client = NULL;
+	}
+
+	pr_debug("synaptics: client [%s] unregistered\n", client->name);
 	return 0;
 }
 
@@ -247,6 +321,8 @@ static int synaptics_notifier_call(struct notifier_block *nb,
 	switch (action) {
 	case BUS_NOTIFY_ADD_DEVICE:
 		return synaptics_attach_i2c_device(dev, NULL);
+	case BUS_NOTIFY_DEL_DEVICE:
+		return synaptics_detach_i2c_device(dev, NULL);
 	}
 
 	return 0;
@@ -266,6 +342,23 @@ static struct notifier_block synaptics_notifier = {
 static int synaptics_setup_intertouch(struct psmouse *psmouse)
 {
 	int res;
+	struct synaptics_data *priv = psmouse->private;
+
+	if (synaptics_intertouch == SYNAPTICS_INTERTOUCH_OFF)
+		return 0;
+
+	if (synaptics_intertouch == SYNAPTICS_INTERTOUCH_NOT_SET) {
+		if (!psmouse_matches_pnp_id(psmouse, topbuttonpad_pnp_ids) &&
+		    !psmouse_matches_pnp_id(psmouse, smbus_pnp_ids))
+			return 0;
+	}
+
+	if (psmouse_matches_pnp_id(psmouse, topbuttonpad_pnp_ids) &&
+	    !SYN_CAP_EXT_BUTTONS_STICK(priv->ext_cap_10))
+		rmi_smbus_f11_sensor_data.topbuttonpad = true;
+
+	rmi_smbus_f30_data.trackstick_buttons =
+				!!SYN_CAP_EXT_BUTTONS_STICK(priv->ext_cap_10);
 
 	if (!i2c_bus_registered) {
 		/* Keep track of devices which will be added or removed later */
@@ -1648,6 +1741,8 @@ void synaptics_exit(void)
 #if defined(CONFIG_I2C) || defined(CONFIG_I2C_MODULE)
 	if (i2c_bus_registered)
 		bus_unregister_notifier(&i2c_bus_type, &synaptics_notifier);
+	if (synaptics_smbus_client)
+		i2c_unregister_device(synaptics_smbus_client);
 #endif
 }
 
