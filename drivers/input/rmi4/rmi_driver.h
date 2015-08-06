@@ -14,6 +14,7 @@
 #include <linux/hrtimer.h>
 #include <linux/ktime.h>
 #include <linux/input.h>
+#include <linux/psmouse.h>
 #include "rmi_bus.h"
 
 #define RMI_DRIVER_VERSION "1.6"
@@ -54,6 +55,7 @@ struct rmi_driver_data {
 	unsigned long *new_irq_mask;
 	struct mutex irq_mutex;
 	struct input_dev *input;
+	struct psmouse *ps2_guest;
 	char input_phys[NAME_BUFFER_SIZE];
 
 	/* Following are used when polling. */
