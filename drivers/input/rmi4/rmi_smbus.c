@@ -312,6 +312,8 @@ static void rmi_smb_alert(struct i2c_client *client,
 	rmi_process_interrupt_requests(rmi_dev);
 }
 
+static struct i2c_driver rmi_smb_driver;
+
 static int rmi_smb_probe(struct i2c_client *client,
 			 const struct i2c_device_id *id)
 {
@@ -407,6 +409,18 @@ static int rmi_smb_remove(struct i2c_client *client)
 	return 0;
 }
 
+static int rmi_smb_resume(struct device *dev)
+{
+	struct i2c_client *client = container_of(dev, struct i2c_client, dev);
+	struct rmi_smb_xport *rmi_smb = i2c_get_clientdata(client);
+	struct rmi_device *rmi_dev = rmi_smb->xport.rmi_dev;
+
+	rmi_smb_reset(&rmi_smb->xport, 0);
+
+	rmi_reset(rmi_dev);
+	return 0;
+}
+
 static const struct i2c_device_id rmi_id[] = {
 	{ "rmi_smbus", 0 },
 	{ }
@@ -416,7 +430,8 @@ MODULE_DEVICE_TABLE(i2c, rmi_id);
 static struct i2c_driver rmi_smb_driver = {
 	.driver = {
 		.owner	= THIS_MODULE,
-		.name	= "rmi_smbus"
+		.name	= "rmi_smbus",
+		.resume	= rmi_smb_resume,
 	},
 	.id_table	= rmi_id,
 	.probe		= rmi_smb_probe,
