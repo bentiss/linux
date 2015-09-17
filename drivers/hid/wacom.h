@@ -105,6 +105,20 @@
 #define USB_VENDOR_ID_WACOM	0x056a
 #define USB_VENDOR_ID_LENOVO	0x17ef
 
+/*
+ * Custom Usage Page definitions to allow description of the intuos protocol
+ * through hid report descriptors
+ */
+
+#define HID_UP_OFFSET			0xbe000000
+#define HID_MASK_UP_OFFSET		0xff000000
+#define HID_MASK_USAGE_OFFSET		0x0000ff00
+
+#define HID_UP_WACOM			0x00be0000
+#define HID_WAC_GLOBAL_SUB_REPORT_ID	0x00be0001
+#define HID_WAC_LOCAL_SUB_REPORT_ID	0x00be0002
+#define HID_WAC_INTUOS_SUB_REPORT_ID	0x00be0005
+
 struct wacom {
 	struct usb_device *usbdev;
 	struct usb_interface *intf;
@@ -146,6 +160,8 @@ int wacom_setup_touch_input_capabilities(struct input_dev *input_dev,
 				   struct wacom_wac *wacom_wac);
 int wacom_setup_pad_input_capabilities(struct input_dev *input_dev,
 				       struct wacom_wac *wacom_wac);
+int wacom_wac_raw_event(struct hid_device *hdev, struct hid_report *report,
+		u8 *raw_data, int size);
 void wacom_wac_usage_mapping(struct hid_device *hdev,
 		struct hid_field *field, struct hid_usage *usage);
 int wacom_wac_event(struct hid_device *hdev, struct hid_field *field,
