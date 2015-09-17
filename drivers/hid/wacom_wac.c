@@ -2666,14 +2666,23 @@ int wacom_setup_pen_input_capabilities(struct input_dev *input_dev,
 {
 	struct wacom_features *features = &wacom_wac->features;
 
-	input_dev->evbit[0] |= BIT_MASK(EV_KEY) | BIT_MASK(EV_ABS);
+	if (features->device_type == BTN_TOOL_PEN) {
+		input_set_abs_params(input_dev, ABS_X, features->x_min,
+				     features->x_max, features->x_fuzz, 0);
+		input_set_abs_params(input_dev, ABS_Y, features->y_min,
+				     features->y_max, features->y_fuzz, 0);
+		input_set_abs_params(input_dev, ABS_PRESSURE, 0,
+			features->pressure_max, features->pressure_fuzz, 0);
+	}
 
 	if (!(features->device_type & WACOM_DEVICETYPE_PEN))
 		return -ENODEV;
 
 	if (features->type == HID_GENERIC)
 		/* setup has already been done */
-		return 0;
+		return input_dev->evbit[0] == 0;
+
+	input_dev->evbit[0] |= BIT_MASK(EV_KEY) | BIT_MASK(EV_ABS);
 
 	__set_bit(BTN_TOUCH, input_dev->keybit);
 	__set_bit(ABS_MISC, input_dev->absbit);
@@ -2940,6 +2949,10 @@ int wacom_setup_pad_input_capabilities(struct input_dev *input_dev,
 
 	if (!(features->device_type & WACOM_DEVICETYPE_PAD))
 		return -ENODEV;
+
+	if (features->type == HID_GENERIC)
+		/* setup has already been done */
+		return input_dev->evbit[0] == 0;
 
 	input_dev->evbit[0] |= BIT_MASK(EV_KEY) | BIT_MASK(EV_ABS);
 
