@@ -92,6 +92,8 @@
 #define WACOM_FINGER_FIELD(f)	(((f)->logical == HID_DG_FINGER) || \
 				 ((f)->physical == HID_DG_FINGER) || \
 				 ((f)->application == HID_DG_TOUCHSCREEN))
+#define WACOM_PAD_FIELD(f)	(((f)->logical == HID_GD_KEYPAD) || \
+				 ((f)->physical == HID_GD_KEYPAD))
 
 enum {
 	PENPARTNER = 0,
