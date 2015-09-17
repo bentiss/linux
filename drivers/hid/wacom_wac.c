@@ -1584,6 +1584,44 @@ static void wacom_wac_pen_usage_mapping(struct hid_device *hdev,
 	}
 }
 
+static void wacom_wac_pad_usage_mapping(struct hid_device *hdev,
+		struct hid_field *field, struct hid_usage *usage)
+{
+	struct wacom *wacom = hid_get_drvdata(hdev);
+	struct wacom_wac *wacom_wac = &wacom->wacom_wac;
+	struct input_dev *input = wacom_wac->pad_input;
+	unsigned usage_code = usage->hid;
+	unsigned code;
+
+	if ((usage_code & HID_MASK_UP_OFFSET) &&
+	    ((usage_code & HID_MASK_UP_OFFSET) != HID_UP_OFFSET))
+		return;
+
+	/* remove leading 0xbe and included offset */
+	usage_code &= ~(HID_MASK_UP_OFFSET | HID_MASK_USAGE_OFFSET);
+
+	switch (usage_code) {
+	case HID_GD_WHEEL:
+		if (field->flags & HID_MAIN_ITEM_RELATIVE)
+			wacom_map_usage(input, usage, field, EV_REL, REL_WHEEL, 0);
+		else
+			wacom_map_usage(input, usage, field, EV_ABS, ABS_WHEEL, 0);
+		break;
+	}
+
+	switch (usage_code & HID_USAGE_PAGE) {
+	case HID_UP_KEYBOARD:
+		code = usage->hid & HID_USAGE;
+		wacom_map_usage(input, usage, field, EV_KEY, code, 0);
+		break;
+
+	case HID_UP_BUTTON:
+		code = BTN_0 + (usage->hid & HID_USAGE);
+		wacom_map_usage(input, usage, field, EV_KEY, code, 0);
+		break;
+	}
+}
+
 static s32 wacom_replace_bits(s32 data, s32 bits, unsigned shift, unsigned size)
 {
 	u32 mask = GENMASK(size + shift - 1, shift);
@@ -1698,6 +1736,48 @@ static void wacom_wac_pen_pre_report(struct hid_device *hdev,
 	return;
 }
 
+static int wacom_wac_pad_event(struct hid_device *hdev, struct hid_field *field,
+		struct hid_usage *usage, __s32 value)
+{
+	struct wacom *wacom = hid_get_drvdata(hdev);
+	struct wacom_wac *wacom_wac = &wacom->wacom_wac;
+	struct input_dev *input = wacom_wac->pad_input;
+	struct hid_data *hdata = &wacom_wac->hid_data;
+	unsigned usage_code = usage->hid;
+	unsigned shift = 0;
+	unsigned size = field->report_size;
+
+	if ((usage_code & HID_MASK_UP_OFFSET) &&
+	    ((usage_code & HID_MASK_UP_OFFSET) != HID_UP_OFFSET))
+		return 0;
+
+	/* remove leading 0xbe and included offset */
+	usage_code &= ~(HID_MASK_UP_OFFSET | HID_MASK_USAGE_OFFSET);
+
+	shift = (usage->hid & HID_MASK_USAGE_OFFSET) >> 8;
+
+	/* checking which Tool / tip switch to send */
+	switch (usage_code) {
+	case HID_GD_WHEEL:
+		if (field->flags & HID_MAIN_ITEM_RELATIVE) {
+			if (value)
+				input_event(input, usage->type, usage->code,
+						value > 0 ? -1 : 1);
+		} else {
+			hdata->wheel = wacom_replace_bits(hdata->wheel, value, shift, size);
+		}
+		return 0;
+	}
+
+	/* send pen events only when touch is up or forced out */
+	if (!usage->type || wacom_wac->shared->touch_down)
+		return 0;
+
+	input_event(input, usage->type, usage->code, value);
+
+	return 0;
+}
+
 static void wacom_wac_pen_report(struct hid_device *hdev,
 		struct hid_report *report)
 {
@@ -1736,6 +1816,19 @@ static void wacom_wac_pen_report(struct hid_device *hdev,
 
 		input_sync(input);
 	}
+}
+
+static void wacom_wac_pad_report(struct hid_device *hdev,
+		struct hid_report *report)
+{
+	struct wacom *wacom = hid_get_drvdata(hdev);
+	struct wacom_wac *wacom_wac = &wacom->wacom_wac;
+	struct input_dev *input = wacom_wac->pad_input;
+	struct hid_data *hdata = &wacom_wac->hid_data;
+
+	input_event(input, EV_ABS, ABS_WHEEL, hdata->wheel);
+
+	input_sync(input);
 }
 
 static void wacom_wac_finger_usage_mapping(struct hid_device *hdev,
@@ -1921,6 +2014,9 @@ void wacom_wac_usage_mapping(struct hid_device *hdev,
 	if (WACOM_PEN_FIELD(field))
 		return wacom_wac_pen_usage_mapping(hdev, field, usage);
 
+	if (WACOM_PAD_FIELD(field))
+		return wacom_wac_pad_usage_mapping(hdev, field, usage);
+
 	if (WACOM_FINGER_FIELD(field))
 		return wacom_wac_finger_usage_mapping(hdev, field, usage);
 }
@@ -1935,6 +2031,9 @@ int wacom_wac_event(struct hid_device *hdev, struct hid_field *field,
 
 	if (WACOM_PEN_FIELD(field))
 		return wacom_wac_pen_event(hdev, field, usage, value);
+
+	if (WACOM_PAD_FIELD(field))
+		return wacom_wac_pad_event(hdev, field, usage, value);
 
 	if (WACOM_FINGER_FIELD(field))
 		return wacom_wac_finger_event(hdev, field, usage, value);
@@ -1980,6 +2079,9 @@ void wacom_wac_report(struct hid_device *hdev, struct hid_report *report)
 
 	if (WACOM_PEN_FIELD(field))
 		return wacom_wac_pen_report(hdev, report);
+
+	if (WACOM_PAD_FIELD(field))
+		return wacom_wac_pad_report(hdev, report);
 
 	if (WACOM_FINGER_FIELD(field))
 		return wacom_wac_finger_report(hdev, report);
