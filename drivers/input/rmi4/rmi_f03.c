@@ -79,7 +79,8 @@ static int rmi_f03_pt_write(struct serio *id, unsigned char val)
 	struct f03_data *f03 = id->port_data;
 	int rc;
 
-	dev_dbg(&f03->fn->dev, "Wrote %hhx to PS/2 passthrough address", val);
+	dev_dbg(&f03->fn->dev, "%s: Wrote %.2hhx to PS/2 passthrough address",
+		__func__, val);
 
 	rc = rmi_write(f03->fn->rmi_dev, f03->fn->fd.data_base_addr, val);
 	if (rc) {
@@ -235,8 +236,8 @@ static int rmi_f03_attention(struct rmi_function *fn, unsigned long *irq_bits)
 			serio_flags |= SERIO_PARITY;
 
 		dev_dbg(&fn->dev,
-			"%s: Received %hhx from PS2 guest T: %c P: %c\n", __func__,
-			ob_data,
+			"%s: Received %.2hhx from PS2 guest T: %c P: %c\n",
+			__func__, ob_data,
 			serio_flags & SERIO_TIMEOUT ?  'Y' : 'N',
 			serio_flags & SERIO_PARITY ? 'Y' : 'N');
 
