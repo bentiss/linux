@@ -590,7 +590,7 @@ static void hid_free_report(struct hid_report *report)
  * Close report. This function returns the device
  * state to the point prior to hid_open_report().
  */
-static void hid_close_report(struct hid_device *device)
+void hid_close_report(struct hid_device *device)
 {
 	unsigned i, j;
 
@@ -618,6 +618,7 @@ static void hid_close_report(struct hid_device *device)
 
 	device->status &= ~HID_STAT_PARSED;
 }
+EXPORT_SYMBOL_GPL(hid_close_report);
 
 /*
  * Free a device structure, all reports, and all fields.
