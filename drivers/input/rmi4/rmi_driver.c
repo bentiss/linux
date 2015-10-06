@@ -421,7 +421,7 @@ static int rmi_driver_irq_handler(struct rmi_device *rmi_dev, int irq)
 	 * Can get called before the driver is fully ready to deal with
 	 * interrupts.
 	 */
-	if (!data || !data->f01_container) {
+	if (!data || !data->f01_container || data->suspended) {
 		dev_dbg(&rmi_dev->dev,
 			 "Not ready to handle interrupts yet!\n");
 		return 0;
