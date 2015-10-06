@@ -418,7 +418,8 @@ static int rmi_smb_resume(struct device *dev)
 	rmi_smb_reset(&rmi_smb->xport, 0);
 
 	rmi_reset(rmi_dev);
-	return 0;
+
+	return rmi_driver_resume(&rmi_dev->dev);
 }
 
 static const struct i2c_device_id rmi_id[] = {

@@ -41,6 +41,10 @@ struct rmi_driver_data {
 	struct rmi_function *f01_container;
 	bool f01_bootloader_mode;
 
+#ifdef CONFIG_RMI4_F11
+	struct rmi_function *f11_container;
+#endif
+
 	u32 attn_count;
 	u32 irq_debug;	/* Should be bool, but debugfs wants u32 */
 	bool gpio_held;
@@ -120,9 +124,25 @@ void rmi_unregister_physical_driver(void);
 
 int rmi_process_interrupt_requests(struct rmi_device *rmi_dev);
 
+#ifdef CONFIG_PM_SLEEP
+int rmi_driver_resume(struct device *dev);
+int rmi_f01_resume(struct device *dev);
+int rmi_f11_result(struct device *dev);
+#else
+static inline int rmi_driver_resume(struct device *dev) { return 0; }
+static inline int rmi_f01_resume(struct device *dev) { return 0; }
+static inline int rmi_f11_resume(struct device *dev) { return 0; }
+#endif
+
 int rmi_register_f01_handler(void);
 void rmi_unregister_f01_handler(void);
 char *rmi_f01_get_product_ID(struct rmi_function *fn);
+
+#ifdef CONFIG_PM_SLEEP
+int rmi_f11_resume(struct device *dev);
+#else
+static inline rmi_f11_resume(struct device *dev) { return 0; }
+#endif
 
 #ifdef CONFIG_RMI4_F11
 int rmi_register_f11_handler(void);

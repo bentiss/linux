@@ -445,7 +445,7 @@ static int rmi_f01_suspend(struct device *dev)
 	return 0;
 }
 
-static int rmi_f01_resume(struct device *dev)
+int rmi_f01_resume(struct device *dev)
 {
 	struct rmi_function *fn = to_rmi_function(dev);
 	struct f01_data *f01 = dev_get_drvdata(&fn->dev);
@@ -466,10 +466,10 @@ static int rmi_f01_resume(struct device *dev)
 	}
 
 	return 0;
-}
+} EXPORT_SYMBOL(rmi_f01_resume);
 #endif /* CONFIG_PM_SLEEP */
 
-static SIMPLE_DEV_PM_OPS(rmi_f01_pm_ops, rmi_f01_suspend, rmi_f01_resume);
+static SIMPLE_DEV_PM_OPS(rmi_f01_pm_ops, rmi_f01_suspend, NULL);
 
 static int rmi_f01_attention(struct rmi_function *fn,
 			     unsigned long *irq_bits)

@@ -1544,7 +1544,7 @@ static int rmi_f11_attention(struct rmi_function *fn, unsigned long *irq_bits)
 }
 
 #ifdef CONFIG_PM_SLEEP
-static int rmi_f11_resume(struct device *dev)
+int rmi_f11_resume(struct device *dev)
 {
 	struct rmi_function *fn = to_rmi_function(dev);
 	struct f11_data *f11 = dev_get_drvdata(&fn->dev);
@@ -1565,10 +1565,8 @@ static int rmi_f11_resume(struct device *dev)
 	}
 
 	return 0;
-}
+} EXPORT_SYMBOL(rmi_f11_resume);
 #endif /* CONFIG_PM_SLEEP */
-
-static SIMPLE_DEV_PM_OPS(rmi_f11_pm_ops, NULL, rmi_f11_resume);
 
 static int rmi_f11_probe(struct rmi_function *fn)
 {
@@ -1596,7 +1594,6 @@ static void rmi_f11_remove(struct rmi_function *fn)
 static struct rmi_function_handler rmi_f11_handler = {
 	.driver = {
 		.name	= "rmi_f11",
-		.pm	= &rmi_f11_pm_ops,
 	},
 	.func		= 0x11,
 	.probe		= rmi_f11_probe,

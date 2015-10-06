@@ -676,6 +676,8 @@ static int rmi_create_function(struct rmi_device *rmi_dev,
 
 	if (pdt->function_number == 0x01)
 		data->f01_container = fn;
+	else if (pdt->function_number == 0x11)
+		data->f11_container = fn;
 
 	list_add_tail(&fn->node, &data->function_list);
 
@@ -714,7 +716,7 @@ exit:
 	return retval;
 }
 
-static int rmi_driver_resume(struct device *dev)
+int rmi_driver_resume(struct device *dev)
 {
 	struct rmi_driver_data *data;
 	int retval = 0;
@@ -740,15 +742,29 @@ static int rmi_driver_resume(struct device *dev)
 			goto exit;
 	}
 
+	retval = rmi_f11_resume(&data->f11_container->dev);
+	if (retval)
+		goto exit;
+
+	retval = rmi_f01_resume(&data->f01_container->dev);
+	if (retval)
+		goto exit;
+
 	data->suspended = false;
 exit:
 	mutex_unlock(&data->suspend_mutex);
 	return retval;
-}
+} EXPORT_SYMBOL(rmi_driver_resume);
 
 #endif /* CONFIG_PM_SLEEP */
 
-static SIMPLE_DEV_PM_OPS(rmi_driver_pm, rmi_driver_suspend, rmi_driver_resume);
+/*
+ * rmi_driver_resume() isn't called from the PM operations, since this
+ * potentially results in us trying to restore the RMI4 device before we restore
+ * the device in the psmouse driver. Instead, the psmouse driver calls the
+ * resume function for us.
+ */
+static SIMPLE_DEV_PM_OPS(rmi_driver_pm, rmi_driver_suspend, NULL);
 
 static int rmi_driver_remove(struct device *dev)
 {
