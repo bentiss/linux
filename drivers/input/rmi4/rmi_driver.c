@@ -703,6 +703,7 @@ static int rmi_driver_suspend(struct device *dev)
 			goto exit;
 	}
 
+	data->suspended = true;
 	disable_sensor(rmi_dev);
 
 	if (data->post_suspend)
