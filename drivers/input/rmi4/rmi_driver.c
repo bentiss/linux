@@ -612,8 +612,9 @@ static int rmi_initial_reset(struct rmi_device *rmi_dev,
 				rmi_get_platform_data(rmi_dev);
 
 		if (rmi_dev->xport->ops->reset) {
-			if (rmi_dev->xport->ops->reset(rmi_dev->xport,
-						       cmd_addr))
+			error = rmi_dev->xport->ops->reset(rmi_dev->xport,
+							   cmd_addr);
+			if (error)
 				return error;
 
 			return RMI_SCAN_DONE;
