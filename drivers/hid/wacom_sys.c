@@ -14,6 +14,7 @@
 #include "wacom_wac.h"
 #include "wacom.h"
 #include <linux/input/mt.h>
+#include <linux/firmware.h>
 
 #define WAC_MSG_RETRIES		5
 
@@ -30,6 +31,8 @@
 #define DEV_ATTR_RW_PERM (S_IRUGO | S_IWUSR | S_IWGRP)
 #define DEV_ATTR_WO_PERM (S_IWUSR | S_IWGRP)
 #define DEV_ATTR_RO_PERM (S_IRUSR | S_IRGRP)
+
+static int wacom_load_external_fw(struct hid_device *hdev);
 
 static int wacom_get_report(struct hid_device *hdev, u8 type, u8 *buf,
 			    size_t size, unsigned int retries)
@@ -438,6 +441,89 @@ static int wacom_query_tablet_data(struct hid_device *hdev,
 	}
 
 	return 0;
+}
+
+static int hid_fw_get_rdesc(struct hid_device *hdev, const struct firmware *fw,
+			    const char **out_version)
+{
+	u32 rdesc_size;
+	u32 size;
+	const u8 *data;
+	char type;
+	u8 *rdesc = NULL;
+	int ret;
+	size_t index = 0;
+	bool valid = true;
+	bool found = false;
+	char *version = NULL;
+
+	while (index < fw->size) {
+		data = &fw->data[index];
+
+		type = data[0];
+		data += 1;
+		index += 1;
+
+		size = get_unaligned_le32(data);
+		data += 4;
+		index += 4 + size;
+
+		if (index > fw->size) {
+			ret = -ENODATA;
+			goto err;
+		}
+
+		switch (type) {
+		case 'O':
+			/* match against current report descriptor */
+			valid = (hdev->dev_rsize == size) &&
+				!memcmp(data, hdev->dev_rdesc, size);
+			break;
+		case 'R':
+			if (valid && !found) {
+				rdesc_size = size;
+				rdesc = kmemdup(data, size, GFP_KERNEL);
+				if (!rdesc) {
+					ret = -ENOMEM;
+					goto err;
+				}
+				found = true;
+			}
+			valid = false;
+			break;
+		case 'V':
+			version = kstrndup(data, size, GFP_KERNEL);
+			if (version)
+				version[size - 1] = '\0';
+			break;
+		default:
+			hid_info(hdev, "ignoring unknown tag '%c'.\n", type);
+		}
+	}
+
+	if (!version) {
+		/* this is a hard error, abort */
+		ret = -EPROTO;
+		goto err;
+	}
+
+	if (found) {
+		kfree(hdev->dev_rdesc);
+		hdev->dev_rdesc = rdesc;
+		hdev->dev_rsize = rdesc_size;
+		ret = 0;
+	} else {
+		ret = -ENODEV;
+		goto err;
+	}
+
+	*out_version = version;
+	return 0;
+
+err:
+	kfree(rdesc);
+	*out_version = version;
+	return ret;
 }
 
 static void wacom_retrieve_hid_descriptor(struct hid_device *hdev,
@@ -1389,6 +1475,10 @@ static int wacom_register_inputs(struct wacom *wacom)
 	touch_input_dev = wacom_wac->touch_input;
 	pad_input_dev = wacom_wac->pad_input;
 
+	/* if none of the inputs are here, then we just bail out */
+	if (!pen_input_dev && !touch_input_dev && !pad_input_dev)
+		return 0;
+
 	if (!pen_input_dev || !touch_input_dev || !pad_input_dev)
 		return -EINVAL;
 
@@ -1756,7 +1846,8 @@ static int wacom_parse_and_register(struct wacom *wacom)
 	if (error)
 		goto fail_register_inputs;
 
-	if (features->type == HID_GENERIC)
+	if (features->type == HID_GENERIC &&
+	    features->device_type != WACOM_DEVICETYPE_NONE)
 		connect_mask |= HID_CONNECT_DRIVER;
 
 	/* Regular HID work starts now */
@@ -1837,6 +1928,7 @@ static int wacom_probe(struct hid_device *hdev,
 	wacom_wac = &wacom->wacom_wac;
 	wacom_wac->features = *((struct wacom_features *)id->driver_data);
 	features = &wacom_wac->features;
+	wacom_wac->hid_data.inputmode = -1;
 
 	if (features->check_for_hid_type && features->hid_type != hdev->type) {
 		error = -ENODEV;
@@ -1853,6 +1945,13 @@ static int wacom_probe(struct hid_device *hdev,
 	if (error) {
 		hid_err(hdev, "parse failed\n");
 		goto fail_parse;
+	}
+
+	error = wacom_load_external_fw(hdev);
+	if (error) {
+		hid_dbg(hdev,
+			 "can't load firmware: %d\n",
+			 error);
 	}
 
 	error = wacom_parse_and_register(wacom);
@@ -1874,6 +1973,74 @@ fail_parse:
 	kfree(wacom);
 	hid_set_drvdata(hdev, NULL);
 	return error;
+}
+
+static int wacom_firmware_loaded(const struct firmware *fw, struct hid_device *hdev)
+{
+	struct wacom *wacom = hid_get_drvdata(hdev);
+	const char *version = NULL;
+	int ret;
+
+	if (!fw)
+		return -EINVAL;
+
+	ret = hid_fw_get_rdesc(hdev, fw, &version);
+	switch (ret) {
+	case -ENODATA:
+		if (version)
+			hid_err(hdev, "fw '%s' (version '%s') is corrupted.\n",
+				wacom->fw_name, version);
+		else
+			hid_err(hdev, "fw '%s' is corrupted.\n",
+				wacom->fw_name);
+		break;
+	case -EPROTO:
+		if (version)
+			hid_err(hdev, "fw '%s' (version '%s') is not valid.\n",
+				wacom->fw_name, version);
+		else
+			hid_err(hdev, "fw '%s' is missing the version tag.\n",
+				wacom->fw_name);
+		break;
+	case -ENODEV:
+		hid_info(hdev, "fw '%s' (version '%s') does not match.\n",
+				 wacom->fw_name, version);
+		break;
+	}
+
+	if (ret < 0) {
+		goto out;
+	}
+
+	hid_info(hdev, "using fw file: %s with version '%s'\n", wacom->fw_name,
+		 version);
+
+	hid_hw_stop(hdev);
+
+	hid_close_report(hdev);
+	hid_open_report(hdev);
+
+out:
+	kfree(version);
+	release_firmware(fw);
+	return ret;
+}
+
+static int wacom_load_external_fw(struct hid_device *hdev)
+{
+	struct wacom *wacom = hid_get_drvdata(hdev);
+	const struct firmware *fw;
+	int ret;
+
+	snprintf(wacom->fw_name, sizeof(wacom->fw_name) - 1,
+		 "hid/%04x_%04x_%04x.bin",
+		 hdev->bus, hdev->vendor, hdev->product);
+
+	ret = request_firmware_direct(&fw, wacom->fw_name, &hdev->dev);
+	if (ret)
+		return ret;
+
+	return wacom_firmware_loaded(fw, hdev);
 }
 
 static void wacom_remove(struct hid_device *hdev)
