@@ -228,9 +228,11 @@ struct wacom_wac {
 	struct input_dev *pen_input;
 	struct input_dev *touch_input;
 	struct input_dev *pad_input;
+	struct input_dev *fw_input;
 	bool pen_registered;
 	bool touch_registered;
 	bool pad_registered;
+	bool fw_registered;
 	int pid;
 	int battery_capacity;
 	int num_contacts_left;
