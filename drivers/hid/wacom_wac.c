@@ -1446,6 +1446,9 @@ static void wacom_wac_pen_usage_mapping(struct hid_device *hdev,
 	struct hid_usage *usage = w_usage->hid_usage;
 	unsigned code;
 
+	if (field->physical == HID_GD_MOUSE)
+		__set_bit(INPUT_PROP_POINTER, wacom_wac->pen_input->propbit);
+
 	wacom_wac->features.device_type |= WACOM_DEVICETYPE_PEN;
 
 	switch (w_usage->code) {
@@ -1800,6 +1803,9 @@ static void wacom_wac_finger_usage_mapping(struct hid_device *hdev,
 	struct input_dev *input = wacom_wac->touch_input;
 	struct hid_usage *usage = w_usage->hid_usage;
 	unsigned touch_max = wacom_wac->features.touch_max;
+
+	if (field->application == HID_DG_TOUCHPAD)
+		__set_bit(INPUT_PROP_POINTER, wacom_wac->touch_input->propbit);
 
 	wacom_wac->features.device_type |= WACOM_DEVICETYPE_TOUCH;
 

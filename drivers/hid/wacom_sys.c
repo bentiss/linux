@@ -263,13 +263,22 @@ static void wacom_post_parse_hid(struct hid_device *hdev,
 {
 	struct wacom *wacom = hid_get_drvdata(hdev);
 	struct wacom_wac *wacom_wac = &wacom->wacom_wac;
+	unsigned int mt_flags;
 
 	if (features->type == HID_GENERIC) {
 		/* Any last-minute generic device setup */
 		if (features->touch_max > 1) {
+			if (test_bit(INPUT_PROP_POINTER, wacom_wac->touch_input->propbit)) {
+				__clear_bit(INPUT_PROP_DIRECT, wacom_wac->touch_input->propbit);
+				mt_flags = INPUT_MT_POINTER;
+			} else {
+				mt_flags = INPUT_MT_DIRECT;
+			}
 			input_mt_init_slots(wacom_wac->touch_input, wacom_wac->features.touch_max,
-				    INPUT_MT_DIRECT);
+					    mt_flags);
 		}
+		if (test_bit(INPUT_PROP_POINTER, wacom_wac->pen_input->propbit))
+			__clear_bit(INPUT_PROP_DIRECT, wacom_wac->pen_input->propbit);
 	}
 }
 
