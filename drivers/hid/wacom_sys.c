@@ -14,6 +14,7 @@
 #include "wacom_wac.h"
 #include "wacom.h"
 #include <linux/input/mt.h>
+#include <linux/firmware.h>
 
 #define WAC_MSG_RETRIES		5
 
@@ -30,6 +31,8 @@
 #define DEV_ATTR_RW_PERM (S_IRUGO | S_IWUSR | S_IWGRP)
 #define DEV_ATTR_WO_PERM (S_IWUSR | S_IWGRP)
 #define DEV_ATTR_RO_PERM (S_IRUSR | S_IRGRP)
+
+static int wacom_load_external_fw(struct hid_device *hdev);
 
 static int wacom_get_report(struct hid_device *hdev, u8 type, u8 *buf,
 			    size_t size, unsigned int retries)
@@ -438,6 +441,62 @@ static int wacom_query_tablet_data(struct hid_device *hdev,
 	}
 
 	return 0;
+}
+
+static int hid_fw_get_rdesc(struct hid_device *hdev, const struct firmware *fw)
+{
+	u32 rdesc_size;
+	u32 size;
+	const u8 *data;
+	char type;
+	u8 *rdesc;
+	int ret;
+	size_t index = 0;
+	bool valid = true;
+	bool found = false;
+
+	while (index < fw->size) {
+		data = &fw->data[index];
+
+		type = data[0];
+		data += 1;
+		index += 1;
+
+		size = get_unaligned_le32(data);
+		data += 4;
+		index += 4 + size;
+
+		if ((type != 'O' && type != 'R') || index > fw->size) {
+			ret = -ENODATA;
+			goto out;
+		}
+
+		if (type == 'O') {
+			/* match against current report descriptor */
+			valid = (hdev->dev_rsize == size) &&
+				!memcmp(data, hdev->dev_rdesc, size);
+		} else if (valid && !found) {
+			rdesc_size = size;
+			rdesc = kmemdup(data, size, GFP_KERNEL);
+			if (!rdesc) {
+				ret = -ENOMEM;
+				goto out;
+			}
+			found = true;
+		}
+	}
+
+	if (found) {
+		kfree(hdev->dev_rdesc);
+		hdev->dev_rdesc = rdesc;
+		hdev->dev_rsize = rdesc_size;
+		ret = 0;
+	} else {
+		ret = -ENODEV;
+	}
+
+out:
+	return ret;
 }
 
 static void wacom_retrieve_hid_descriptor(struct hid_device *hdev,
@@ -1389,6 +1448,10 @@ static int wacom_register_inputs(struct wacom *wacom)
 	touch_input_dev = wacom_wac->touch_input;
 	pad_input_dev = wacom_wac->pad_input;
 
+	/* if none of the inputs are here, then we just bail out */
+	if (!pen_input_dev && !touch_input_dev && !pad_input_dev)
+		return 0;
+
 	if (!pen_input_dev || !touch_input_dev || !pad_input_dev)
 		return -EINVAL;
 
@@ -1756,7 +1819,8 @@ static int wacom_parse_and_register(struct wacom *wacom)
 	if (error)
 		goto fail_register_inputs;
 
-	if (features->type == HID_GENERIC)
+	if (features->type == HID_GENERIC &&
+	    features->device_type != WACOM_DEVICETYPE_NONE)
 		connect_mask |= HID_CONNECT_DRIVER;
 
 	/* Regular HID work starts now */
@@ -1837,6 +1901,7 @@ static int wacom_probe(struct hid_device *hdev,
 	wacom_wac = &wacom->wacom_wac;
 	wacom_wac->features = *((struct wacom_features *)id->driver_data);
 	features = &wacom_wac->features;
+	wacom_wac->hid_data.inputmode = -1;
 
 	if (features->check_for_hid_type && features->hid_type != hdev->type) {
 		error = -ENODEV;
@@ -1853,6 +1918,13 @@ static int wacom_probe(struct hid_device *hdev,
 	if (error) {
 		hid_err(hdev, "parse failed\n");
 		goto fail_parse;
+	}
+
+	error = wacom_load_external_fw(hdev);
+	if (error) {
+		hid_dbg(hdev,
+			 "can't load firmware: %d\n",
+			 error);
 	}
 
 	error = wacom_parse_and_register(wacom);
@@ -1874,6 +1946,52 @@ fail_parse:
 	kfree(wacom);
 	hid_set_drvdata(hdev, NULL);
 	return error;
+}
+
+static int wacom_firmware_loaded(const struct firmware *fw, struct hid_device *hdev)
+{
+	struct wacom *wacom = hid_get_drvdata(hdev);
+	int ret;
+
+	if (!fw)
+		return -EINVAL;
+
+	hid_info(hdev, "loaded fw file: %s\n", wacom->fw_name);
+
+	ret = hid_fw_get_rdesc(hdev, fw);
+	if (ret == -ENODATA) {
+		hid_err(hdev, "fw '%s' is corrupted.\n", wacom->fw_name);
+		goto out;
+	} else if (ret < 0) {
+		goto out;
+	}
+
+	hid_info(hdev, "using report descriptor in %s\n", wacom->fw_name);
+	hid_hw_stop(hdev);
+
+	hid_close_report(hdev);
+	hid_open_report(hdev);
+
+out:
+	release_firmware(fw);
+	return ret;
+}
+
+static int wacom_load_external_fw(struct hid_device *hdev)
+{
+	struct wacom *wacom = hid_get_drvdata(hdev);
+	const struct firmware *fw;
+	int ret;
+
+	snprintf(wacom->fw_name, sizeof(wacom->fw_name) - 1,
+		 "hid/%04x_%04x_%04x.bin",
+		 hdev->bus, hdev->vendor, hdev->product);
+
+	ret = request_firmware_direct(&fw, wacom->fw_name, &hdev->dev);
+	if (ret)
+		return ret;
+
+	return wacom_firmware_loaded(fw, hdev);
 }
 
 static void wacom_remove(struct hid_device *hdev)
