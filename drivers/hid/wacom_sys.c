@@ -1453,13 +1453,21 @@ static void wacom_clean_inputs(struct wacom *wacom)
 		else
 			input_free_device(wacom->wacom_wac.pad_input);
 	}
+	if (wacom->wacom_wac.fw_input) {
+		if (wacom->wacom_wac.fw_registered)
+			input_unregister_device(wacom->wacom_wac.fw_input);
+		else
+			input_free_device(wacom->wacom_wac.fw_input);
+	}
 	kobject_put(wacom->remote_dir);
 	wacom->wacom_wac.pen_input = NULL;
 	wacom->wacom_wac.touch_input = NULL;
 	wacom->wacom_wac.pad_input = NULL;
+	wacom->wacom_wac.fw_input = NULL;
 	wacom->wacom_wac.pen_registered = false;
 	wacom->wacom_wac.touch_registered = false;
 	wacom->wacom_wac.pad_registered = false;
+	wacom->wacom_wac.fw_registered = false;
 	wacom_destroy_leds(wacom);
 }
 
@@ -1919,6 +1927,68 @@ fail_allocate_inputs:
 	return error;
 }
 
+static int wacom_fw_node_open(struct input_dev *dev)
+{
+	struct wacom *wacom = input_get_drvdata(dev);
+
+	schedule_work(&wacom->fw_work);
+
+	return 0;
+}
+
+static void wacom_fw_node_close(struct input_dev *dev)
+{
+}
+
+static int wacom_create_fw_hook(struct wacom *wacom)
+{
+	struct wacom_wac *wacom_wac = &wacom->wacom_wac;
+	int error = 0;
+
+	wacom_wac->fw_input = wacom_allocate_input(wacom);
+	if (!wacom_wac->fw_input) {
+		error = -ENOMEM;
+		goto fail;
+	}
+
+	wacom_wac->fw_input->open = wacom_fw_node_open;
+	wacom_wac->fw_input->close = wacom_fw_node_close;
+
+	error = input_register_device(wacom_wac->fw_input);
+	if (error)
+		goto fail;
+	wacom_wac->fw_registered = true;
+
+	return 0;
+fail:
+	wacom_clean_inputs(wacom);
+	return error;
+}
+
+static void wacom_fw_work(struct work_struct *fw_work)
+{
+	struct wacom *wacom = container_of(fw_work, struct wacom, fw_work);
+	struct hid_device *hdev = wacom->hdev;
+	int error, fw_error;
+
+	fw_error = wacom_load_external_fw(hdev);
+	if (fw_error && fw_error == -ENOENT)
+		/* try again */
+		return;
+
+	/* a firmware was found, cleanup the fw hooks */
+	wacom_clean_inputs(wacom);
+
+	if (fw_error)
+		/* error in loaded firmware, bail out */
+		return;
+
+	error = wacom_parse_and_register(wacom);
+	if (error && error != -ENODEV) {
+		hid_err(hdev, "%s  %s:%d\n", __func__, __FILE__, __LINE__);
+	}
+}
+
 static int wacom_probe(struct hid_device *hdev,
 		const struct hid_device_id *id)
 {
@@ -1927,7 +1997,7 @@ static int wacom_probe(struct hid_device *hdev,
 	struct wacom *wacom;
 	struct wacom_wac *wacom_wac;
 	struct wacom_features *features;
-	int error;
+	int error, fw_error;
 
 	if (!id->driver_data)
 		return -EINVAL;
@@ -1958,6 +2028,7 @@ static int wacom_probe(struct hid_device *hdev,
 	wacom->intf = intf;
 	mutex_init(&wacom->lock);
 	INIT_WORK(&wacom->work, wacom_wireless_work);
+	INIT_WORK(&wacom->fw_work, wacom_fw_work);
 
 	/* ask for the report descriptor to be loaded by HID */
 	error = hid_parse(hdev);
@@ -1966,14 +2037,24 @@ static int wacom_probe(struct hid_device *hdev,
 		goto fail_parse;
 	}
 
-	error = wacom_load_external_fw(hdev);
-	if (error) {
-		hid_dbg(hdev,
-			 "can't load firmware: %d\n",
-			 error);
+	fw_error = wacom_load_external_fw(hdev);
+	if (fw_error && fw_error != -ENOENT) {
+		hid_dbg(hdev, "can't load firmware: %d\n", error);
 	}
 
 	error = wacom_parse_and_register(wacom);
+	if ((error == -ENODEV) &&
+	    (fw_error == -ENOENT) &&
+	    (features->type == HID_GENERIC)) {
+		/*
+		 * Parsing failed but unable to find a firmware, might be
+		 * that the firmware is not in the initrd.
+		 */
+		error = wacom_create_fw_hook(wacom);
+		if (error)
+			goto fail_parse;
+	}
+
 	if (error)
 		goto fail_parse;
 
@@ -2069,6 +2150,7 @@ static void wacom_remove(struct hid_device *hdev)
 	hid_hw_stop(hdev);
 
 	cancel_work_sync(&wacom->work);
+	cancel_work_sync(&wacom->fw_work);
 	wacom_clean_inputs(wacom);
 	if (hdev->bus == BUS_BLUETOOTH)
 		device_remove_file(&hdev->dev, &dev_attr_speed);
