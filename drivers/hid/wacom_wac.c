@@ -1438,6 +1438,9 @@ static void wacom_wac_pen_usage_mapping(struct hid_device *hdev,
 	    ((usage_code & HID_MASK_UP_OFFSET) != HID_UP_OFFSET))
 		return;
 
+	if (field->physical == HID_GD_MOUSE)
+		__set_bit(INPUT_PROP_POINTER, wacom_wac->pen_input->propbit);
+
 	wacom_wac->features.device_type |= WACOM_DEVICETYPE_PEN;
 
 	/* remove leading 0xbe and included offset */
@@ -1813,6 +1816,9 @@ static void wacom_wac_finger_usage_mapping(struct hid_device *hdev,
 	if ((usage_code & HID_MASK_UP_OFFSET) &&
 	    ((usage_code & HID_MASK_UP_OFFSET) != HID_UP_OFFSET))
 		return;
+
+	if (field->application == HID_DG_TOUCHPAD)
+		__set_bit(INPUT_PROP_POINTER, wacom_wac->touch_input->propbit);
 
 	wacom_wac->features.device_type |= WACOM_DEVICETYPE_TOUCH;
 
