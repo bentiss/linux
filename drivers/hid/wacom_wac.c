@@ -1808,8 +1808,18 @@ static void wacom_wac_finger_usage_mapping(struct hid_device *hdev,
 	struct wacom_features *features = &wacom_wac->features;
 	struct input_dev *input = wacom_wac->touch_input;
 	unsigned touch_max = wacom_wac->features.touch_max;
+	unsigned usage_code = usage->hid;
 
-	switch (usage->hid) {
+	if ((usage_code & HID_MASK_UP_OFFSET) &&
+	    ((usage_code & HID_MASK_UP_OFFSET) != HID_UP_OFFSET))
+		return;
+
+	wacom_wac->features.device_type |= WACOM_DEVICETYPE_TOUCH;
+
+	/* remove leading 0xbe and included offset */
+	usage_code &= ~(HID_MASK_UP_OFFSET | HID_MASK_USAGE_OFFSET);
+
+	switch (usage_code) {
 	case HID_GD_X:
 		features->last_slot_field = usage->hid;
 		if (touch_max == 1)
@@ -1847,6 +1857,9 @@ static void wacom_wac_finger_usage_mapping(struct hid_device *hdev,
 		wacom_map_usage(input, usage, field, EV_KEY, BTN_TOUCH, 0);
 		break;
 	case HID_DG_CONTACTCOUNT:
+		/* custom forged report descriptors do not give touch max */
+		wacom_wac->features.touch_max = field->logical_maximum - field->logical_minimum + 1;
+
 		wacom_wac->hid_data.cc_report = field->report->id;
 		wacom_wac->hid_data.cc_index = field->index;
 		wacom_wac->hid_data.cc_value_index = usage->usage_index;
@@ -1897,22 +1910,39 @@ static int wacom_wac_finger_event(struct hid_device *hdev,
 {
 	struct wacom *wacom = hid_get_drvdata(hdev);
 	struct wacom_wac *wacom_wac = &wacom->wacom_wac;
+	struct hid_data *hdata = &wacom_wac->hid_data;
+	unsigned usage_code = usage->hid;
+	unsigned shift = 0;
+	unsigned size = field->report_size;
 
-	switch (usage->hid) {
+	if ((usage_code & HID_MASK_UP_OFFSET) &&
+	    ((usage_code & HID_MASK_UP_OFFSET) != HID_UP_OFFSET))
+		return 0;
+
+	/* remove leading 0xbe and included offset */
+	usage_code &= ~(HID_MASK_UP_OFFSET | HID_MASK_USAGE_OFFSET);
+
+	shift = (usage->hid & HID_MASK_USAGE_OFFSET) >> 8;
+
+	/* checking which Tool / tip switch to send */
+	switch (usage_code) {
 	case HID_GD_X:
-		wacom_wac->hid_data.x = value;
+		hdata->x = wacom_replace_bits(hdata->x, value, shift, size);
 		break;
 	case HID_GD_Y:
-		wacom_wac->hid_data.y = value;
+		hdata->y = wacom_replace_bits(hdata->y, value, shift, size);
 		break;
 	case HID_DG_WIDTH:
-		wacom_wac->hid_data.width = value;
+		hdata->width = wacom_replace_bits(hdata->width, value, shift, size);
 		break;
 	case HID_DG_HEIGHT:
-		wacom_wac->hid_data.height = value;
+		hdata->height = wacom_replace_bits(hdata->height, value, shift, size);
 		break;
 	case HID_DG_CONTACTID:
 		wacom_wac->hid_data.id = value;
+		if ((value > field->logical_maximum) ||
+		    (value < field->logical_minimum))
+			wacom_wac->hid_data.id = -1;
 		break;
 	case HID_DG_TIPSWITCH:
 		wacom_wac->hid_data.tipswitch = value;
@@ -1920,7 +1950,8 @@ static int wacom_wac_finger_event(struct hid_device *hdev,
 	}
 
 
-	if (usage->usage_index + 1 == field->report_count) {
+	if ((wacom_wac->hid_data.id >= 0) &&
+	    (usage->usage_index + 1 == field->report_count)) {
 		if (usage->hid == wacom_wac->features.last_slot_field)
 			wacom_wac_finger_slot(wacom_wac, wacom_wac->touch_input);
 	}

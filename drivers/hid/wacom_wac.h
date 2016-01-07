@@ -92,7 +92,8 @@
 				 ((f)->application == WACOM_VENDORDEFINED_PEN))
 #define WACOM_FINGER_FIELD(f)	(((f)->logical == HID_DG_FINGER) || \
 				 ((f)->physical == HID_DG_FINGER) || \
-				 ((f)->application == HID_DG_TOUCHSCREEN))
+				 ((f)->application == HID_DG_TOUCHSCREEN) || \
+				 ((f)->application == HID_DG_TOUCHPAD))
 #define WACOM_PAD_FIELD(f)	(((f)->logical == HID_GD_KEYPAD) || \
 				 ((f)->physical == HID_GD_KEYPAD))
 
