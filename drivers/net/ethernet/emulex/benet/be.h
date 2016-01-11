@@ -592,6 +592,7 @@ struct be_adapter {
 	int be_get_temp_freq;
 	struct be_hwmon hwmon_info;
 	u8 pf_number;
+	u8 pci_func_num;
 	struct rss_info rss_info;
 	/* Filters for packets that need to be sent to BMC */
 	u32 bmc_filt_mask;
@@ -847,8 +848,6 @@ void be_roce_dev_remove(struct be_adapter *);
 /*
  * internal function to open-close roce device during ifup-ifdown.
  */
-void be_roce_dev_open(struct be_adapter *);
-void be_roce_dev_close(struct be_adapter *);
 void be_roce_dev_shutdown(struct be_adapter *);
 
 #endif				/* BE_H */

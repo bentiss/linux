@@ -124,11 +124,11 @@ enum {
 	WACOM_24HD,
 	WACOM_27QHD,
 	CINTIQ_HYBRID,
+	CINTIQ_COMPANION_2,
 	CINTIQ,
 	WACOM_BEE,
 	WACOM_13HD,
 	WACOM_MO,
-	WIRELESS,
 	BAMBOO_PEN,
 	INTUOSHT,
 	INTUOSHT2,
@@ -137,6 +137,7 @@ enum {
 	WACOM_24HDT,
 	WACOM_27QHDT,
 	BAMBOO_PAD,
+	WIRELESS,
 	REMOTE,
 	TABLETPC,   /* add new TPC below */
 	TABLETPCE,
@@ -202,6 +203,7 @@ struct hid_data {
 	int width;
 	int height;
 	int id;
+	int cc_report;
 	int cc_index;
 	int cc_value_index;
 	int num_expected;

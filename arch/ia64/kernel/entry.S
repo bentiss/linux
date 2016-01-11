@@ -1770,5 +1770,7 @@ sys_call_table:
 	data8 sys_execveat
 	data8 sys_userfaultfd
 	data8 sys_membarrier
+	data8 sys_kcmp				// 1345
+	data8 sys_mlock2
 
 	.org sys_call_table + 8*NR_syscalls	// guard against failures to increase NR_syscalls
