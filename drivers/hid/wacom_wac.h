@@ -217,6 +217,7 @@ struct wacom_wac {
 	char pad_name[WACOM_NAME_MAX];
 	char bat_name[WACOM_NAME_MAX];
 	char ac_name[WACOM_NAME_MAX];
+	char fw_name[WACOM_NAME_MAX];
 	unsigned char data[WACOM_PKGLEN_MAX];
 	int tool[2];
 	int id[2];
