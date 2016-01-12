@@ -446,6 +446,8 @@ static int wacom_query_tablet_data(struct hid_device *hdev,
 static int hid_fw_get_rdesc(struct hid_device *hdev, const struct firmware *fw,
 			    const char **out_version)
 {
+	struct wacom *wacom = hid_get_drvdata(hdev);
+	struct wacom_wac *wacom_wac = &wacom->wacom_wac;
 	u32 rdesc_size;
 	u32 size;
 	const u8 *data;
@@ -456,6 +458,7 @@ static int hid_fw_get_rdesc(struct hid_device *hdev, const struct firmware *fw,
 	bool valid = true;
 	bool found = false;
 	char *version = NULL;
+	char *name = NULL;
 
 	while (index < fw->size) {
 		data = &fw->data[index];
@@ -491,6 +494,11 @@ static int hid_fw_get_rdesc(struct hid_device *hdev, const struct firmware *fw,
 			}
 			valid = false;
 			break;
+		case 'N':
+			name = kstrndup(data, size, GFP_KERNEL);
+			if (name)
+				name[size - 1] = '\0';
+			break;
 		case 'V':
 			version = kstrndup(data, size, GFP_KERNEL);
 			if (version)
@@ -517,12 +525,18 @@ static int hid_fw_get_rdesc(struct hid_device *hdev, const struct firmware *fw,
 		goto err;
 	}
 
+	if (name) {
+		strlcpy(wacom_wac->fw_name, name, sizeof(wacom_wac->fw_name));
+		kfree(name);
+	}
+
 	*out_version = version;
 	return 0;
 
 err:
 	kfree(rdesc);
 	*out_version = version;
+	kfree(name);
 	return ret;
 }
 
@@ -1740,9 +1754,11 @@ static void wacom_update_name(struct wacom *wacom)
 
 	/* Generic devices name unspecified */
 	if ((features->type == HID_GENERIC) && !strcmp("Wacom HID", features->name)) {
-		if (strstr(wacom->hdev->name, "Wacom") ||
-		    strstr(wacom->hdev->name, "wacom") ||
-		    strstr(wacom->hdev->name, "WACOM")) {
+		if (strlen(wacom_wac->fw_name)) {
+			strlcpy(name, wacom_wac->fw_name, sizeof(name));
+		} else if (strstr(wacom->hdev->name, "Wacom") ||
+			   strstr(wacom->hdev->name, "wacom") ||
+			   strstr(wacom->hdev->name, "WACOM")) {
 			/* name is in HID descriptor, use it */
 			strlcpy(name, wacom->hdev->name, sizeof(name));
 
