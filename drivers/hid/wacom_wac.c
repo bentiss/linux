@@ -3497,7 +3497,7 @@ const struct hid_device_id wacom_ids[] = {
 	{ USB_DEVICE_WACOM(0xDA) },
 	{ USB_DEVICE_WACOM(0xDB) },
 	{ USB_DEVICE_WACOM(0xDD) },
-	{ USB_DEVICE_WACOM(0xDE) },
+	//{ USB_DEVICE_WACOM(0xDE) },
 	{ USB_DEVICE_WACOM(0xDF) },
 	{ USB_DEVICE_WACOM(0xE2) },
 	{ USB_DEVICE_WACOM(0xE3) },
