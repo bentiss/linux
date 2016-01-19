@@ -1821,6 +1821,12 @@ static void wacom_wac_finger_usage_mapping(struct hid_device *hdev,
 		wacom_map_usage(input, usage, field, EV_KEY, BTN_TOUCH, 0);
 		break;
 	case HID_DG_CONTACTCOUNT:
+		/* custom forged report descriptors do not give touch max */
+		if (wacom_wac->features.touch_max == 0)
+			wacom_wac->features.touch_max = field->logical_maximum -
+						        field->logical_minimum +
+						        1;
+
 		wacom_wac->hid_data.cc_report = field->report->id;
 		wacom_wac->hid_data.cc_index = field->index;
 		wacom_wac->hid_data.cc_value_index = usage->usage_index;
@@ -1874,22 +1880,27 @@ static int wacom_wac_finger_event(struct hid_device *hdev,
 	struct wacom_wac *wacom_wac = &wacom->wacom_wac;
 	struct hid_data *hdata = &wacom_wac->hid_data;
 	struct hid_usage *usage = w_usage->hid_usage;
+	unsigned shift = w_usage->shift;
+	unsigned size = w_usage->size;
 
 	switch (w_usage->code) {
 	case HID_GD_X:
-		hdata->x = value;
+		WACOM_REPLACE_BITS(hdata->x, value);
 		break;
 	case HID_GD_Y:
-		hdata->y = value;
+		WACOM_REPLACE_BITS(hdata->y, value);
 		break;
 	case HID_DG_WIDTH:
-		hdata->width = value;
+		WACOM_REPLACE_BITS(hdata->width, value);
 		break;
 	case HID_DG_HEIGHT:
-		hdata->height = value;
+		WACOM_REPLACE_BITS(hdata->height, value);
 		break;
 	case HID_DG_CONTACTID:
 		wacom_wac->hid_data.id = value;
+		if ((value > field->logical_maximum) ||
+		    (value < field->logical_minimum))
+			hdata->id = -1;
 		break;
 	case HID_DG_TIPSWITCH:
 		hdata->tipswitch = value;
@@ -1897,7 +1908,8 @@ static int wacom_wac_finger_event(struct hid_device *hdev,
 	}
 
 
-	if (usage->usage_index + 1 == field->report_count) {
+	if ((wacom_wac->hid_data.id >= 0) &&
+	    (usage->usage_index + 1 == field->report_count)) {
 		if (usage->hid == wacom_wac->features.last_slot_field)
 			wacom_wac_finger_slot(wacom_wac, wacom_wac->touch_input);
 	}
