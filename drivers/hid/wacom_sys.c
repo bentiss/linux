@@ -33,6 +33,8 @@
 #define DEV_ATTR_RO_PERM (S_IRUSR | S_IRGRP)
 
 static int wacom_load_external_fw(struct hid_device *hdev);
+static int wacom_led_add_select(struct wacom *wacom, int index);
+static int wacom_led_add_luminance(struct wacom *wacom, int index);
 
 static int wacom_get_report(struct hid_device *hdev, u8 type, u8 *buf,
 			    size_t size, unsigned int retries)
@@ -158,6 +160,17 @@ static void wacom_feature_mapping(struct hid_device *hdev,
 		hid_data->inputmode = field->report->id;
 		hid_data->inputmode_index = usage->usage_index;
 		break;
+	case HID_WAC_LED_SELECT_ID:
+		hid_data->group_led_count++;
+		hid_data->led_count += field->logical_maximum -
+				       field->logical_minimum + 1;
+		wacom_led_add_select(wacom, hid_data->group_led_count - 1);
+		break;
+	case HID_WAC_LED_INDIC_BRIGHTNESS:
+		hid_data->group_led_brightness_count++;
+		wacom_led_add_luminance(wacom,
+			hid_data->group_led_brightness_count - 1);
+		break;
 	}
 }
 
@@ -280,6 +293,44 @@ static void wacom_post_parse_hid(struct hid_device *hdev,
 		if (test_bit(INPUT_PROP_POINTER, wacom_wac->pen_input->propbit))
 			__clear_bit(INPUT_PROP_DIRECT, wacom_wac->pen_input->propbit);
 	}
+}
+
+static int wacom_find_field(struct hid_device *hdev,
+		unsigned type, unsigned usage, unsigned n,
+		struct hid_field **out_field, unsigned *out_field_index)
+{
+	struct hid_report_enum *rep_enum;
+	struct hid_report *hreport;
+	int i, j;
+
+	if (type > HID_FEATURE_REPORT)
+		return -EINVAL;
+
+	rep_enum = &hdev->report_enum[type];
+	if (!rep_enum)
+		return -ENOENT;
+
+	list_for_each_entry(hreport, &rep_enum->report_list, list) {
+		for (i = 0; i < hreport->maxfield; i++) {
+			/* Ignore if report count is out of bounds. */
+			if (hreport->field[i]->report_count < 1)
+				continue;
+
+			for (j = 0; j < hreport->field[i]->maxusage; j++) {
+				if (hreport->field[i]->usage[j].hid == usage) {
+					/* we return only the n-th element */
+					if (n-- == 0) {
+						*out_field_index = j;
+						*out_field = hreport->field[i];
+						return 0;
+					}
+				}
+			}
+
+		}
+	}
+
+	return -ENOENT;
 }
 
 static void wacom_parse_hid(struct hid_device *hdev,
@@ -700,10 +751,63 @@ static void wacom_remove_shared_data(struct wacom *wacom)
 
 static int wacom_led_control(struct wacom *wacom)
 {
+	struct hid_data *hid_data = &wacom->wacom_wac.hid_data;
 	unsigned char *buf;
 	int retval;
 	unsigned char report_id = WAC_CMD_LED_CONTROL;
 	int buf_size = 9;
+
+	if (wacom->wacom_wac.features.type == HID_GENERIC) {
+		struct hid_field *f;
+		struct hid_report *report;
+		unsigned int f_index;
+		unsigned llv = wacom->led.llv;
+
+		retval = wacom_find_field(wacom->hdev,
+					  HID_FEATURE_REPORT,
+					  HID_WAC_LED_SELECT_ID,
+					  0,
+					  &f, &f_index);
+		if (retval)
+			return retval;
+
+		report = f->report;
+
+		hid_set_field(f, f_index, wacom->led.select[0] & 0x03);
+
+		if (hid_data->group_led_count > 1) {
+			retval = wacom_find_field(wacom->hdev,
+						  HID_FEATURE_REPORT,
+						  HID_WAC_LED_SELECT_ID,
+						  1,
+						  &f, &f_index);
+			if (retval)
+				return retval;
+			hid_set_field(f, f_index, wacom->led.select[1] & 0x03);
+		}
+
+		retval = wacom_find_field(wacom->hdev,
+					  HID_FEATURE_REPORT,
+					  HID_WAC_LED_INDIC_BRIGHTNESS,
+					  0,
+					  &f, &f_index);
+		if (retval)
+			return retval;
+		if (f->logical_minimum == 0 && f->logical_maximum == 3) {
+			/*
+			 * Touch Ring and crop mark LED luminance may take on
+			 * one of four values:
+			 *    0 = Low; 1 = Medium; 2 = High; 3 = Off
+			 */
+			llv = (((wacom->led.llv & 0x60) >> 5) - 1) & 0x03;
+		}
+		hid_set_field(f, f_index, llv);
+
+		hid_hw_request(wacom->hdev, report, HID_REQ_SET_REPORT);
+
+		return 0;
+
+	}
 
 	if (wacom->wacom_wac.pid) { /* wireless connected */
 		report_id = WAC_CMD_WL_LED_CONTROL;
@@ -974,8 +1078,121 @@ static struct attribute_group intuos5_led_attr_group = {
 	.attrs = intuos5_led_attrs,
 };
 
+static struct attribute_group hid_generic_led_attr_group = {
+	.name = "wacom_led",
+};
+
+static int wacom_led_add_select(struct wacom *wacom, int index)
+{
+	struct hid_data *hid_data = &wacom->wacom_wac.hid_data;
+	unsigned int i = 0;
+
+	if (index < 0 || index > 1)
+		return -EINVAL;
+
+	while (hid_data->led_control[i]) {
+		if (i >= ARRAY_SIZE(hid_data->led_control) - 1)
+			return -ENOMEM;
+		i++;
+	}
+
+	switch (index) {
+	case 0:
+		hid_data->led_control[i] = &dev_attr_status_led0_select.attr;
+		break;
+	case 1:
+		hid_data->led_control[i] = &dev_attr_status_led1_select.attr;
+		break;
+	}
+
+	return 0;
+}
+
+static int wacom_led_add_luminance(struct wacom *wacom, int index)
+{
+	struct hid_data *hid_data = &wacom->wacom_wac.hid_data;
+	unsigned int i = 0;
+
+	if (index < 0 || index > 1)
+		return -EINVAL;
+
+	while (hid_data->led_control[i]) {
+		if (i >= ARRAY_SIZE(hid_data->led_control) - 1)
+			return -ENOMEM;
+		i++;
+	}
+
+	switch (index) {
+	case 0:
+		hid_data->led_control[i] = &dev_attr_status0_luminance.attr;
+		break;
+	case 1:
+		hid_data->led_control[i] = &dev_attr_status1_luminance.attr;
+		break;
+	}
+
+	return 0;
+}
+
+static int wacom_leds_read(struct wacom *wacom)
+{
+	struct hid_data *hid_data = &wacom->wacom_wac.hid_data;
+	struct hid_field *f;
+	struct hid_report *report;
+	unsigned f_index;
+	int error;
+
+	error = wacom_find_field(wacom->hdev,
+				 HID_FEATURE_REPORT,
+				 HID_WAC_LED_SELECT_ID,
+				 0,
+				 &f, &f_index);
+	if (error)
+		return error;
+
+	report = f->report;
+
+	hid_hw_request(wacom->hdev, report, HID_REQ_GET_REPORT);
+
+	wacom->led.select[0] = f->value[f_index];
+
+	if (hid_data->group_led_count > 1) {
+		error = wacom_find_field(wacom->hdev,
+					 HID_FEATURE_REPORT,
+					 HID_WAC_LED_SELECT_ID,
+					 1,
+					 &f, &f_index);
+		if (error)
+			return error;
+
+		wacom->led.select[1] = f->value[f_index];
+	}
+
+	error = wacom_find_field(wacom->hdev,
+				 HID_FEATURE_REPORT,
+				 HID_WAC_LED_INDIC_BRIGHTNESS,
+				 0,
+				 &f, &f_index);
+	if (error)
+		return error;
+
+	wacom->led.llv = f->value[f_index];
+
+	if (f->logical_minimum == 0 && f->logical_maximum == 3) {
+		/*
+		 * Touch Ring and crop mark LED luminance may take on
+		 * one of four values:
+		 *    0 = Low; 1 = Medium; 2 = High; 3 = Off
+		 */
+		wacom->led.llv = (1 + wacom->led.llv) << 5;
+	}
+
+	return 0;
+}
+
 static int wacom_initialize_leds(struct wacom *wacom)
 {
+	struct hid_data *hid_data = &wacom->wacom_wac.hid_data;
 	int error;
 
 	if (!(wacom->wacom_wac.features.device_type & WACOM_DEVICETYPE_PAD))
@@ -1022,6 +1239,16 @@ static int wacom_initialize_leds(struct wacom *wacom)
 
 		error = sysfs_create_group(&wacom->hdev->dev.kobj,
 					  &intuos5_led_attr_group);
+		break;
+
+	case HID_GENERIC:
+		if (!hid_data->led_control[0])
+			return 0;
+
+		hid_generic_led_attr_group.attrs = hid_data->led_control;
+		wacom_leds_read(wacom);
+		error = sysfs_create_group(&wacom->hdev->dev.kobj,
+					   &hid_generic_led_attr_group);
 		break;
 
 	default:
@@ -1072,6 +1299,11 @@ static void wacom_destroy_leds(struct wacom *wacom)
 	case INTUOSPL:
 		sysfs_remove_group(&wacom->hdev->dev.kobj,
 				   &intuos5_led_attr_group);
+		break;
+
+	case HID_GENERIC:
+		sysfs_remove_group(&wacom->hdev->dev.kobj,
+				   &hid_generic_led_attr_group);
 		break;
 	}
 }
