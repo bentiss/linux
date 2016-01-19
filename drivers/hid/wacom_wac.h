@@ -93,7 +93,10 @@
 				 ((f)->application == WACOM_VENDORDEFINED_PEN))
 #define WACOM_FINGER_FIELD(f)	(((f)->logical == HID_DG_FINGER) || \
 				 ((f)->physical == HID_DG_FINGER) || \
-				 ((f)->application == HID_DG_TOUCHSCREEN))
+				 ((f)->application == HID_DG_TOUCHSCREEN) || \
+				 ((f)->application == HID_DG_TOUCHPAD))
+#define WACOM_PAD_FIELD(f)	(((f)->logical == HID_GD_KEYPAD) || \
+				 ((f)->physical == HID_GD_KEYPAD))
 
 enum {
 	PENPARTNER = 0,
@@ -242,6 +245,13 @@ struct wacom_wac {
 	u8 bt_features;
 	u8 bt_high_speed;
 	struct hid_data hid_data;
+};
+
+struct wacom_usage {
+	struct hid_usage *hid_usage;
+	unsigned code;
+	unsigned shift;
+	unsigned size;
 };
 
 #endif

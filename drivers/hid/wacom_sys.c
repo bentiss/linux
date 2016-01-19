@@ -78,7 +78,10 @@ static int wacom_raw_event(struct hid_device *hdev, struct hid_report *report,
 
 	memcpy(wacom->wacom_wac.data, raw_data, size);
 
-	wacom_wac_irq(&wacom->wacom_wac, size);
+	if (wacom->wacom_wac.features.type != HID_GENERIC)
+		wacom_wac_irq(&wacom->wacom_wac, size);
+	else
+		return wacom_wac_raw_event(hdev, report, raw_data, size);
 
 	return 0;
 }
@@ -198,6 +201,11 @@ static void wacom_usage_mapping(struct hid_device *hdev,
 	bool finger = WACOM_FINGER_FIELD(field);
 	bool pen = WACOM_PEN_FIELD(field);
 
+	if (features->type == HID_GENERIC) {
+		wacom_wac_usage_mapping(hdev, field, usage);
+		return;
+	}
+
 	/*
 	* Requiring Stylus Usage will ignore boot mouse
 	* X/Y values and some cases of invalid Digitizer X/Y
@@ -248,9 +256,6 @@ static void wacom_usage_mapping(struct hid_device *hdev,
 			features->pressure_max = field->logical_maximum;
 		break;
 	}
-
-	if (features->type == HID_GENERIC)
-		wacom_wac_usage_mapping(hdev, field, usage);
 }
 
 static void wacom_post_parse_hid(struct hid_device *hdev,
