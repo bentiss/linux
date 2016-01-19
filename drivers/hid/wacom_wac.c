@@ -1444,6 +1444,7 @@ static void wacom_wac_pen_usage_mapping(struct hid_device *hdev,
 	struct wacom_wac *wacom_wac = &wacom->wacom_wac;
 	struct input_dev *input = wacom_wac->pen_input;
 	struct hid_usage *usage = w_usage->hid_usage;
+	unsigned code;
 
 	wacom_wac->features.device_type |= WACOM_DEVICETYPE_PEN;
 
@@ -1454,8 +1455,44 @@ static void wacom_wac_pen_usage_mapping(struct hid_device *hdev,
 	case HID_GD_Y:
 		wacom_map_usage(input, usage, field, EV_ABS, ABS_Y, 4);
 		break;
+	case HID_GD_Z:
+		wacom_map_usage(input, usage, field, EV_ABS, ABS_DISTANCE, 0);
+		break;
+	case HID_GD_RX:
+		wacom_map_usage(input, usage, field, EV_ABS, ABS_RX, 0);
+		break;
+	case HID_GD_RY:
+		wacom_map_usage(input, usage, field, EV_ABS, ABS_RY, 0);
+		break;
+	case HID_GD_WHEEL:
+		if (field->flags & HID_MAIN_ITEM_RELATIVE)
+			wacom_map_usage(input, usage, field, EV_REL, REL_WHEEL, 0);
+		else
+			wacom_map_usage(input, usage, field, EV_ABS, ABS_WHEEL, 0);
+		break;
 	case HID_DG_TIPPRESSURE:
+		wacom_map_usage(input, usage, field, EV_KEY, BTN_TOUCH, 0);
 		wacom_map_usage(input, usage, field, EV_ABS, ABS_PRESSURE, 0);
+		break;
+	case HID_DG_X_TILT:
+		wacom_map_usage(input, usage, field, EV_ABS, ABS_TILT_X, 0);
+		break;
+	case HID_DG_Y_TILT:
+		wacom_map_usage(input, usage, field, EV_ABS, ABS_TILT_Y, 0);
+		break;
+	case HID_DG_TWIST:
+		wacom_map_usage(input, usage, field, EV_ABS, ABS_Z, 0);
+		input_set_abs_params(input, ABS_Z, -900, 899, 0, 0);
+		break;
+	case HID_DG_ALTITUDE:
+		/*
+		 * HUT 1.12 says altitude is the angle with the X-Y plane.
+		 * However, the correct distance value should be Z, but the
+		 * Pen tablets report the distance the other way around (as per
+		 * HUT, Z is facing downward while the values are increasing the
+		 * further above we are from the surface.
+		 */
+		wacom_map_usage(input, usage, field, EV_ABS, ABS_DISTANCE, 0);
 		break;
 	case HID_DG_INRANGE:
 		wacom_map_usage(input, usage, field, EV_KEY, BTN_TOOL_PEN, 0);
@@ -1477,6 +1514,32 @@ static void wacom_wac_pen_usage_mapping(struct hid_device *hdev,
 	case HID_DG_TOOLSERIALNUMBER:
 		wacom_map_usage(input, usage, field, EV_MSC, MSC_SERIAL, 0);
 		break;
+	case HID_DG_TOOL_ID:
+		wacom_map_usage(input, usage, field, EV_ABS, ABS_MISC, 0);
+		input_set_abs_params(input, ABS_MISC, 0, 0, 0, 0);
+		input_set_abs_params(input, ABS_RZ, -900, 899, 0, 0);
+		input_set_abs_params(input, ABS_THROTTLE, -1023, 1023, 0, 0);
+
+		input_set_capability(input, EV_KEY, BTN_TOOL_PEN);
+		input_set_capability(input, EV_KEY, BTN_TOOL_RUBBER);
+		input_set_capability(input, EV_KEY, BTN_TOOL_BRUSH);
+		input_set_capability(input, EV_KEY, BTN_TOOL_PENCIL);
+		input_set_capability(input, EV_KEY, BTN_TOOL_AIRBRUSH);
+		input_set_capability(input, EV_KEY, BTN_TOOL_MOUSE);
+		input_set_capability(input, EV_KEY, BTN_TOOL_LENS);
+		break;
+	}
+
+	switch (w_usage->code & HID_USAGE_PAGE) {
+	case HID_UP_KEYBOARD:
+		code = usage->hid & HID_USAGE;
+		wacom_map_usage(input, usage, field, EV_KEY, code, 0);
+		break;
+
+	case HID_UP_BUTTON:
+		code = BTN_0 + (usage->hid & HID_USAGE);
+		wacom_map_usage(input, usage, field, EV_KEY, code, 0);
+		break;
 	}
 }
 
@@ -1489,6 +1552,17 @@ static void wacom_wac_pad_usage_mapping(struct hid_device *hdev,
 	wacom_wac->features.device_type |= WACOM_DEVICETYPE_PAD;
 }
 
+static s32 wacom_replace_bits(s32 data, s32 bits, unsigned shift, unsigned size)
+{
+	u32 mask = GENMASK(size + shift - 1, shift);
+	data &= ~mask;
+	data |=  bits << shift;
+	return data;
+}
+
+#define WACOM_REPLACE_BITS(_elem, _value) \
+	(_elem) = wacom_replace_bits((_elem), (_value), shift, size)
+
 static int wacom_wac_pen_event(struct hid_device *hdev, struct hid_field *field,
 		struct wacom_usage *w_usage, __s32 value)
 {
@@ -1497,9 +1571,60 @@ static int wacom_wac_pen_event(struct hid_device *hdev, struct hid_field *field,
 	struct input_dev *input = wacom_wac->pen_input;
 	struct hid_data *hdata = &wacom_wac->hid_data;
 	struct hid_usage *usage = w_usage->hid_usage;
+	unsigned shift = w_usage->shift;
+	unsigned size = w_usage->size;
 
 	/* checking which Tool / tip switch to send */
 	switch (w_usage->code) {
+	case HID_GD_X:
+		WACOM_REPLACE_BITS(hdata->x, value);
+		return 0;
+	case HID_GD_Y:
+		WACOM_REPLACE_BITS(hdata->y, value);
+		return 0;
+	case HID_GD_Z:
+		/* Z is facing downward, so we need to invert the values */
+		WACOM_REPLACE_BITS(hdata->z, value);
+		hdata->distance = field->logical_maximum - hdata->z;
+		return 0;
+	case HID_GD_RX:
+		WACOM_REPLACE_BITS(hdata->rx, value);
+		return 0;
+	case HID_GD_RY:
+		WACOM_REPLACE_BITS(hdata->ry, value);
+		return 0;
+	case HID_GD_WHEEL:
+		if (field->flags & HID_MAIN_ITEM_RELATIVE) {
+			if (value)
+				input_event(input, usage->type, usage->code,
+						value > 0 ? -1 : 1);
+		} else {
+			WACOM_REPLACE_BITS(hdata->wheel, value);
+		}
+		return 0;
+	case HID_DG_TIPPRESSURE:
+		WACOM_REPLACE_BITS(hdata->pressure, value);
+		return 0;
+	case HID_DG_X_TILT:
+		WACOM_REPLACE_BITS(hdata->x_tilt, value);
+		return 0;
+	case HID_DG_Y_TILT:
+		WACOM_REPLACE_BITS(hdata->y_tilt, value);
+		return 0;
+	case HID_DG_TWIST:
+		WACOM_REPLACE_BITS(hdata->raw_twist, value);
+		hdata->twist = hdata->raw_twist >> 1;
+		if (hdata->raw_twist & 0x01) {
+			hdata->twist = (hdata->twist > 450) ?
+				(hdata->twist - 1350) :
+				(hdata->twist + 450);
+		} else {
+			hdata->twist = 450 - hdata->twist;
+		}
+		return 0;
+	case HID_DG_ALTITUDE:
+		WACOM_REPLACE_BITS(hdata->distance, value);
+		return 0;
 	case HID_DG_INRANGE:
 		hdata->inrange_state = value;
 		return 0;
@@ -1509,6 +1634,15 @@ static int wacom_wac_pen_event(struct hid_device *hdev, struct hid_field *field,
 	case HID_DG_ERASER:
 	case HID_DG_TIPSWITCH:
 		hdata->tipswitch |= value;
+		return 0;
+	case HID_DG_TOOLSERIALNUMBER:
+		if (!hdata->inrange_state)
+			break;
+		WACOM_REPLACE_BITS(hdata->hserial, value);
+		return 0;
+	case HID_DG_TOOL_ID:
+		WACOM_REPLACE_BITS(hdata->tool_id, value);
+		hdata->tool_type = wacom_intuos_get_tool_type(hdata->tool_id);
 		return 0;
 	}
 
@@ -1539,11 +1673,12 @@ static void wacom_wac_pen_report(struct hid_device *hdev,
 	struct wacom *wacom = hid_get_drvdata(hdev);
 	struct wacom_wac *wacom_wac = &wacom->wacom_wac;
 	struct input_dev *input = wacom_wac->pen_input;
-	bool prox = wacom_wac->hid_data.inrange_state;
+	struct hid_data *hdata = &wacom_wac->hid_data;
+	bool prox = hdata->inrange_state;
 
-	if (!wacom_wac->shared->stylus_in_proximity) /* first in prox */
+	if (!wacom_wac->shared->stylus_in_proximity && !hdata->tool_type) /* first in prox */
 		/* Going into proximity select tool */
-		wacom_wac->tool[0] = wacom_wac->hid_data.invert_state ?
+		hdata->tool_type = hdata->invert_state ?
 						BTN_TOOL_RUBBER : BTN_TOOL_PEN;
 
 	/* keep pen state for touch events */
@@ -1551,14 +1686,29 @@ static void wacom_wac_pen_report(struct hid_device *hdev,
 
 	/* send pen events only when touch is up or forced out */
 	if (!wacom_wac->shared->touch_down) {
-		input_report_key(input, BTN_TOUCH,
-				wacom_wac->hid_data.tipswitch);
-		input_report_key(input, wacom_wac->tool[0], prox);
+		input_report_key(input, BTN_TOUCH, hdata->tipswitch);
+		input_report_key(input, hdata->tool_type, prox);
 
-		wacom_wac->hid_data.tipswitch = false;
+		input_event(input, EV_ABS, ABS_X, hdata->x);
+		input_event(input, EV_ABS, ABS_Y, hdata->y);
+		input_event(input, EV_ABS, ABS_RX, hdata->rx);
+		input_event(input, EV_ABS, ABS_RY, hdata->ry);
+		input_event(input, EV_ABS, ABS_DISTANCE, hdata->distance);
+		input_event(input, EV_ABS, ABS_Z, hdata->twist);
+		input_event(input, EV_ABS, ABS_PRESSURE, hdata->pressure);
+		input_event(input, EV_ABS, ABS_TILT_X, hdata->x_tilt);
+		input_event(input, EV_ABS, ABS_TILT_Y, hdata->y_tilt);
+		input_event(input, EV_ABS, ABS_WHEEL, hdata->wheel);
+		input_event(input, EV_ABS, ABS_MISC, hdata->tool_id);
+		input_event(input, EV_MSC, MSC_SERIAL, hdata->hserial);
+
+		hdata->tipswitch = false;
 
 		input_sync(input);
 	}
+
+	if (!prox)
+		hdata->tool_type = 0;
 }
 
 static void wacom_wac_pad_report(struct hid_device *hdev,
@@ -1879,6 +2029,55 @@ void wacom_wac_report(struct hid_device *hdev, struct hid_report *report)
 
 	if (WACOM_FINGER_FIELD(field))
 		return wacom_wac_finger_report(hdev, report);
+}
+
+static u8 wacom_intuos_sub_report_id(u8 value)
+{
+	if (!(value >> 2))
+		/* no changes needed, in/out report */
+		return 0;
+
+	if ((value >> 3) == 4)
+		/* stylus */
+		return 4;
+
+	/*
+	 * 42: artpen
+	 * 44: mouse
+	 * 48: lens
+	 * 52: airbrush
+	 */
+	return value & ~1;
+}
+
+int wacom_wac_raw_event(struct hid_device *hdev, struct hid_report *report,
+		u8 *raw_data, int size)
+{
+	struct hid_field *field;
+	unsigned usage, offset, rsize;
+	int i;
+	u8 value;
+
+	for (i = 0; i < report->maxfield; i++) {
+		field = report->field[i];
+		usage = field->usage->hid;
+		offset = field->report_offset;
+		rsize = field->report_size;
+		switch (usage) {
+		case HID_WAC_GLOBAL_SUB_REPORT_ID:
+			value = (u8) hid_field_extract(hdev, raw_data + 1, offset, rsize);
+			raw_data[0] = value;
+			break;
+		case HID_WAC_INTUOS_SUB_REPORT_ID:
+			value = (u8) hid_field_extract(hdev, raw_data + 1, offset, rsize);
+			value = wacom_intuos_sub_report_id(value);
+			if (value)
+				raw_data[0] = value;
+			break;
+		}
+	}
+
+	return 0;
 }
 
 static int wacom_bpt_touch(struct wacom_wac *wacom)
