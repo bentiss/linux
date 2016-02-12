@@ -444,6 +444,7 @@ static int wacom_query_tablet_data(struct hid_device *hdev,
 
 static int hid_firmware_parse(struct hid_device *hdev,
 			      const struct firmware *fw,
+			      unsigned tag,
 			      const char **out_version)
 {
 	struct wacom *wacom = hid_get_drvdata(hdev);
@@ -482,9 +483,21 @@ static int hid_firmware_parse(struct hid_device *hdev,
 
 		switch (type) {
 		case 'O':
+			if (tag)
+				break;
 			/* match against current report descriptor */
 			valid = (hdev->dev_rsize == size) &&
 				!memcmp(data, hdev->dev_rdesc, size);
+			break;
+		case 'T':
+			if (!tag)
+				break;
+			/* this type is 4 bytes longs */
+			if (size != 4) {
+				ret = -EPROTO;
+				goto err;
+			}
+			valid = tag == get_unaligned_le32(data);
 			break;
 		case 'R':
 			if (valid && !rdesc_found) {
@@ -1808,7 +1821,9 @@ fail_allocate_inputs:
 	return error;
 }
 
-static int wacom_firmware_loaded(const struct firmware *fw, struct hid_device *hdev)
+static int wacom_firmware_loaded(const struct firmware *fw,
+			         struct hid_device *hdev,
+			         unsigned tag)
 {
 	struct wacom *wacom = hid_get_drvdata(hdev);
 	const char *version = NULL;
@@ -1817,7 +1832,7 @@ static int wacom_firmware_loaded(const struct firmware *fw, struct hid_device *h
 	if (!fw)
 		return -EINVAL;
 
-	ret = hid_firmware_parse(hdev, fw, &version);
+	ret = hid_firmware_parse(hdev, fw, tag, &version);
 	switch (ret) {
 	case -ENODATA:
 		if (version)
@@ -1859,7 +1874,10 @@ out:
 	return ret;
 }
 
-static int wacom_load_external_fw(struct hid_device *hdev)
+static int wacom_load_external_fw_with_tags(struct hid_device *hdev,
+					    __u32 vendor,
+					    __u32 product,
+					    unsigned tag)
 {
 	struct wacom *wacom = hid_get_drvdata(hdev);
 	const struct firmware *fw;
@@ -1867,13 +1885,18 @@ static int wacom_load_external_fw(struct hid_device *hdev)
 
 	snprintf(wacom->fw_name, sizeof(wacom->fw_name) - 1,
 		 "hid/%04x_%04x_%04x.bin",
-		 hdev->bus, hdev->vendor, hdev->product);
+		 hdev->bus, vendor, product);
 
 	ret = request_firmware_direct(&fw, wacom->fw_name, &hdev->dev);
 	if (ret)
 		return ret;
 
-	return wacom_firmware_loaded(fw, hdev);
+	return wacom_firmware_loaded(fw, hdev, tag);
+}
+
+static int wacom_load_external_fw(struct hid_device *hdev)
+{
+	return wacom_load_external_fw_with_tags(hdev, hdev->vendor, hdev->product, 0);
 }
 
 static void wacom_wireless_work(struct work_struct *work)
@@ -1884,7 +1907,7 @@ static void wacom_wireless_work(struct work_struct *work)
 	struct hid_device *hdev1, *hdev2;
 	struct wacom *wacom1, *wacom2;
 	struct wacom_wac *wacom_wac1, *wacom_wac2;
-	int error;
+	int error, pid;
 
 	/*
 	 * Regardless if this is a disconnect or a new tablet,
@@ -1911,12 +1934,21 @@ static void wacom_wireless_work(struct work_struct *work)
 	} else {
 		const struct hid_device_id *id = wacom_ids;
 
+		pid = wacom_wac->pid;
+
 		hid_info(wacom->hdev, "wireless tablet connected with PID %x\n",
-			 wacom_wac->pid);
+			 pid);
+
+		error = wacom_load_external_fw_with_tags(hdev1,
+							 hdev1->vendor,
+							 wacom_wac->pid,
+							 1);
+		if (!error)
+			pid = HID_ANY_ID;
 
 		while (id->bus) {
 			if (id->vendor == USB_VENDOR_ID_WACOM &&
-			    id->product == wacom_wac->pid)
+			    id->product == pid)
 				break;
 			id++;
 		}
@@ -1926,27 +1958,43 @@ static void wacom_wireless_work(struct work_struct *work)
 			return;
 		}
 
-		/* Stylus interface */
 		wacom_wac1->features =
 			*((struct wacom_features *)id->driver_data);
-
 		wacom_wac1->pid = wacom_wac->pid;
-		hid_hw_stop(hdev1);
-		error = wacom_parse_and_register(wacom1, true);
-		if (error)
-			goto fail;
+		wacom_wac2->features =
+			*((struct wacom_features *)id->driver_data);
+		wacom_wac2->pid = wacom_wac->pid;
 
-		/* Touch interface */
-		if (wacom_wac1->features.touch_max ||
-		    (wacom_wac1->features.type >= INTUOSHT &&
-		    wacom_wac1->features.type <= BAMBOO_PT)) {
-			wacom_wac2->features =
-				*((struct wacom_features *)id->driver_data);
-			wacom_wac2->pid = wacom_wac->pid;
-			hid_hw_stop(hdev2);
-			error = wacom_parse_and_register(wacom2, true);
+		if (pid == HID_ANY_ID) {
+			error = wacom_parse_and_register(wacom1, true);
 			if (error)
 				goto fail;
+
+			error = wacom_load_external_fw_with_tags(hdev2,
+								 hdev2->vendor,
+								 wacom_wac->pid,
+								 2);
+			if (!error) {
+				error = wacom_parse_and_register(wacom2, true);
+				if (error)
+					goto fail;
+			}
+		} else {
+			/* Stylus interface */
+			hid_hw_stop(hdev1);
+			error = wacom_parse_and_register(wacom1, true);
+			if (error)
+				goto fail;
+
+			/* Touch interface */
+			if (wacom_wac1->features.touch_max ||
+			    (wacom_wac1->features.type >= INTUOSHT &&
+			    wacom_wac1->features.type <= BAMBOO_PT)) {
+				hid_hw_stop(hdev2);
+				error = wacom_parse_and_register(wacom2, true);
+				if (error)
+					goto fail;
+			}
 		}
 
 		error = wacom_initialize_battery(wacom);
