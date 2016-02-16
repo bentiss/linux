@@ -1460,6 +1460,7 @@ static void wacom_wac_pen_usage_mapping(struct hid_device *hdev,
 		break;
 	case HID_GD_Z:
 		wacom_map_usage(input, usage, field, EV_ABS, ABS_DISTANCE, 0);
+		wacom_wac->features.distance_max = field->logical_maximum;
 		break;
 	case HID_GD_RX:
 		wacom_map_usage(input, usage, field, EV_ABS, ABS_RX, 0);
@@ -1498,6 +1499,7 @@ static void wacom_wac_pen_usage_mapping(struct hid_device *hdev,
 		 * further above we are from the surface.
 		 */
 		wacom_map_usage(input, usage, field, EV_ABS, ABS_DISTANCE, 0);
+		wacom_wac->features.distance_max = field->logical_maximum;
 		break;
 	case HID_DG_INRANGE:
 		wacom_map_usage(input, usage, field, EV_KEY, BTN_TOOL_PEN, 0);
@@ -1774,6 +1776,23 @@ static void wacom_wac_pen_report(struct hid_device *hdev,
 		return;
 	}
 
+	if (!prox) {
+		if (wacom_wac->reporting_data &&
+		    test_bit(BTN_TOOL_AIRBRUSH, input->keybit)) {
+			/*
+			 * Professional products with multiple tools only:
+			 * out of range event while still having the pen in prox
+			 */
+			input_report_key(input, BTN_TOUCH, 0);
+			input_report_abs(input, ABS_PRESSURE, 0);
+			input_event(input, EV_ABS, ABS_DISTANCE,
+				    wacom_wac->features.distance_max);
+			input_sync(input);
+		}
+		wacom_wac->reporting_data = false;
+		return;
+	}
+
 	/* send pen events only when touch is up or forced out */
 	if (!wacom_wac->shared->touch_down) {
 		input_report_key(input, BTN_TOUCH, hdata->tipswitch);
@@ -1794,6 +1813,7 @@ static void wacom_wac_pen_report(struct hid_device *hdev,
 
 		hdata->tipswitch = false;
 
+		wacom_wac->reporting_data = true;
 		input_sync(input);
 	}
 }
