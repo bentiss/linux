@@ -2023,6 +2023,19 @@ void wacom_wac_usage_mapping(struct hid_device *hdev,
 		return wacom_wac_finger_usage_mapping(hdev, field, &wacom_usage);
 }
 
+void wacom_wac_post_parse_hid(struct hid_device *hdev,
+			      struct wacom_features *features)
+{
+	struct wacom *wacom = hid_get_drvdata(hdev);
+	struct wacom_wac *wacom_wac = &wacom->wacom_wac;
+
+	/* Any last-minute generic device setup */
+	if (features->touch_max > 1)
+		input_mt_init_slots(wacom_wac->touch_input,
+				    wacom_wac->features.touch_max,
+				    INPUT_MT_DIRECT);
+}
+
 int wacom_wac_event(struct hid_device *hdev, struct hid_field *field,
 		struct hid_usage *usage, __s32 value)
 {
