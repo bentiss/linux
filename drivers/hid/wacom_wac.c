@@ -1511,6 +1511,7 @@ static void wacom_wac_pen_usage_mapping(struct hid_device *hdev,
 	case HID_DG_ERASER:
 		/* fall-through */
 	case HID_DG_TIPSWITCH:
+		wacom_wac->tipswitch_present = true;
 		wacom_map_usage(input, usage, field, EV_KEY, BTN_TOUCH, 0);
 		break;
 	case HID_DG_BARRELSWITCH:
@@ -1795,6 +1796,8 @@ static void wacom_wac_pen_report(struct hid_device *hdev,
 
 	/* send pen events only when touch is up or forced out */
 	if (!wacom_wac->shared->touch_down) {
+		if (!wacom_wac->tipswitch_present)
+			hdata->tipswitch = hdata->pressure > 10;
 		input_report_key(input, BTN_TOUCH, hdata->tipswitch);
 		input_report_key(input, hdata->tool_type, prox);
 
