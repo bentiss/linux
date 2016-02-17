@@ -263,6 +263,8 @@ struct wacom_wac {
 	u8 bt_high_speed;
 	struct hid_data hid_data;
 	bool tipswitch_present;
+	int xtilt_offset;
+	int ytilt_offset;
 };
 
 struct wacom_usage {

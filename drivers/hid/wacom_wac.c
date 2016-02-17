@@ -1437,6 +1437,33 @@ static void wacom_map_usage(struct input_dev *input, struct hid_usage *usage,
 	}
 }
 
+static int wacom_wac_get_field_offset(unsigned code, struct hid_field *field,
+				      struct input_dev *input)
+{
+	__s32 logical_extents = field->logical_maximum -
+					field->logical_minimum;
+	__s32 physical_extents = field->physical_maximum -
+					field->physical_minimum;
+	int offset;
+
+	/* only used when exporting degrees */
+	if (input_abs_get_res(input, code) != 57)
+		return 0;
+
+	/* check if logical and physical ranges are compatible */
+	if (logical_extents != physical_extents)
+		return 0;
+
+	offset = field->physical_minimum - field->logical_minimum;
+
+	input_set_abs_params(input, code,
+			     field->physical_minimum,
+			     field->physical_maximum,
+			     0, 0);
+
+	return offset;
+}
+
 static void wacom_wac_pen_usage_mapping(struct hid_device *hdev,
 		struct hid_field *field, struct wacom_usage *w_usage)
 {
@@ -1480,9 +1507,15 @@ static void wacom_wac_pen_usage_mapping(struct hid_device *hdev,
 		break;
 	case HID_DG_X_TILT:
 		wacom_map_usage(input, usage, field, EV_ABS, ABS_TILT_X, 0);
+		wacom_wac->xtilt_offset = wacom_wac_get_field_offset(ABS_TILT_X,
+								     field,
+								     input);
 		break;
 	case HID_DG_Y_TILT:
 		wacom_map_usage(input, usage, field, EV_ABS, ABS_TILT_Y, 0);
+		wacom_wac->ytilt_offset = wacom_wac_get_field_offset(ABS_TILT_Y,
+								     field,
+								     input);
 		break;
 	case HID_DG_TWIST:
 		wacom_map_usage(input, usage, field, EV_ABS, ABS_Z, 0);
@@ -1808,8 +1841,10 @@ static void wacom_wac_pen_report(struct hid_device *hdev,
 		input_event(input, EV_ABS, ABS_DISTANCE, hdata->distance);
 		input_event(input, EV_ABS, ABS_Z, hdata->twist);
 		input_event(input, EV_ABS, ABS_PRESSURE, hdata->pressure);
-		input_event(input, EV_ABS, ABS_TILT_X, hdata->x_tilt);
-		input_event(input, EV_ABS, ABS_TILT_Y, hdata->y_tilt);
+		input_event(input, EV_ABS, ABS_TILT_X,
+			    hdata->x_tilt + wacom_wac->xtilt_offset);
+		input_event(input, EV_ABS, ABS_TILT_Y,
+			    hdata->y_tilt + wacom_wac->ytilt_offset);
 		input_event(input, EV_ABS, ABS_WHEEL, hdata->wheel);
 		input_event(input, EV_ABS, ABS_MISC, hdata->tool_id);
 		input_event(input, EV_MSC, MSC_SERIAL, hdata->hserial);
