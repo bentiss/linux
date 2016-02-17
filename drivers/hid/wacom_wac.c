@@ -1446,6 +1446,9 @@ static void wacom_wac_pen_usage_mapping(struct hid_device *hdev,
 	struct hid_usage *usage = w_usage->hid_usage;
 	unsigned code;
 
+	if (field->physical == HID_GD_MOUSE)
+		__set_bit(INPUT_PROP_POINTER, wacom_wac->pen_input->propbit);
+
 	wacom_wac->features.device_type |= WACOM_DEVICETYPE_PEN;
 
 	switch (w_usage->code) {
@@ -1783,6 +1786,9 @@ static void wacom_wac_finger_usage_mapping(struct hid_device *hdev,
 	struct hid_usage *usage = w_usage->hid_usage;
 	unsigned touch_max = wacom_wac->features.touch_max;
 
+	if (field->application == HID_DG_TOUCHPAD)
+		__set_bit(INPUT_PROP_POINTER, wacom_wac->touch_input->propbit);
+
 	wacom_wac->features.device_type |= WACOM_DEVICETYPE_TOUCH;
 
 	switch (w_usage->code) {
@@ -1992,14 +1998,7 @@ static void wacom_wac_finger_report(struct hid_device *hdev,
 void wacom_wac_usage_mapping(struct hid_device *hdev,
 		struct hid_field *field, struct hid_usage *usage)
 {
-	struct wacom *wacom = hid_get_drvdata(hdev);
-	struct wacom_wac *wacom_wac = &wacom->wacom_wac;
 	struct wacom_usage wacom_usage = {0};
-
-
-	/* currently, only direct devices have proper hid report descriptors */
-	__set_bit(INPUT_PROP_DIRECT, wacom_wac->pen_input->propbit);
-	__set_bit(INPUT_PROP_DIRECT, wacom_wac->touch_input->propbit);
 
 	/* Make sure our special hid usages are valid */
 	if ((usage->hid & HID_MASK_UP_OFFSET) &&
@@ -2028,12 +2027,40 @@ void wacom_wac_post_parse_hid(struct hid_device *hdev,
 {
 	struct wacom *wacom = hid_get_drvdata(hdev);
 	struct wacom_wac *wacom_wac = &wacom->wacom_wac;
+	struct input_dev *touch_input = wacom_wac->touch_input;
+	struct input_dev *pen_input = wacom_wac->pen_input;
+	unsigned int mt_flags;
 
 	/* Any last-minute generic device setup */
-	if (features->touch_max > 1)
-		input_mt_init_slots(wacom_wac->touch_input,
-				    wacom_wac->features.touch_max,
-				    INPUT_MT_DIRECT);
+
+	/* Touch fixes */
+	if (!test_bit(INPUT_PROP_POINTER, touch_input->propbit))
+		__set_bit(INPUT_PROP_DIRECT, touch_input->propbit);
+	if (features->touch_max > 1) {
+		mt_flags = test_bit(INPUT_PROP_POINTER, touch_input->propbit) ?
+				INPUT_MT_POINTER : INPUT_MT_DIRECT;
+		input_mt_init_slots(touch_input, features->touch_max, mt_flags);
+	}
+
+	/* pen fixes */
+	if (test_bit(INPUT_PROP_POINTER, pen_input->propbit)) {
+		if (test_bit(BTN_TOOL_AIRBRUSH, pen_input->keybit)) {
+			input_set_capability(pen_input, EV_KEY, BTN_TOOL_MOUSE);
+			input_set_capability(pen_input, EV_KEY, BTN_TOOL_LENS);
+
+			/*
+			* ABS_RZ and ABS_THROTTLE are manually fed
+			* until properly supported
+			*/
+			input_set_abs_params(pen_input, ABS_RZ,
+					     -900, 899, 0, 0);
+			input_abs_set_res(pen_input, ABS_RZ, 287);
+			input_set_abs_params(pen_input, ABS_THROTTLE,
+					     -1023, 1023, 0, 0);
+		}
+	} else {
+		__set_bit(INPUT_PROP_DIRECT, pen_input->propbit);
+	}
 }
 
 int wacom_wac_event(struct hid_device *hdev, struct hid_field *field,
