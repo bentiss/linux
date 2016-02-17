@@ -262,6 +262,7 @@ struct wacom_wac {
 	u8 bt_features;
 	u8 bt_high_speed;
 	struct hid_data hid_data;
+	bool tipswitch_present;
 };
 
 struct wacom_usage {
