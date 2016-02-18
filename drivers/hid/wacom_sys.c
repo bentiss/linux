@@ -500,6 +500,7 @@ static int wacom_firmware_parse(struct hid_device *hdev,
 	struct wacom_wac *wacom_wac = &wacom->wacom_wac;
 	u32 rdesc_size;
 	u32 size;
+	u32 sibling;
 	const u8 *data;
 	char type;
 	u8 *rdesc = NULL;
@@ -569,6 +570,18 @@ static int wacom_firmware_parse(struct hid_device *hdev,
 			version = kstrndup(data, size, GFP_KERNEL);
 			if (version)
 				version[size - 1] = '\0';
+			break;
+		case 'S':
+			/* this type is 4 bytes longs */
+			if (size != 4) {
+				ret = -EPROTO;
+				goto err;
+			}
+			if (valid) {
+				sibling = get_unaligned_le32(data);
+				wacom_wac->features.oVid = (sibling >> 16) & 0xffff;
+				wacom_wac->features.oPid = sibling & 0xffff;
+			}
 			break;
 		default:
 			hid_info(hdev, "ignoring unknown tag '%c'.\n", type);
