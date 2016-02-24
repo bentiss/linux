@@ -1425,6 +1425,9 @@ static void wacom_map_usage(struct input_dev *input, struct hid_usage *usage,
 		input_abs_set_res(input, code,
 				  hidinput_calc_abs_res(field, code));
 		break;
+	case EV_REL:
+		input_set_capability(input, EV_REL, code);
+		break;
 	case EV_KEY:
 		input_set_capability(input, EV_KEY, code);
 		break;
@@ -1435,16 +1438,19 @@ static void wacom_map_usage(struct input_dev *input, struct hid_usage *usage,
 }
 
 static void wacom_wac_pen_usage_mapping(struct hid_device *hdev,
-		struct hid_field *field, struct hid_usage *usage)
+		struct hid_field *field, struct wacom_usage *w_usage)
 {
 	struct wacom *wacom = hid_get_drvdata(hdev);
 	struct wacom_wac *wacom_wac = &wacom->wacom_wac;
 	struct input_dev *input = wacom_wac->pen_input;
+	struct hid_usage *usage = w_usage->hid_usage;
 
 	if (field->physical == HID_GD_MOUSE)
 		__set_bit(INPUT_PROP_POINTER, wacom_wac->pen_input->propbit);
 
-	switch (usage->hid) {
+	wacom_wac->features.device_type |= WACOM_DEVICETYPE_PEN;
+
+	switch (w_usage->code) {
 	case HID_GD_X:
 		wacom_map_usage(input, usage, field, EV_ABS, ABS_X, 4);
 		break;
@@ -1477,24 +1483,35 @@ static void wacom_wac_pen_usage_mapping(struct hid_device *hdev,
 	}
 }
 
+static void wacom_wac_pad_usage_mapping(struct hid_device *hdev,
+		struct hid_field *field, struct wacom_usage *w_usage)
+{
+	struct wacom *wacom = hid_get_drvdata(hdev);
+	struct wacom_wac *wacom_wac = &wacom->wacom_wac;
+
+	wacom_wac->features.device_type |= WACOM_DEVICETYPE_PAD;
+}
+
 static int wacom_wac_pen_event(struct hid_device *hdev, struct hid_field *field,
-		struct hid_usage *usage, __s32 value)
+		struct wacom_usage *w_usage, __s32 value)
 {
 	struct wacom *wacom = hid_get_drvdata(hdev);
 	struct wacom_wac *wacom_wac = &wacom->wacom_wac;
 	struct input_dev *input = wacom_wac->pen_input;
+	struct hid_data *hdata = &wacom_wac->hid_data;
+	struct hid_usage *usage = w_usage->hid_usage;
 
 	/* checking which Tool / tip switch to send */
-	switch (usage->hid) {
+	switch (w_usage->code) {
 	case HID_DG_INRANGE:
-		wacom_wac->hid_data.inrange_state = value;
+		hdata->inrange_state = value;
 		return 0;
 	case HID_DG_INVERT:
-		wacom_wac->hid_data.invert_state = value;
+		hdata->invert_state = value;
 		return 0;
 	case HID_DG_ERASER:
 	case HID_DG_TIPSWITCH:
-		wacom_wac->hid_data.tipswitch |= value;
+		hdata->tipswitch |= value;
 		return 0;
 	}
 
@@ -1511,6 +1528,12 @@ static void wacom_wac_pen_pre_report(struct hid_device *hdev,
 		struct hid_report *report)
 {
 	return;
+}
+
+static int wacom_wac_pad_event(struct hid_device *hdev, struct hid_field *field,
+		struct wacom_usage *w_usage, __s32 value)
+{
+	return 0;
 }
 
 static void wacom_wac_pen_report(struct hid_device *hdev,
@@ -1541,19 +1564,27 @@ static void wacom_wac_pen_report(struct hid_device *hdev,
 	}
 }
 
+static void wacom_wac_pad_report(struct hid_device *hdev,
+		struct hid_report *report)
+{
+}
+
 static void wacom_wac_finger_usage_mapping(struct hid_device *hdev,
-		struct hid_field *field, struct hid_usage *usage)
+		struct hid_field *field, struct wacom_usage *w_usage)
 {
 	struct wacom *wacom = hid_get_drvdata(hdev);
 	struct wacom_wac *wacom_wac = &wacom->wacom_wac;
 	struct wacom_features *features = &wacom_wac->features;
 	struct input_dev *input = wacom_wac->touch_input;
+	struct hid_usage *usage = w_usage->hid_usage;
 	unsigned touch_max = wacom_wac->features.touch_max;
 
 	if (field->application == HID_DG_TOUCHPAD)
 		__set_bit(INPUT_PROP_POINTER, wacom_wac->touch_input->propbit);
 
-	switch (usage->hid) {
+	wacom_wac->features.device_type |= WACOM_DEVICETYPE_TOUCH;
+
+	switch (w_usage->code) {
 	case HID_GD_X:
 		features->last_slot_field = usage->hid;
 		if (touch_max == 1)
@@ -1637,29 +1668,32 @@ static void wacom_wac_finger_slot(struct wacom_wac *wacom_wac,
 }
 
 static int wacom_wac_finger_event(struct hid_device *hdev,
-		struct hid_field *field, struct hid_usage *usage, __s32 value)
+		struct hid_field *field, struct wacom_usage *w_usage,
+		__s32 value)
 {
 	struct wacom *wacom = hid_get_drvdata(hdev);
 	struct wacom_wac *wacom_wac = &wacom->wacom_wac;
+	struct hid_data *hdata = &wacom_wac->hid_data;
+	struct hid_usage *usage = w_usage->hid_usage;
 
-	switch (usage->hid) {
+	switch (w_usage->code) {
 	case HID_GD_X:
-		wacom_wac->hid_data.x = value;
+		hdata->x = value;
 		break;
 	case HID_GD_Y:
-		wacom_wac->hid_data.y = value;
+		hdata->y = value;
 		break;
 	case HID_DG_WIDTH:
-		wacom_wac->hid_data.width = value;
+		hdata->width = value;
 		break;
 	case HID_DG_HEIGHT:
-		wacom_wac->hid_data.height = value;
+		hdata->height = value;
 		break;
 	case HID_DG_CONTACTID:
 		wacom_wac->hid_data.id = value;
 		break;
 	case HID_DG_TIPSWITCH:
-		wacom_wac->hid_data.tipswitch = value;
+		hdata->tipswitch = value;
 		break;
 	}
 
@@ -1743,11 +1777,29 @@ static void wacom_wac_finger_report(struct hid_device *hdev,
 void wacom_wac_usage_mapping(struct hid_device *hdev,
 		struct hid_field *field, struct hid_usage *usage)
 {
+	struct wacom_usage wacom_usage = {0};
+
+	wacom_usage.code = usage->hid;
+	wacom_usage.size = field->report_size;
+	wacom_usage.hid_usage = usage;
+
+	/* Check our special hid usages */
+	if ((usage->hid & HID_MASK_UP_OFFSET) &&
+	    ((usage->hid & HID_MASK_UP_OFFSET) == HID_UP_OFFSET)) {
+		/* remove leading 0xbe and included offset */
+		wacom_usage.code &= ~(HID_MASK_UP_OFFSET |
+				      HID_MASK_USAGE_OFFSET);
+		wacom_usage.shift = (usage->hid & HID_MASK_USAGE_OFFSET) >> 8;
+	}
+
 	if (WACOM_PEN_FIELD(field))
-		return wacom_wac_pen_usage_mapping(hdev, field, usage);
+		return wacom_wac_pen_usage_mapping(hdev, field, &wacom_usage);
+
+	if (WACOM_PAD_FIELD(field))
+		return wacom_wac_pad_usage_mapping(hdev, field, &wacom_usage);
 
 	if (WACOM_FINGER_FIELD(field))
-		return wacom_wac_finger_usage_mapping(hdev, field, usage);
+		return wacom_wac_finger_usage_mapping(hdev, field, &wacom_usage);
 }
 
 /* extracted from hidinput_has_been_populated() in hid-input.c */
@@ -1816,15 +1868,33 @@ int wacom_wac_event(struct hid_device *hdev, struct hid_field *field,
 		struct hid_usage *usage, __s32 value)
 {
 	struct wacom *wacom = hid_get_drvdata(hdev);
+	struct wacom_usage wacom_usage = {0};
 
 	if (wacom->wacom_wac.features.type != HID_GENERIC)
 		return 0;
 
+	wacom_usage.code = usage->hid;
+	wacom_usage.size = field->report_size;
+	wacom_usage.hid_usage = usage;
+
+	/* Check our special hid usages */
+	if ((usage->hid & HID_MASK_UP_OFFSET) &&
+	    ((usage->hid & HID_MASK_UP_OFFSET) == HID_UP_OFFSET)) {
+		/* remove leading 0xbe and included offset */
+		wacom_usage.code &= ~(HID_MASK_UP_OFFSET |
+				      HID_MASK_USAGE_OFFSET);
+		wacom_usage.shift = (usage->hid & HID_MASK_USAGE_OFFSET) >> 8;
+	}
+
+
 	if (WACOM_PEN_FIELD(field))
-		return wacom_wac_pen_event(hdev, field, usage, value);
+		return wacom_wac_pen_event(hdev, field, &wacom_usage, value);
+
+	if (WACOM_PAD_FIELD(field))
+		return wacom_wac_pad_event(hdev, field, &wacom_usage, value);
 
 	if (WACOM_FINGER_FIELD(field))
-		return wacom_wac_finger_event(hdev, field, usage, value);
+		return wacom_wac_finger_event(hdev, field, &wacom_usage, value);
 
 	return 0;
 }
@@ -1868,8 +1938,17 @@ void wacom_wac_report(struct hid_device *hdev, struct hid_report *report)
 	if (WACOM_PEN_FIELD(field))
 		return wacom_wac_pen_report(hdev, report);
 
+	if (WACOM_PAD_FIELD(field))
+		return wacom_wac_pad_report(hdev, report);
+
 	if (WACOM_FINGER_FIELD(field))
 		return wacom_wac_finger_report(hdev, report);
+}
+
+int wacom_wac_raw_event(struct hid_device *hdev, struct hid_report *report,
+			u8 *raw_data, int size)
+{
+	return 0;
 }
 
 static int wacom_bpt_touch(struct wacom_wac *wacom)
@@ -2817,6 +2896,7 @@ int wacom_setup_pad_input_capabilities(struct input_dev *input_dev,
 				   struct wacom_wac *wacom_wac)
 {
 	struct wacom_features *features = &wacom_wac->features;
+	bool generic_hid_configured = input_dev->evbit[0] == 0;
 
 	if (!(features->device_type & WACOM_DEVICETYPE_PAD))
 		return -ENODEV;
@@ -2832,6 +2912,10 @@ int wacom_setup_pad_input_capabilities(struct input_dev *input_dev,
 
 	/* kept for making udev and libwacom accepting the pad */
 	__set_bit(BTN_STYLUS, input_dev->keybit);
+
+	if (features->type == HID_GENERIC)
+		/* setup has already been done */
+		return generic_hid_configured;
 
 	wacom_setup_numbered_buttons(input_dev, features->numbered_buttons);
 
