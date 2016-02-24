@@ -1751,10 +1751,27 @@ void wacom_wac_usage_mapping(struct hid_device *hdev,
 		return wacom_wac_finger_usage_mapping(hdev, field, usage);
 }
 
+/* extracted from hidinput_has_been_populated() in hid-input.c */
+static bool wacom_has_abs_axis(struct input_dev *input)
+{
+	int i;
+	unsigned long r = 0;
+
+	for (i = 0; i < BITS_TO_LONGS(ABS_CNT); i++)
+		r |= input->absbit[i];
+
+	return !!r;
+}
+
 static void wacom_wac_finger_post_parse_hid(struct wacom_wac *wacom_wac,
 					    struct wacom_features *features)
 {
 	struct input_dev *touch_input = wacom_wac->touch_input;
+
+	if (!wacom_has_abs_axis(touch_input)) {
+		features->device_type &= ~WACOM_DEVICETYPE_TOUCH;
+		return;
+	}
 
 	if (features->touch_max > 1)
 		input_mt_init_slots(touch_input, features->touch_max,
@@ -1764,6 +1781,12 @@ static void wacom_wac_finger_post_parse_hid(struct wacom_wac *wacom_wac,
 static void wacom_wac_pen_post_parse_hid(struct wacom_wac *wacom_wac,
 					 struct wacom_features *features)
 {
+	struct input_dev *pen_input = wacom_wac->pen_input;
+
+	if (!wacom_has_abs_axis(pen_input)) {
+		features->device_type &= ~WACOM_DEVICETYPE_PEN;
+		return;
+	}
 }
 
 void wacom_wac_post_parse_hid(struct hid_device *hdev,
