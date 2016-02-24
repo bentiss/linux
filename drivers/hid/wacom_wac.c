@@ -2066,8 +2066,24 @@ static void wacom_wac_pen_post_parse_hid(struct wacom_wac *wacom_wac,
 		return;
 	}
 
-	if (!test_bit(INPUT_PROP_POINTER, pen_input->propbit))
+	if (!test_bit(INPUT_PROP_POINTER, pen_input->propbit)) {
 		__set_bit(INPUT_PROP_DIRECT, pen_input->propbit);
+	} else {
+		if (test_bit(BTN_TOOL_AIRBRUSH, pen_input->keybit)) {
+			input_set_capability(pen_input, EV_KEY, BTN_TOOL_MOUSE);
+			input_set_capability(pen_input, EV_KEY, BTN_TOOL_LENS);
+
+			/*
+			* ABS_RZ and ABS_THROTTLE are manually fed
+			* until properly supported
+			*/
+			input_set_abs_params(pen_input, ABS_RZ,
+					     -900, 899, 0, 0);
+			input_abs_set_res(pen_input, ABS_RZ, 287);
+			input_set_abs_params(pen_input, ABS_THROTTLE,
+					     -1023, 1023, 0, 0);
+		}
+	}
 }
 
 void wacom_wac_post_parse_hid(struct hid_device *hdev,
