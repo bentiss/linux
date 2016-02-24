@@ -1441,6 +1441,9 @@ static void wacom_wac_pen_usage_mapping(struct hid_device *hdev,
 	struct wacom_wac *wacom_wac = &wacom->wacom_wac;
 	struct input_dev *input = wacom_wac->pen_input;
 
+	if (field->physical == HID_GD_MOUSE)
+		__set_bit(INPUT_PROP_POINTER, wacom_wac->pen_input->propbit);
+
 	switch (usage->hid) {
 	case HID_GD_X:
 		wacom_map_usage(input, usage, field, EV_ABS, ABS_X, 4);
@@ -1546,6 +1549,9 @@ static void wacom_wac_finger_usage_mapping(struct hid_device *hdev,
 	struct wacom_features *features = &wacom_wac->features;
 	struct input_dev *input = wacom_wac->touch_input;
 	unsigned touch_max = wacom_wac->features.touch_max;
+
+	if (field->application == HID_DG_TOUCHPAD)
+		__set_bit(INPUT_PROP_POINTER, wacom_wac->touch_input->propbit);
 
 	switch (usage->hid) {
 	case HID_GD_X:
@@ -1737,13 +1743,6 @@ static void wacom_wac_finger_report(struct hid_device *hdev,
 void wacom_wac_usage_mapping(struct hid_device *hdev,
 		struct hid_field *field, struct hid_usage *usage)
 {
-	struct wacom *wacom = hid_get_drvdata(hdev);
-	struct wacom_wac *wacom_wac = &wacom->wacom_wac;
-
-	/* currently, only direct devices have proper hid report descriptors */
-	__set_bit(INPUT_PROP_DIRECT, wacom_wac->pen_input->propbit);
-	__set_bit(INPUT_PROP_DIRECT, wacom_wac->touch_input->propbit);
-
 	if (WACOM_PEN_FIELD(field))
 		return wacom_wac_pen_usage_mapping(hdev, field, usage);
 
@@ -1767,15 +1766,21 @@ static void wacom_wac_finger_post_parse_hid(struct wacom_wac *wacom_wac,
 					    struct wacom_features *features)
 {
 	struct input_dev *touch_input = wacom_wac->touch_input;
+	unsigned int mt_flags;
 
 	if (!wacom_has_abs_axis(touch_input)) {
 		features->device_type &= ~WACOM_DEVICETYPE_TOUCH;
 		return;
 	}
 
-	if (features->touch_max > 1)
-		input_mt_init_slots(touch_input, features->touch_max,
-				    INPUT_MT_DIRECT);
+	if (!test_bit(INPUT_PROP_POINTER, touch_input->propbit))
+		__set_bit(INPUT_PROP_DIRECT, touch_input->propbit);
+
+	if (features->touch_max > 1) {
+		mt_flags = test_bit(INPUT_PROP_POINTER, touch_input->propbit) ?
+				INPUT_MT_POINTER : INPUT_MT_DIRECT;
+		input_mt_init_slots(touch_input, features->touch_max, mt_flags);
+	}
 }
 
 static void wacom_wac_pen_post_parse_hid(struct wacom_wac *wacom_wac,
@@ -1787,6 +1792,9 @@ static void wacom_wac_pen_post_parse_hid(struct wacom_wac *wacom_wac,
 		features->device_type &= ~WACOM_DEVICETYPE_PEN;
 		return;
 	}
+
+	if (!test_bit(INPUT_PROP_POINTER, pen_input->propbit))
+		__set_bit(INPUT_PROP_DIRECT, pen_input->propbit);
 }
 
 void wacom_wac_post_parse_hid(struct hid_device *hdev,
