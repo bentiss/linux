@@ -522,6 +522,7 @@ static int wacom_query_tablet_data(struct hid_device *hdev,
 
 static int wacom_firmware_parse(struct hid_device *hdev,
 				const struct firmware *fw,
+				unsigned tag,
 				const char **out_version)
 {
 	struct wacom *wacom = hid_get_drvdata(hdev);
@@ -561,9 +562,21 @@ static int wacom_firmware_parse(struct hid_device *hdev,
 
 		switch (type) {
 		case 'O':
+			if (tag)
+				break;
 			/* match against current report descriptor */
 			valid = (hdev->dev_rsize == size) &&
 				!memcmp(data, hdev->dev_rdesc, size);
+			break;
+		case 'T':
+			if (!tag)
+				break;
+			/* this type is 4 bytes longs */
+			if (size != 4) {
+				ret = -EPROTO;
+				goto err;
+			}
+			valid = tag == get_unaligned_le32(data);
 			break;
 		case 'R':
 			if (valid && !rdesc_found) {
@@ -2086,7 +2099,10 @@ static int wacom_hid_hw_start(struct hid_device *hdev)
 	return 0;
 }
 
-static int wacom_load_external_fw(struct hid_device *hdev)
+static int wacom_load_external_fw_with_tag(struct hid_device *hdev,
+					   __u32 vendor_id,
+					   __u32 product_id,
+					   unsigned tag)
 {
 	char fw_name[32];
 	const struct firmware *fw;
@@ -2094,13 +2110,13 @@ static int wacom_load_external_fw(struct hid_device *hdev)
 	int ret;
 
 	snprintf(fw_name, sizeof(fw_name) - 1, "hid/%04x_%04x_%04x.bin",
-		 hdev->bus, hdev->vendor, hdev->product);
+		 hdev->bus, vendor_id, product_id);
 
 	ret = request_firmware_direct(&fw, fw_name, &hdev->dev);
 	if (ret)
 		return ret;
 
-	ret = wacom_firmware_parse(hdev, fw, &version);
+	ret = wacom_firmware_parse(hdev, fw, tag, &version);
 	switch (ret) {
 	case -ENODATA:
 		if (version)
@@ -2133,6 +2149,12 @@ static int wacom_load_external_fw(struct hid_device *hdev)
 	return ret;
 }
 
+static int wacom_load_external_fw(struct hid_device *hdev)
+{
+	return wacom_load_external_fw_with_tag(hdev, hdev->vendor,
+					       hdev->product, 0);
+}
+
 static void wacom_wireless_work(struct work_struct *work)
 {
 	struct wacom *wacom = container_of(work, struct wacom, work);
@@ -2141,7 +2163,8 @@ static void wacom_wireless_work(struct work_struct *work)
 	struct hid_device *hdev1, *hdev2;
 	struct wacom *wacom1, *wacom2;
 	struct wacom_wac *wacom_wac1, *wacom_wac2;
-	int error;
+	int error, pid;
+	bool has_touch = false;
 
 	/*
 	 * Regardless if this is a disconnect or a new tablet,
@@ -2168,12 +2191,36 @@ static void wacom_wireless_work(struct work_struct *work)
 	} else {
 		const struct hid_device_id *id = wacom_ids;
 
+		pid = wacom_wac->pid;
+
 		hid_info(wacom->hdev, "wireless tablet connected with PID %x\n",
-			 wacom_wac->pid);
+			 pid);
+
+		error = wacom_load_external_fw_with_tag(hdev1,
+							hdev1->vendor,
+							wacom_wac->pid,
+							1);
+		if (!error) {
+			pid = HID_ANY_ID;
+			hid_hw_stop(hdev1);
+			hid_close_report(hdev1);
+			hid_open_report(hdev1);
+		}
+
+		error = wacom_load_external_fw_with_tag(hdev2,
+							hdev2->vendor,
+							wacom_wac->pid,
+							2);
+		if (!error) {
+			has_touch = true;
+			hid_hw_stop(hdev2);
+			hid_close_report(hdev2);
+			hid_open_report(hdev2);
+		}
 
 		while (id->bus) {
 			if (id->vendor == USB_VENDOR_ID_WACOM &&
-			    id->product == wacom_wac->pid)
+			    id->product == pid)
 				break;
 			id++;
 		}
@@ -2192,8 +2239,15 @@ static void wacom_wireless_work(struct work_struct *work)
 		if (error)
 			goto fail;
 
+		if (pid == HID_ANY_ID) {
+			error = wacom_hid_hw_start(hdev1);
+			if (error)
+				goto fail;
+		}
+
 		/* Touch interface */
-		if (wacom_wac1->features.touch_max ||
+		if (has_touch ||
+		    wacom_wac1->features.touch_max ||
 		    (wacom_wac1->features.type >= INTUOSHT &&
 		    wacom_wac1->features.type <= BAMBOO_PT)) {
 			wacom_wac2->features =
@@ -2202,6 +2256,12 @@ static void wacom_wireless_work(struct work_struct *work)
 			error = wacom_parse_and_register(wacom2, true);
 			if (error)
 				goto fail;
+
+			if (pid == HID_ANY_ID) {
+				error = wacom_hid_hw_start(hdev2);
+				if (error)
+					goto fail;
+			}
 		}
 
 		error = wacom_initialize_battery(wacom);
