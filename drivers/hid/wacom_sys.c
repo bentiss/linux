@@ -1374,6 +1374,10 @@ static int wacom_allocate_inputs(struct wacom *wacom)
 	return 0;
 }
 
+/*
+ * Make sure to not call hid_hw_request() here as hid_hw_start() has not
+ * been called yet.
+ */
 static int wacom_register_inputs(struct wacom *wacom)
 {
 	struct input_dev *pen_input_dev, *touch_input_dev, *pad_input_dev;
@@ -1569,7 +1573,6 @@ static int wacom_parse_and_register(struct wacom *wacom, bool wireless)
 	struct wacom_features *features = &wacom_wac->features;
 	struct hid_device *hdev = wacom->hdev;
 	int error;
-	unsigned int connect_mask = HID_CONNECT_HIDRAW;
 
 	features->pktlen = wacom_compute_pktlen(hdev);
 	if (features->pktlen > WACOM_PKGLEN_MAX)
@@ -1630,30 +1633,11 @@ static int wacom_parse_and_register(struct wacom *wacom, bool wireless)
 			goto fail_battery;
 	}
 
-	error = wacom_register_inputs(wacom);
-	if (error)
-		goto fail_register_inputs;
-
-	if (features->type == HID_GENERIC)
-		connect_mask |= HID_CONNECT_DRIVER;
-
-	/* Regular HID work starts now */
-	error = hid_hw_start(hdev, connect_mask);
-	if (error) {
-		hid_err(hdev, "hw start failed\n");
-		goto fail_hw_start;
-	}
-
-	if (!wireless) {
-		/* Note that if query fails it is not a hard failure */
-		wacom_query_tablet_data(hdev, features);
-	}
-
 	/* touch only Bamboo doesn't support pen */
 	if ((features->type == BAMBOO_TOUCH) &&
 	    (features->device_type & WACOM_DEVICETYPE_PEN)) {
 		error = -ENODEV;
-		goto fail_hw_start;
+		goto fail_battery;
 	}
 
 	/* pen only Bamboo neither support touch nor pad */
@@ -1661,11 +1645,8 @@ static int wacom_parse_and_register(struct wacom *wacom, bool wireless)
 	    ((features->device_type & WACOM_DEVICETYPE_TOUCH) ||
 	    (features->device_type & WACOM_DEVICETYPE_PAD))) {
 		error = -ENODEV;
-		goto fail_hw_start;
+		goto fail_battery;
 	}
-
-	if (features->device_type & WACOM_DEVICETYPE_WL_MONITOR)
-		error = hid_hw_open(hdev);
 
 	if ((wacom_wac->features.type == INTUOSHT ||
 	    wacom_wac->features.type == INTUOSHT2) &&
@@ -1673,12 +1654,13 @@ static int wacom_parse_and_register(struct wacom *wacom, bool wireless)
 			wacom_wac->shared->touch_input = wacom_wac->touch_input;
 	}
 
+	error = wacom_register_inputs(wacom);
+	if (error)
+		goto fail_register_inputs;
+
 	return 0;
 
-fail_hw_start:
-	hid_hw_stop(hdev);
 fail_register_inputs:
-	wacom_clean_inputs(wacom);
 	wacom_destroy_battery(wacom);
 fail_battery:
 	wacom_remove_shared_data(wacom);
@@ -1687,6 +1669,25 @@ fail_parsed:
 fail_allocate_inputs:
 	wacom_clean_inputs(wacom);
 	return error;
+}
+
+static int wacom_hid_hw_start(struct hid_device *hdev)
+{
+	struct wacom *wacom = hid_get_drvdata(hdev);
+	struct wacom_wac *wacom_wac = &wacom->wacom_wac;
+	struct wacom_features *features = &wacom_wac->features;
+	unsigned int connect_mask = HID_CONNECT_HIDRAW;
+	int error;
+
+	if (features->type == HID_GENERIC &&
+	    features->device_type != WACOM_DEVICETYPE_NONE)
+		connect_mask |= HID_CONNECT_DRIVER;
+
+	error = hid_hw_start(hdev, connect_mask);
+	if (error)
+		return error;
+
+	return 0;
 }
 
 static void wacom_wireless_work(struct work_struct *work)
@@ -1744,7 +1745,6 @@ static void wacom_wireless_work(struct work_struct *work)
 			*((struct wacom_features *)id->driver_data);
 
 		wacom_wac1->pid = wacom_wac->pid;
-		hid_hw_stop(hdev1);
 		error = wacom_parse_and_register(wacom1, true);
 		if (error)
 			goto fail;
@@ -1756,7 +1756,6 @@ static void wacom_wireless_work(struct work_struct *work)
 			wacom_wac2->features =
 				*((struct wacom_features *)id->driver_data);
 			wacom_wac2->pid = wacom_wac->pid;
-			hid_hw_stop(hdev2);
 			error = wacom_parse_and_register(wacom2, true);
 			if (error)
 				goto fail;
@@ -1822,8 +1821,21 @@ static int wacom_probe(struct hid_device *hdev,
 	}
 
 	error = wacom_parse_and_register(wacom, false);
-	if (error)
+	if (error && error != -ENODEV)
+		/* silently accept unsupported HID nodes */
 		goto fail_parse;
+
+	error = wacom_hid_hw_start(hdev);
+	if (error) {
+		hid_err(hdev, "hw start failed\n");
+		goto fail_hw_start;
+	}
+
+	/* Note that if query fails it is not a hard failure */
+	wacom_query_tablet_data(hdev, features);
+
+	if (features->device_type & WACOM_DEVICETYPE_WL_MONITOR)
+		error = hid_hw_open(hdev);
 
 	if (hdev->bus == BUS_BLUETOOTH) {
 		error = device_create_file(&hdev->dev, &dev_attr_speed);
@@ -1835,6 +1847,8 @@ static int wacom_probe(struct hid_device *hdev,
 
 	return 0;
 
+fail_hw_start:
+	wacom_clean_inputs(wacom);
 fail_type:
 fail_parse:
 	kfree(wacom);
