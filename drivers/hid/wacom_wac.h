@@ -225,6 +225,10 @@ struct hid_data {
 	int cc_value_index;
 	int num_expected;
 	int num_received;
+	int led_count;
+	int group_led_count;
+	int group_led_brightness_count;
+	struct attribute *led_control[5];
 };
 
 struct wacom_wac {
