@@ -196,8 +196,6 @@ struct wacom_shared {
 };
 
 struct hid_data {
-	__s16 inputmode;	/* InputMode HID feature, -1 if non-existent */
-	__s16 inputmode_index;	/* InputMode HID feature index in the report */
 	bool tool_inrange_state;
 	bool inrange_state;
 	bool invert_state;

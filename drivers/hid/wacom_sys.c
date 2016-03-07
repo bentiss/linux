@@ -179,16 +179,6 @@ static void wacom_feature_mapping(struct hid_device *hdev,
 			kfree(data);
 		}
 		break;
-	case HID_DG_INPUTMODE:
-		/* Ignore if value index is out of bounds. */
-		if (usage->usage_index >= field->report_count) {
-			dev_err(&hdev->dev, "HID_DG_INPUTMODE out of range\n");
-			break;
-		}
-
-		hid_data->inputmode = field->report->id;
-		hid_data->inputmode_index = usage->usage_index;
-		break;
 	case HID_WAC_LED_SELECT_ID:
 		hid_data->group_led_count++;
 		hid_data->led_count += field->logical_maximum -
@@ -386,19 +376,25 @@ static void wacom_parse_hid(struct hid_device *hdev,
 static int wacom_hid_set_device_mode(struct hid_device *hdev)
 {
 	struct wacom *wacom = hid_get_drvdata(hdev);
-	struct hid_data *hid_data = &wacom->wacom_wac.hid_data;
-	struct hid_report *r;
-	struct hid_report_enum *re;
+	struct hid_field *f;
+	unsigned int f_index;
+	int retval;
 
-	if (hid_data->inputmode < 0)
+	retval = wacom_find_field(hdev,
+				  HID_FEATURE_REPORT,
+				  HID_DG_INPUTMODE,
+				  0,
+				  &f, &f_index);
+	if (retval == -ENOENT)
 		return 0;
 
-	re = &(hdev->report_enum[HID_FEATURE_REPORT]);
-	r = re->report_id_hash[hid_data->inputmode];
-	if (r) {
-		r->field[0]->value[hid_data->inputmode_index] = 2;
-		hid_hw_request(hdev, r, HID_REQ_SET_REPORT);
-	}
+	if (retval)
+		return retval;
+
+	hid_set_field(f, f_index, 2);
+
+	wacom_hid_hw_request(wacom->hdev, f->report, HID_REQ_SET_REPORT);
+
 	return 0;
 }
 
@@ -2305,7 +2301,6 @@ static int wacom_probe(struct hid_device *hdev,
 	wacom_wac = &wacom->wacom_wac;
 	wacom_wac->features = *((struct wacom_features *)id->driver_data);
 	features = &wacom_wac->features;
-	wacom_wac->hid_data.inputmode = -1;
 
 	if (features->check_for_hid_type && features->hid_type != hdev->type) {
 		error = -ENODEV;
