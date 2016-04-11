@@ -934,6 +934,7 @@ static int psmouse_extensions(struct psmouse *psmouse,
 			      unsigned int max_proto, bool set_properties)
 {
 	bool synaptics_hardware = false;
+	int ret;
 
 	/*
 	 * Always check for focaltech, this is safe as it uses pnp-id
@@ -996,9 +997,14 @@ static int psmouse_extensions(struct psmouse *psmouse,
 			 * enabled first, since we try detecting Synaptics
 			 * even when protocol is disabled.
 			 */
-			if (IS_ENABLED(CONFIG_MOUSE_PS2_SYNAPTICS) &&
-			    (!set_properties || synaptics_init(psmouse) == 0)) {
-				return PSMOUSE_SYNAPTICS;
+			if (IS_ENABLED(CONFIG_MOUSE_PS2_SYNAPTICS)) {
+				if (!set_properties)
+					return PSMOUSE_SYNAPTICS;
+				ret = synaptics_init(psmouse);
+				if (ret < 0)
+					return ret;
+				if (ret == 0)
+					return PSMOUSE_SYNAPTICS;
 			}
 
 			/*
@@ -1395,6 +1401,7 @@ static int psmouse_switch_protocol(struct psmouse *psmouse,
 {
 	const struct psmouse_protocol *selected_proto;
 	struct input_dev *input_dev = psmouse->dev;
+	int ret;
 
 	input_dev->dev.parent = &psmouse->ps2dev.serio->dev;
 
@@ -1410,8 +1417,10 @@ static int psmouse_switch_protocol(struct psmouse *psmouse,
 		psmouse->type = proto->type;
 		selected_proto = proto;
 	} else {
-		psmouse->type = psmouse_extensions(psmouse,
-						   psmouse_max_proto, true);
+		ret = psmouse_extensions(psmouse, psmouse_max_proto, true);
+		if (ret < 0)
+			return ret;
+		psmouse->type = ret;
 		selected_proto = psmouse_protocol_by_type(psmouse->type);
 	}
 
@@ -1501,7 +1510,9 @@ static int psmouse_connect(struct serio *serio, struct serio_driver *drv)
 	psmouse->resync_time = parent ? 0 : psmouse_resync_time;
 	psmouse->smartscroll = psmouse_smartscroll;
 
-	psmouse_switch_protocol(psmouse, NULL);
+	error = psmouse_switch_protocol(psmouse, NULL);
+	if (error)
+		goto err_close_serio;
 
 	psmouse_set_state(psmouse, PSMOUSE_CMD_MODE);
 	psmouse_initialize(psmouse);
