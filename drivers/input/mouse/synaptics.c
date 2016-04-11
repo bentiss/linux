@@ -70,6 +70,21 @@
 /* maximum ABS_MT_POSITION displacement (in mm) */
 #define DMAX 10
 
+/*
+ * The newest Synaptics device can use a secondary bus (called InterTouch) which
+ * provides a better bandwidth and allow a better control of the touchpads.
+ * This is used to decide if we need to use this bus or not.
+ */
+enum {
+	SYNAPTICS_INTERTOUCH_NOT_SET = -1,
+	SYNAPTICS_INTERTOUCH_OFF,
+	SYNAPTICS_INTERTOUCH_ON,
+};
+
+static int synaptics_intertouch = SYNAPTICS_INTERTOUCH_NOT_SET;
+module_param_named(synaptics_intertouch, synaptics_intertouch, int, 0644);
+MODULE_PARM_DESC(synaptics_intertouch, "Use a secondary bus for the Synaptics device.");
+
 /*****************************************************************************
  *	Stuff we need even when we do not want native Synaptics support
  ****************************************************************************/
@@ -218,6 +233,38 @@ static const char * const forcepad_pnp_ids[] = {
 	NULL
 };
 
+static const char * const smbus_pnp_ids[] = {
+	/* all of the topbuttonpad_pnp_ids are valid, we just add some extras */
+	"LEN0048", /* X1 Carbon 3 */
+	"LEN0046", /* X250 */
+	"LEN004a", /* W541 */
+	"LEN200f", /* T450s */
+};
+
+/**
+ * synaptics_setup_intertouch - called by synaptics_query_hardware()
+ * and decides whether or not instantiating a SMBus InterTouch device.
+ *
+ * @returns -1 if a SMBus device is needed (to abort PS/2), and 0 to continue
+ * with PS/2.
+ */
+static int synaptics_setup_intertouch(struct psmouse *psmouse)
+{
+	if (synaptics_intertouch == SYNAPTICS_INTERTOUCH_OFF)
+		return 0;
+
+	if (synaptics_intertouch == SYNAPTICS_INTERTOUCH_NOT_SET) {
+		if (!psmouse_matches_pnp_id(psmouse, topbuttonpad_pnp_ids) &&
+		    !psmouse_matches_pnp_id(psmouse, smbus_pnp_ids))
+			return 0;
+	}
+
+	psmouse->ps2dev.serio->id.extra = 1;
+
+	/* abort the PS/2 enumeration */
+	psmouse_info(psmouse, "device supported by an other bus, aborting.\n");
+	return -1;
+}
 /*****************************************************************************
  *	Synaptics communications functions
  ****************************************************************************/
@@ -359,6 +406,10 @@ static int synaptics_capability(struct psmouse *psmouse)
 				     "device claims to have extended capability 0x0c, but I'm not able to read it.\n");
 		} else {
 			priv->ext_cap_0c = (cap[0] << 16) | (cap[1] << 8) | cap[2];
+
+			if (SYN_CAP_INTERTOUCH(priv->ext_cap_0c))
+				return synaptics_setup_intertouch(psmouse);
+
 		}
 	}
 
@@ -1463,7 +1514,10 @@ static int __synaptics_init(struct psmouse *psmouse, bool absolute_mode)
 	psmouse_reset(psmouse);
 
 	if (synaptics_query_hardware(psmouse)) {
-		psmouse_err(psmouse, "Unable to query device.\n");
+		if (!SYN_CAP_INTERTOUCH(priv->ext_cap_0c))
+			psmouse_err(psmouse, "Unable to query device.\n");
+		else
+			err = -ENODEV;
 		goto init_fail;
 	}
 
