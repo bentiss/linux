@@ -114,7 +114,13 @@ enum psmouse_type {
 
 void psmouse_queue_work(struct psmouse *psmouse, struct delayed_work *work,
 		unsigned long delay);
-int psmouse_sliced_command(struct psmouse *psmouse, unsigned char command);
+int psmouse_ps2_sliced_command(struct ps2dev *ps2dev, unsigned char command);
+
+static inline int psmouse_sliced_command(struct psmouse *psmouse,
+					 unsigned char command)
+{
+	return psmouse_ps2_sliced_command(&psmouse->ps2dev, command);
+}
 
 /*
  * psmouse_reset() resets the mouse into power-on state.
@@ -129,7 +135,15 @@ void psmouse_set_resolution(struct psmouse *psmouse, unsigned int resolution);
 psmouse_ret_t psmouse_process_byte(struct psmouse *psmouse);
 int psmouse_activate(struct psmouse *psmouse);
 int psmouse_deactivate(struct psmouse *psmouse);
-bool psmouse_matches_pnp_id(struct psmouse *psmouse, const char * const ids[]);
+
+/*
+ * psmouse_matches_pnp_id - check if psmouse matches one of the passed in ids.
+ */
+static inline bool psmouse_matches_pnp_id(struct psmouse *psmouse,
+					  const char * const ids[])
+{
+	return serio_matches_pnp_id(psmouse->ps2dev.serio, ids);
+}
 
 struct psmouse_attribute {
 	struct device_attribute dattr;
