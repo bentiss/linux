@@ -181,6 +181,19 @@ int rmi_process_interrupt_requests(struct rmi_device *rmi_dev)
 }
 EXPORT_SYMBOL_GPL(rmi_process_interrupt_requests);
 
+struct rmi_function *rmi_find_function(struct rmi_device *rmi_dev, u8 number)
+{
+	struct rmi_driver_data *data = dev_get_drvdata(&rmi_dev->dev);
+	struct rmi_function *entry;
+
+	list_for_each_entry(entry, &data->function_list, node) {
+		if (entry->fd.function_number == number)
+			return entry;
+	}
+
+	return NULL;
+}
+
 static int suspend_one_function(struct rmi_function *fn)
 {
 	struct rmi_function_handler *fh;
