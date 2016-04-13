@@ -499,6 +499,47 @@ static const struct attribute_group *serio_device_attr_groups[] = {
 	NULL
 };
 
+static bool serio_check_pnp_id(const char *id, const char * const ids[])
+{
+	int i;
+
+	for (i = 0; ids[i]; i++)
+		if (!strcasecmp(id, ids[i]))
+			return true;
+
+	return false;
+}
+
+/*
+ * check if serio port matches one of the passed in ids.
+ */
+bool serio_matches_pnp_id(struct serio *serio, const char * const ids[])
+{
+	char *p, *fw_id_copy, *save_ptr;
+	bool found = false;
+
+	if (strncmp(serio->firmware_id, "PNP: ", 5))
+		return false;
+
+	fw_id_copy = kstrndup(&serio->firmware_id[5],
+			      sizeof(serio->firmware_id) - 5,
+			      GFP_KERNEL);
+	if (!fw_id_copy)
+		return false;
+
+	save_ptr = fw_id_copy;
+	while ((p = strsep(&fw_id_copy, " ")) != NULL) {
+		if (serio_check_pnp_id(p, ids)) {
+			found = true;
+			break;
+		}
+	}
+
+	kfree(save_ptr);
+	return found;
+}
+EXPORT_SYMBOL(serio_matches_pnp_id);
+
 static void serio_release_port(struct device *dev)
 {
 	struct serio *serio = to_serio_port(dev);
