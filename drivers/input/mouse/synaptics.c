@@ -652,11 +652,10 @@ static void synaptics_pass_pt_packet(struct psmouse *psmouse,
 				     struct serio *ptport,
 				     unsigned char *packet)
 {
-	struct synaptics_data *priv = psmouse->private;
 	struct psmouse *child = serio_get_drvdata(ptport);
 
 	if (child && child->state == PSMOUSE_ACTIVATED) {
-		serio_interrupt(ptport, packet[1] | priv->pt_buttons, 0);
+		serio_interrupt(ptport, packet[1], 0);
 		serio_interrupt(ptport, packet[4], 0);
 		serio_interrupt(ptport, packet[5], 0);
 		if (child->pktsize == 4)
@@ -907,7 +906,6 @@ static void synaptics_report_ext_buttons(struct psmouse *psmouse,
 	struct input_dev *dev = psmouse->dev;
 	struct synaptics_data *priv = psmouse->private;
 	int ext_bits = (SYN_CAP_MULTI_BUTTON_NO(priv->ext_cap) + 1) >> 1;
-	char buf[6] = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
 	int i;
 
 	if (!SYN_CAP_MULTI_BUTTON_NO(priv->ext_cap))
@@ -938,11 +936,10 @@ static void synaptics_report_ext_buttons(struct psmouse *psmouse,
 		return;
 
 	/* The trackstick expects at most 3 buttons */
-	priv->pt_buttons = SYN_CAP_EXT_BUTTON_STICK_L(hw->ext_buttons)      |
-			   SYN_CAP_EXT_BUTTON_STICK_R(hw->ext_buttons) << 1 |
-			   SYN_CAP_EXT_BUTTON_STICK_M(hw->ext_buttons) << 2;
-
-	synaptics_pass_pt_packet(psmouse, priv->pt_port, buf);
+	psmouse_overwrite_buttons(priv->pt_port,
+				  SYN_CAP_EXT_BUTTON_STICK_L(hw->ext_buttons)      |
+				  SYN_CAP_EXT_BUTTON_STICK_R(hw->ext_buttons) << 1 |
+				  SYN_CAP_EXT_BUTTON_STICK_M(hw->ext_buttons) << 2);
 }
 
 static void synaptics_report_buttons(struct psmouse *psmouse,
