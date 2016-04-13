@@ -95,6 +95,7 @@ bool rmi_register_desc_has_subpacket(const struct rmi_register_desc_item *item,
 bool rmi_is_physical_driver(struct device_driver *);
 int rmi_register_physical_driver(void);
 void rmi_unregister_physical_driver(void);
+struct rmi_function *rmi_find_function(struct rmi_device *rmi_dev, u8 number);
 
 char *rmi_f01_get_product_ID(struct rmi_function *fn);
 
