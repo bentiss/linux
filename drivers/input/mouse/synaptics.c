@@ -241,6 +241,18 @@ static const char * const smbus_pnp_ids[] = {
 	"LEN200f", /* T450s */
 };
 
+bool synaptics_is_topbuttonpad(struct serio *serio)
+{
+	return serio_matches_pnp_id(serio, topbuttonpad_pnp_ids);
+}
+EXPORT_SYMBOL(synaptics_is_topbuttonpad);
+
+bool synaptics_use_intertouch(struct serio *serio)
+{
+	return serio->id.extra == 1;
+}
+EXPORT_SYMBOL(synaptics_use_intertouch);
+
 /**
  * synaptics_setup_intertouch - called by synaptics_query_hardware()
  * and decides whether or not instantiating a SMBus InterTouch device.
@@ -250,6 +262,8 @@ static const char * const smbus_pnp_ids[] = {
  */
 static int synaptics_setup_intertouch(struct psmouse *psmouse)
 {
+	psmouse->ps2dev.serio->id.extra = 0;
+
 	if (synaptics_intertouch == SYNAPTICS_INTERTOUCH_OFF)
 		return 0;
 
