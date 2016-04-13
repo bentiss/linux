@@ -396,22 +396,6 @@ int psmouse_sliced_command(struct psmouse *psmouse, unsigned char command)
 }
 
 /*
- * psmouse_reset() resets the mouse into power-on state.
- */
-int psmouse_reset(struct psmouse *psmouse)
-{
-	unsigned char param[2];
-
-	if (ps2_command(&psmouse->ps2dev, param, PSMOUSE_CMD_RESET_BAT))
-		return -1;
-
-	if (param[0] != PSMOUSE_RET_BAT && param[1] != PSMOUSE_RET_ID)
-		return -1;
-
-	return 0;
-}
-
-/*
  * Here we set the mouse resolution.
  */
 void psmouse_set_resolution(struct psmouse *psmouse, unsigned int resolution)
