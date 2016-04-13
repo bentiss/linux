@@ -271,6 +271,23 @@ int ps2_command(struct ps2dev *ps2dev, unsigned char *param, int command)
 EXPORT_SYMBOL(ps2_command);
 
 /*
+ * ps2_reset() resets the PS/2 device into power-on state.
+ */
+int ps2_reset(struct ps2dev *ps2dev)
+{
+	unsigned char param[2];
+
+	if (ps2_command(ps2dev, param, PS2_CMD_RESET_BAT))
+		return -1;
+
+	if (param[0] != PS2_RET_BAT && param[1] != PS2_RET_ID)
+		return -1;
+
+	return 0;
+}
+EXPORT_SYMBOL(ps2_reset);
+
+/*
  * ps2_init() initializes ps2dev structure
  */
 
