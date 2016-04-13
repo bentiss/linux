@@ -76,6 +76,8 @@ void serio_rescan(struct serio *serio);
 void serio_reconnect(struct serio *serio);
 irqreturn_t serio_interrupt(struct serio *serio, unsigned char data, unsigned int flags);
 
+bool serio_matches_pnp_id(struct serio *serio, const char * const ids[]);
+
 void __serio_register_port(struct serio *serio, struct module *owner);
 
 /* use a define to avoid include chaining to get THIS_MODULE */
