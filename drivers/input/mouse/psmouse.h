@@ -111,7 +111,15 @@ enum psmouse_type {
 void psmouse_queue_work(struct psmouse *psmouse, struct delayed_work *work,
 		unsigned long delay);
 int psmouse_sliced_command(struct psmouse *psmouse, unsigned char command);
-int psmouse_reset(struct psmouse *psmouse);
+
+/*
+ * psmouse_reset() resets the mouse into power-on state.
+ */
+static inline int psmouse_reset(struct psmouse *psmouse)
+{
+	return ps2_reset(&psmouse->ps2dev);
+}
+
 void psmouse_set_state(struct psmouse *psmouse, enum psmouse_state new_state);
 void psmouse_set_resolution(struct psmouse *psmouse, unsigned int resolution);
 psmouse_ret_t psmouse_process_byte(struct psmouse *psmouse);
