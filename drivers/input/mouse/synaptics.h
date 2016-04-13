@@ -208,5 +208,7 @@ void synaptics_reset(struct psmouse *psmouse);
 
 bool synaptics_is_topbuttonpad(struct serio *serio);
 bool synaptics_use_intertouch(struct serio *serio);
+int synaptics_send_ps2_cmd(struct ps2dev *ps2dev, unsigned char c,
+			   unsigned char *param);
 
 #endif /* _SYNAPTICS_H */

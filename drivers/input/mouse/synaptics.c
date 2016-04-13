@@ -293,16 +293,24 @@ static int synaptics_invert_y(int y)
 	return YMAX_NOMINAL + YMIN_NOMINAL - y;
 }
 
-/*
- * Send a command to the synpatics touchpad by special commands
- */
-static int synaptics_send_cmd(struct psmouse *psmouse, unsigned char c, unsigned char *param)
+int synaptics_send_ps2_cmd(struct ps2dev *ps2dev, unsigned char c,
+			   unsigned char *param)
 {
-	if (psmouse_sliced_command(psmouse, c))
+	if (psmouse_ps2_sliced_command(ps2dev, c))
 		return -1;
-	if (ps2_command(&psmouse->ps2dev, param, PSMOUSE_CMD_GETINFO))
+	if (ps2_command(ps2dev, param, PSMOUSE_CMD_GETINFO))
 		return -1;
 	return 0;
+}
+EXPORT_SYMBOL(synaptics_send_ps2_cmd);
+
+/*
+ * Send a command to the synaptics touchpad by special commands
+ */
+static inline int synaptics_send_cmd(struct psmouse *psmouse, unsigned char c,
+				     unsigned char *param)
+{
+	return synaptics_send_ps2_cmd(&psmouse->ps2dev, c, param);
 }
 
 /*
