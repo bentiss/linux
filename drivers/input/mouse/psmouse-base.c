@@ -375,22 +375,22 @@ static irqreturn_t psmouse_interrupt(struct serio *serio,
 }
 
 /*
- * psmouse_sliced_command() sends an extended PS/2 command to the mouse
+ * psmouse_ps2_sliced_command() sends an extended PS/2 command to the mouse
  * using sliced syntax, understood by advanced devices, such as Logitech
  * or Synaptics touchpads. The command is encoded as:
  * 0xE6 0xE8 rr 0xE8 ss 0xE8 tt 0xE8 uu where (rr*64)+(ss*16)+(tt*4)+uu
  * is the command.
  */
-int psmouse_sliced_command(struct psmouse *psmouse, unsigned char command)
+int psmouse_ps2_sliced_command(struct ps2dev *ps2dev, unsigned char command)
 {
 	int i;
 
-	if (ps2_command(&psmouse->ps2dev, NULL, PSMOUSE_CMD_SETSCALE11))
+	if (ps2_command(ps2dev, NULL, PSMOUSE_CMD_SETSCALE11))
 		return -1;
 
 	for (i = 6; i >= 0; i -= 2) {
 		unsigned char d = (command >> i) & 3;
-		if (ps2_command(&psmouse->ps2dev, &d, PSMOUSE_CMD_SETRES))
+		if (ps2_command(ps2dev, &d, PSMOUSE_CMD_SETRES))
 			return -1;
 	}
 
@@ -445,14 +445,6 @@ static int psmouse_poll(struct psmouse *psmouse)
 {
 	return ps2_command(&psmouse->ps2dev, psmouse->packet,
 			   PSMOUSE_CMD_POLL | (psmouse->pktsize << 8));
-}
-
-/*
- * psmouse_matches_pnp_id - check if psmouse matches one of the passed in ids.
- */
-bool psmouse_matches_pnp_id(struct psmouse *psmouse, const char * const ids[])
-{
-	return serio_matches_pnp_id(psmouse->ps2dev.serio, ids);
 }
 
 /*
