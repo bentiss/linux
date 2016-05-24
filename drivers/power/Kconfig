@@ -509,6 +509,14 @@ config AXP20X_POWER
 	  This driver provides support for the power supply features of
 	  AXP20x PMIC.
 
+config SURFACE3_POWER
+	tristate "Surface 3 power management driver"
+	depends on I2C
+	depends on GPIOLIB
+	help
+	  This driver provides support for the power supply features of
+	  the Surface 3.
+
 endif # POWER_SUPPLY
 
 source "drivers/power/reset/Kconfig"
