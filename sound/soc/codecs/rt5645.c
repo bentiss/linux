@@ -3529,6 +3529,7 @@ MODULE_DEVICE_TABLE(i2c, rt5645_i2c_id);
 
 #ifdef CONFIG_ACPI
 static const struct acpi_device_id rt5645_acpi_match[] = {
+	{ "10EC5640", 0 },
 	{ "10EC5645", 0 },
 	{ "10EC5650", 0 },
 	{},
