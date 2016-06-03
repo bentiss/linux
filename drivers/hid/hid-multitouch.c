@@ -1379,6 +1379,10 @@ static const struct hid_device_id mt_devices[] = {
 		MT_USB_DEVICE(USB_VENDOR_ID_ILITEK,
 			USB_DEVICE_ID_ILITEK_MULTITOUCH) },
 
+	/* Microsoft */
+	{ .driver_data = MT_CLS_WIN_8,
+		MT_USB_DEVICE(USB_VENDOR_ID_MICROSOFT, 0x07cd) },
+
 	/* MosArt panels */
 	{ .driver_data = MT_CLS_CONFIDENCE_MINUS_ONE,
 		MT_USB_DEVICE(USB_VENDOR_ID_ASUS,
