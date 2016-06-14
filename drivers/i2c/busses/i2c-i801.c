@@ -900,7 +900,8 @@ static int i801_enable_host_notify(struct i2c_adapter *adapter)
 	if (!(priv->features & FEATURE_HOST_NOTIFY))
 		return -ENOTSUPP;
 
-	priv->host_notify = i2c_setup_smbus_host_notify(adapter);
+	if (!priv->host_notify)
+		priv->host_notify = i2c_setup_smbus_host_notify(adapter);
 	if (!priv->host_notify)
 		return -ENOMEM;
 
@@ -1626,6 +1627,14 @@ static int i801_suspend(struct device *dev)
 
 static int i801_resume(struct device *dev)
 {
+	struct pci_dev *pci_dev = to_pci_dev(dev);
+	struct i801_priv *priv = pci_get_drvdata(pci_dev);
+	int err;
+
+	err = i801_enable_host_notify(&priv->adapter);
+	if (err && err != -ENOTSUPP)
+		dev_warn(dev, "Unable to enable SMBus Host Notify\n");
+
 	return 0;
 }
 #endif
