@@ -90,6 +90,7 @@
 #include <linux/module.h>
 #include <linux/mod_devicetable.h>
 #include <linux/hid.h>
+#include <linux/leds.h>
 #include <linux/usb/input.h>
 #include <linux/power_supply.h>
 #include <asm/unaligned.h>
@@ -110,8 +111,23 @@ enum wacom_worker {
 	WACOM_WORKER_BATTERY,
 };
 
+struct wacom;
+
+struct wacom_led {
+	struct led_classdev cdev;
+	struct led_trigger trigger;
+	struct wacom *wacom;
+	unsigned int group;
+	unsigned int id;
+	u8 llv;
+	u8 hlv;
+	bool held;
+};
+
 struct wacom_group_leds {
 	u8 select; /* status led selector (0..3) */
+	struct wacom_led *leds;
+	unsigned int count;
 };
 
 struct wacom {
@@ -124,9 +140,12 @@ struct wacom {
 	struct work_struct battery_work;
 	struct wacom_leds {
 		struct wacom_group_leds *groups;
+		unsigned int count;
 		u8 llv;       /* status led brightness no button (1..127) */
 		u8 hlv;       /* status led brightness button pressed (1..127) */
 		u8 img_lum;   /* OLED matrix display brightness */
+		u8 max_llv;   /* maximum brightness of LED (llv) */
+		u8 max_hlv;   /* maximum brightness of LED (hlv) */
 	} led;
 	struct power_supply *battery;
 	struct power_supply *ac;
@@ -171,4 +190,8 @@ void wacom_battery_work(struct work_struct *work);
 int wacom_remote_create_attr_group(struct wacom *wacom, __u32 serial,
 				   int index);
 void wacom_remote_destroy_attr_group(struct wacom *wacom, __u32 serial);
+enum led_brightness wacom_leds_brightness_get(struct wacom_led *led);
+struct wacom_led *wacom_led_find(struct wacom *wacom, unsigned int group,
+				 unsigned int id);
+struct wacom_led *wacom_led_next(struct wacom *wacom, struct wacom_led *cur);
 #endif
