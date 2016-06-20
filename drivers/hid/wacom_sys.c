@@ -1931,7 +1931,7 @@ static int wacom_parse_and_register(struct wacom *wacom, bool wireless)
 
 	error = wacom_allocate_inputs(wacom);
 	if (error)
-		goto fail_open_group;
+		goto fail;
 
 	/*
 	 * Bamboo Pad has a generic hid handling for the Pen, and we switch it
@@ -1944,7 +1944,7 @@ static int wacom_parse_and_register(struct wacom *wacom, bool wireless)
 		} else if ((features->pktlen != WACOM_PKGLEN_BPAD_TOUCH) &&
 			   (features->pktlen != WACOM_PKGLEN_BPAD_TOUCH_USB)) {
 			error = -ENODEV;
-			goto fail_allocate_inputs;
+			goto fail;
 		}
 	}
 
@@ -1964,7 +1964,7 @@ static int wacom_parse_and_register(struct wacom *wacom, bool wireless)
 			 error ? "Ignoring" : "Assuming pen");
 
 		if (error)
-			goto fail_parsed;
+			goto fail;
 
 		features->device_type |= WACOM_DEVICETYPE_PEN;
 	}
@@ -1975,27 +1975,27 @@ static int wacom_parse_and_register(struct wacom *wacom, bool wireless)
 
 	error = wacom_add_shared_data(hdev);
 	if (error)
-		goto fail_shared_data;
+		goto fail;
 
 	if (!(features->device_type & WACOM_DEVICETYPE_WL_MONITOR) &&
 	     (features->quirks & WACOM_QUIRK_BATTERY)) {
 		error = wacom_initialize_battery(wacom);
 		if (error)
-			goto fail_battery;
+			goto fail;
 	}
 
 	error = wacom_register_inputs(wacom);
 	if (error)
-		goto fail_register_inputs;
+		goto fail;
 
 	if (wacom->wacom_wac.features.device_type & WACOM_DEVICETYPE_PAD) {
 		error = wacom_initialize_leds(wacom);
 		if (error)
-			goto fail_leds;
+			goto fail;
 
 		error = wacom_initialize_remotes(wacom);
 		if (error)
-			goto fail_remote;
+			goto fail;
 	}
 
 	if (features->type == HID_GENERIC)
@@ -2005,7 +2005,7 @@ static int wacom_parse_and_register(struct wacom *wacom, bool wireless)
 	error = hid_hw_start(hdev, connect_mask);
 	if (error) {
 		hid_err(hdev, "hw start failed\n");
-		goto fail_hw_start;
+		goto fail;
 	}
 
 	if (!wireless) {
@@ -2044,15 +2044,7 @@ static int wacom_parse_and_register(struct wacom *wacom, bool wireless)
 
 fail_quirks:
 	hid_hw_stop(hdev);
-fail_hw_start:
-fail_remote:
-fail_leds:
-fail_register_inputs:
-fail_battery:
-fail_shared_data:
-fail_parsed:
-fail_allocate_inputs:
-fail_open_group:
+fail:
 	wacom_release_resources(wacom);
 	return error;
 }
@@ -2232,7 +2224,7 @@ static int wacom_probe(struct hid_device *hdev,
 
 	if (features->check_for_hid_type && features->hid_type != hdev->type) {
 		error = -ENODEV;
-		goto fail_type;
+		goto fail;
 	}
 
 	wacom_wac->hid_data.inputmode = -1;
@@ -2249,12 +2241,12 @@ static int wacom_probe(struct hid_device *hdev,
 	error = hid_parse(hdev);
 	if (error) {
 		hid_err(hdev, "parse failed\n");
-		goto fail_parse;
+		goto fail;
 	}
 
 	error = wacom_parse_and_register(wacom, false);
 	if (error)
-		goto fail_parse;
+		goto fail;
 
 	if (hdev->bus == BUS_BLUETOOTH) {
 		error = device_create_file(&hdev->dev, &dev_attr_speed);
@@ -2266,8 +2258,7 @@ static int wacom_probe(struct hid_device *hdev,
 
 	return 0;
 
-fail_parse:
-fail_type:
+fail:
 	hid_set_drvdata(hdev, NULL);
 	return error;
 }
