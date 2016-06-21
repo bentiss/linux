@@ -2205,6 +2205,11 @@ static int wacom_remote_create_one(struct wacom *wacom, u32 serial,
 	if (error)
 		goto fail;
 
+	error = wacom_led_groups_alloc_and_register_one(&remote->remotes[index].input->dev,
+							wacom, index, 3, true);
+	if (error)
+		goto fail;
+
 	remote->remotes[index].registered = true;
 
 	devres_close_group(dev, &remote->remotes[index]);
