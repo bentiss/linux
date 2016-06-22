@@ -35,6 +35,9 @@ static int wacom_get_report(struct hid_device *hdev, u8 type, u8 *buf,
 {
 	int retval;
 
+	if (hdev->type == HID_TYPE_UHID)
+		return 0;
+
 	do {
 		retval = hid_hw_raw_request(hdev, buf[0], buf, size, type,
 				HID_REQ_GET_REPORT);
@@ -51,6 +54,9 @@ static int wacom_set_report(struct hid_device *hdev, u8 type, u8 *buf,
 			    size_t size, unsigned int retries)
 {
 	int retval;
+
+	if (hdev->type == HID_TYPE_UHID)
+		return 0;
 
 	do {
 		retval = hid_hw_raw_request(hdev, buf[0], buf, size, type,
@@ -2316,7 +2322,8 @@ static int wacom_probe(struct hid_device *hdev,
 	wacom_wac->features = *((struct wacom_features *)id->driver_data);
 	features = &wacom_wac->features;
 
-	if (features->check_for_hid_type && features->hid_type != hdev->type) {
+	if (hdev->type != HID_TYPE_UHID &&
+	    features->check_for_hid_type && features->hid_type != hdev->type) {
 		error = -ENODEV;
 		goto fail;
 	}
