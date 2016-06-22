@@ -327,6 +327,9 @@ static void mt_get_feature(struct hid_device *hdev, struct hid_report *report)
 	if (td->mtclass.name != MT_CLS_WIN_8)
 		return;
 
+	if (hdev->type == HID_TYPE_UHID)
+		return;
+
 	buf = hid_alloc_report_buf(report, GFP_KERNEL);
 	if (!buf)
 		return;
@@ -924,6 +927,9 @@ static void mt_set_input_mode(struct hid_device *hdev)
 	if (td->inputmode < 0)
 		return;
 
+	if (hdev->type == HID_TYPE_UHID)
+		return;
+
 	re = &(hdev->report_enum[HID_FEATURE_REPORT]);
 	r = re->report_id_hash[td->inputmode];
 	if (r) {
@@ -955,6 +961,9 @@ static void mt_set_maxcontacts(struct hid_device *hdev)
 		return;
 
 	if (!td->mtclass.maxcontacts)
+		return;
+
+	if (hdev->type == HID_TYPE_UHID)
 		return;
 
 	re = &hdev->report_enum[HID_FEATURE_REPORT];
