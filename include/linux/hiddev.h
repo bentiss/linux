@@ -37,7 +37,7 @@ struct hid_usage;
 struct hid_field;
 struct hid_report;
 
-#ifdef CONFIG_USB_HIDDEV
+#if IS_ENABLED(CONFIG_USB_HIDDEV)
 int hiddev_connect(struct hid_device *hid, unsigned int force);
 void hiddev_disconnect(struct hid_device *);
 void hiddev_hid_event(struct hid_device *hid, struct hid_field *field,
