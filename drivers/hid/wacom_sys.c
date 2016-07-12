@@ -55,8 +55,10 @@ static int wacom_set_report(struct hid_device *hdev, u8 type, u8 *buf,
 {
 	int retval;
 
-	if (hdev->type == HID_TYPE_UHID)
+	if (hdev->type == HID_TYPE_UHID) {
+		pr_err("%s %*ph %s:%d\n", __func__, (int)size, buf, __FILE__, __LINE__);
 		return 0;
+	}
 
 	do {
 		retval = hid_hw_raw_request(hdev, buf[0], buf, size, type,
@@ -1006,6 +1008,12 @@ static int wacom_led_brightness_set(struct led_classdev *cdev,
 	struct wacom_led *led = container_of(cdev, struct wacom_led, cdev);
 	struct wacom *wacom = led->wacom;
 	int error;
+
+	if (wacom->hdev->type == HID_TYPE_UHID)
+		pr_err("%s leds: %d/%d -> %s %s:%d\n", __func__,
+			led->group, led->id,
+			brightness ? "ON" : "OFF",
+			__FILE__, __LINE__);
 
 	mutex_lock(&wacom->lock);
 
@@ -2018,6 +2026,9 @@ static int wacom_parse_and_register(struct wacom *wacom, bool wireless)
 		error = -ENODEV;
 		goto fail_quirks;
 	}
+
+	if (features->device_type & WACOM_DEVICETYPE_PAD)
+		features->device_type |= WACOM_DEVICETYPE_WL_MONITOR;
 
 	if (features->device_type & WACOM_DEVICETYPE_WL_MONITOR)
 		error = hid_hw_open(hdev);

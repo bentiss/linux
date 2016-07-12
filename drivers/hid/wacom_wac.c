@@ -2848,6 +2848,14 @@ static void wacom_update_led(struct wacom *wacom, int button_count, int mask,
 	if (next_led == led)
 		return;
 
+	if (wacom->hdev->type == HID_TYPE_UHID)
+		pr_err("%s group: %d led: (%d -> %d) t: %s %s:%d\n", __func__,
+			led->group,
+			led->id,
+			next_led->id,
+			next_led->trigger.name,
+			__FILE__, __LINE__);
+
 	next_led->held = true;
 	led_trigger_event(&next_led->trigger,
 			  wacom_leds_brightness_get(next_led));
