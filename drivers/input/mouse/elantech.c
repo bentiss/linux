@@ -820,6 +820,21 @@ static int elantech_packet_check_v4(struct psmouse *psmouse)
 	return PACKET_UNKNOWN;
 }
 
+static void elantech_fix_bulky_trackpad_v4(struct psmouse *psmouse)
+{
+	const u8 v4_debounce_packet[] = { 0x80, 0x80, 0x36, 0x00, 0x00 };
+	const int debounce_size = sizeof(v4_debounce_packet);
+
+	if (psmouse->pktcnt == 5 &&
+	    !memcmp(psmouse->packet, v4_debounce_packet, debounce_size)) {
+		psmouse->packet[0] = 0x00;
+		memcpy(psmouse->packet + 1, v4_debounce_packet, debounce_size);
+		psmouse->pktcnt++;
+
+		psmouse_printk(KERN_DEBUG, psmouse, "fixed bad incoming data");
+	}
+}
+
 /*
  * Process byte stream from mouse and handle complete packets
  */
@@ -827,6 +842,9 @@ static psmouse_ret_t elantech_process_byte(struct psmouse *psmouse)
 {
 	struct elantech_data *etd = psmouse->private;
 	int packet_type;
+
+	if (etd->hw_version == 4)
+		elantech_fix_bulky_trackpad_v4(psmouse);
 
 	if (psmouse->pktcnt < psmouse->pktsize)
 		return PSMOUSE_GOOD_DATA;
