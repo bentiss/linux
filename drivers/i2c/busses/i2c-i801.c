@@ -578,12 +578,20 @@ static irqreturn_t i801_host_notify_isr(struct i801_priv *priv)
 {
 	unsigned short addr;
 	unsigned int data;
+	int ret;
+
+	if (unlikely(!priv->host_notify))
+		goto out;
 
 	addr = inb_p(SMBNTFDADD(priv)) >> 1;
 	data = inw_p(SMBNTFDDAT(priv));
 
-	i2c_handle_smbus_host_notify(priv->host_notify, addr, data);
+	ret = i2c_handle_smbus_host_notify(priv->host_notify, addr, data);
+	if (ret < 0)
+		dev_warn(&priv->pci_dev->dev,
+			 "Host Notify handling failed: %d\n", ret);
 
+out:
 	/* clear Host Notify bit and return */
 	outb_p(SMBSLVSTS_HST_NTFY_STS, SMBSLVSTS(priv));
 	return IRQ_HANDLED;
