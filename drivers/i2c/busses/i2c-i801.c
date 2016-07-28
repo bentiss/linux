@@ -944,12 +944,13 @@ static int i801_enable_host_notify(struct i2c_adapter *adapter)
 	struct i801_priv *priv = i2c_get_adapdata(adapter);
 
 	if (!(priv->features & FEATURE_HOST_NOTIFY))
-		return -ENOTSUPP;
+		return 0; /* not an error actually */
 
-	if (!priv->host_notify)
+	if (!priv->host_notify) {
 		priv->host_notify = i2c_setup_smbus_host_notify(adapter);
-	if (!priv->host_notify)
-		return -ENOMEM;
+		if (!priv->host_notify)
+			return -ENOMEM;
+	}
 
 	priv->original_slvcmd = inb_p(SMBSLVCMD(priv));
 
@@ -1638,7 +1639,7 @@ static int i801_probe(struct pci_dev *dev, const struct pci_device_id *id)
 	 * is not used if i2c_add_adapter() fails.
 	 */
 	err = i801_enable_host_notify(&priv->adapter);
-	if (err && err != -ENOTSUPP)
+	if (err)
 		dev_warn(&dev->dev, "Unable to enable SMBus Host Notify\n");
 
 	i801_probe_optional_slaves(priv);
@@ -1693,7 +1694,7 @@ static int i801_resume(struct device *dev)
 	int err;
 
 	err = i801_enable_host_notify(&priv->adapter);
-	if (err && err != -ENOTSUPP)
+	if (err)
 		dev_warn(dev, "Unable to enable SMBus Host Notify\n");
 
 	return 0;
