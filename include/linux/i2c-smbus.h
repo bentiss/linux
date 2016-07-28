@@ -76,5 +76,6 @@ struct smbus_host_notify {
 struct smbus_host_notify *i2c_setup_smbus_host_notify(struct i2c_adapter *adap);
 int i2c_handle_smbus_host_notify(struct smbus_host_notify *host_notify,
 				 unsigned short addr, unsigned int data);
+void i2c_cancel_smbus_host_notify(struct smbus_host_notify *host_notify);
 
 #endif /* _LINUX_I2C_SMBUS_H */
