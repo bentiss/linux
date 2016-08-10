@@ -214,6 +214,9 @@ struct rmi_device_platform_data {
 	struct rmi_2d_sensor_platform_data sensor_pdata;
 	struct rmi_f01_power_management power_management;
 	struct rmi_f30_data f30_data;
+
+	int (*transport_enable)(void*, bool);
+	void *transport_data;
 };
 
 /**
@@ -349,6 +352,16 @@ struct rmi_driver_data {
 
 	void *data;
 };
+
+static inline int rmi_transport_enable(struct rmi_device_platform_data *pdata,
+				       bool value)
+{
+	if (!pdata->transport_enable)
+		return 0;
+
+	return pdata->transport_enable(pdata->transport_data, value);
+}
+
 
 int rmi_register_transport_device(struct rmi_transport_dev *xport);
 void rmi_unregister_transport_device(struct rmi_transport_dev *xport);

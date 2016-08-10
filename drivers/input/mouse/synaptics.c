@@ -245,6 +245,30 @@ static const char * const smbus_pnp_ids[] = {
 
 static int rmi4_id;
 
+static void synaptics_pt_create(struct psmouse *psmouse);
+
+static int synaptics_intertouch_enable(void *data, bool value)
+{
+	struct psmouse *psmouse = data;
+	struct synaptics_data *priv = psmouse->private;
+
+	if (!psmouse)
+		return 0;
+
+	psmouse->ignore_reconnect = value;
+
+	if (value) {
+		serio_unregister_child_port(psmouse->ps2dev.serio);
+		psmouse_deactivate(psmouse);
+	} else {
+		psmouse_activate(psmouse);
+		if (SYN_CAP_PASS_THROUGH(priv->capabilities))
+			synaptics_pt_create(psmouse);
+	}
+
+	return 0;
+}
+
 static int synaptics_create_intertouch(struct psmouse *psmouse)
 {
 	struct synaptics_data *priv = psmouse->private;
@@ -261,6 +285,8 @@ static int synaptics_create_intertouch(struct psmouse *psmouse)
 			.trackstick_buttons =
 			  !!SYN_CAP_EXT_BUTTONS_STICK(priv->ext_cap_10),
 		},
+		.transport_enable = synaptics_intertouch_enable,
+		.transport_data = psmouse,
 	};
 
 	if (priv->intertouch)
@@ -1397,6 +1423,12 @@ static void synaptics_disconnect(struct psmouse *psmouse)
 				   &psmouse_attr_disable_gesture.dattr);
 
 	if (priv->intertouch) {
+		struct rmi_device_platform_data *pdata;
+
+		/* reset transport_data as it will get eventually freed */
+		pdata = priv->intertouch->dev.platform_data;
+		pdata->transport_data = NULL;
+
 		platform_device_unregister(priv->intertouch);
 		priv->intertouch = NULL;
 	}

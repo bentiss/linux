@@ -81,6 +81,7 @@ struct psmouse {
 
 	void (*pt_activate)(struct psmouse *psmouse);
 	void (*pt_deactivate)(struct psmouse *psmouse);
+	bool ignore_reconnect;
 };
 
 enum psmouse_type {
