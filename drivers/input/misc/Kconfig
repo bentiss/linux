@@ -832,4 +832,15 @@ config INPUT_HISI_POWERKEY
 	  To compile this driver as a module, choose M here: the
 	  module will be called hisi_powerkey.
 
+config PS2_SMBUS
+	tristate "Platform Support for PS/2 Nodes also connected over SMBus"
+	depends on I2C
+	help
+	  Say Y here if you want to support RMI4 or Elan devices connected to
+	  an SMB bus but enumerated through PS/2.
+
+	  if unsure, say N.
+	  To compile this driver as a module, choose M here: the module will be
+	  called ps2_smbus.
+
 endif
