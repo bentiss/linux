@@ -1607,6 +1607,9 @@ static int psmouse_reconnect(struct serio *serio)
 	unsigned char type;
 	int rc = -1;
 
+	if (psmouse->ignore_reconnect)
+		return 0;
+
 	mutex_lock(&psmouse_mutex);
 
 	if (serio->parent && serio->id.type == SERIO_PS_PSTHRU) {
