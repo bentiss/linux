@@ -244,7 +244,14 @@ static void rmi_smb_clear_state(struct rmi_smb_xport *rmi_smb)
 
 static int rmi_smb_enable_smbus_mode(struct rmi_smb_xport *rmi_smb)
 {
+	struct rmi_device_platform_data *pdata;
 	int retval;
+
+	pdata = dev_get_platdata(&rmi_smb->client->dev);
+
+	retval = rmi_transport_enable(pdata, true);
+	if (retval)
+		return retval;
 
 	/* we need to get the smbus version to activate the touchpad */
 	retval = rmi_smb_get_version(rmi_smb);
@@ -261,13 +268,6 @@ static int rmi_smb_reset(struct rmi_transport_dev *xport, u16 reset_addr)
 
 	rmi_smb_clear_state(rmi_smb);
 
-	/*
-	 * we do not call the actual reset command, it has to be handled in
-	 * PS/2 or there will be races between PS/2 and SMBus.
-	 * PS/2 should ensure that a psmouse_reset is called before
-	 * intializing the device and after it has been removed to be in a known
-	 * state.
-	 */
 	return rmi_smb_enable_smbus_mode(rmi_smb);
 }
 
@@ -334,9 +334,13 @@ static int rmi_smb_probe(struct i2c_client *client,
 	rmi_smb->xport.proto_name = "smb2";
 	rmi_smb->xport.ops = &rmi_smb_ops;
 
+	retval = rmi_transport_enable(pdata, true);
+	if (retval)
+		return retval;
+
 	retval = rmi_smb_get_version(rmi_smb);
 	if (retval < 0)
-		return retval;
+		goto fail;
 
 	smbus_version = retval;
 	rmi_dbg(RMI_DEBUG_XPORT, &client->dev, "Smbus version is %d",
@@ -345,7 +349,8 @@ static int rmi_smb_probe(struct i2c_client *client,
 	if (smbus_version != 2) {
 		dev_err(&client->dev, "Unrecognized SMB version %d.\n",
 				smbus_version);
-		return -ENODEV;
+		retval = -ENODEV;
+		goto fail;
 	}
 
 	i2c_set_clientdata(client, rmi_smb);
@@ -355,20 +360,25 @@ static int rmi_smb_probe(struct i2c_client *client,
 		dev_err(&client->dev, "Failed to register transport driver at 0x%.2X.\n",
 			client->addr);
 		i2c_set_clientdata(client, NULL);
-		return retval;
+		goto fail;
 	}
 
 	dev_info(&client->dev, "registered rmi smb driver at %#04x.\n",
 			client->addr);
 	return 0;
 
+fail:
+	rmi_transport_enable(pdata, false);
+	return retval;
 }
 
 static int rmi_smb_remove(struct i2c_client *client)
 {
+	struct rmi_device_platform_data *pdata = dev_get_platdata(&client->dev);
 	struct rmi_smb_xport *rmi_smb = i2c_get_clientdata(client);
 
 	rmi_unregister_transport_device(&rmi_smb->xport);
+	rmi_transport_enable(pdata, false);
 
 	return 0;
 }
