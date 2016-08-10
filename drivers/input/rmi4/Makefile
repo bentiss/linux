@@ -16,3 +16,4 @@ rmi_core-$(CONFIG_RMI4_F55) += rmi_f55.o
 obj-$(CONFIG_RMI4_I2C) += rmi_i2c.o
 obj-$(CONFIG_RMI4_SPI) += rmi_spi.o
 obj-$(CONFIG_RMI4_SMB) += rmi_smbus.o
+obj-$(CONFIG_RMI4_PLATFORM) += rmi_platform.o
