@@ -29,6 +29,8 @@
 #include <linux/input/mt.h>
 #include <linux/serio.h>
 #include <linux/libps2.h>
+#include <linux/platform_device.h>
+#include <linux/rmi.h>
 #include <linux/slab.h>
 #include "psmouse.h"
 #include "synaptics.h"
@@ -69,6 +71,21 @@
 
 /* maximum ABS_MT_POSITION displacement (in mm) */
 #define DMAX 10
+
+/*
+ * The newest Synaptics device can use a secondary bus (called InterTouch) which
+ * provides a better bandwidth and allow a better control of the touchpads.
+ * This is used to decide if we need to use this bus or not.
+ */
+enum {
+	SYNAPTICS_INTERTOUCH_NOT_SET = -1,
+	SYNAPTICS_INTERTOUCH_OFF,
+	SYNAPTICS_INTERTOUCH_ON,
+};
+
+static int synaptics_intertouch = SYNAPTICS_INTERTOUCH_NOT_SET;
+module_param_named(synaptics_intertouch, synaptics_intertouch, int, 0644);
+MODULE_PARM_DESC(synaptics_intertouch, "Use a secondary bus for the Synaptics device.");
 
 /*****************************************************************************
  *	Stuff we need even when we do not want native Synaptics support
@@ -218,6 +235,80 @@ static const char * const forcepad_pnp_ids[] = {
 	NULL
 };
 
+static const char * const smbus_pnp_ids[] = {
+	/* all of the topbuttonpad_pnp_ids are valid, we just add some extras */
+	"LEN0048", /* X1 Carbon 3 */
+	"LEN0046", /* X250 */
+	"LEN004a", /* W541 */
+	"LEN200f", /* T450s */
+};
+
+static int rmi4_id;
+
+static int synaptics_create_intertouch(struct psmouse *psmouse)
+{
+	struct synaptics_data *priv = psmouse->private;
+	struct platform_device_info pdevinfo;
+	struct platform_device *pdev;
+	struct rmi_device_platform_data pdata = {
+		.sensor_pdata = {
+			.sensor_type = rmi_sensor_touchpad,
+			.axis_align.flip_y = true,
+			/* to prevent cursors jumps: */
+			.kernel_tracking = true,
+		},
+		.f30_data = {
+			.trackstick_buttons =
+			  !!SYN_CAP_EXT_BUTTONS_STICK(priv->ext_cap_10),
+		},
+	};
+
+	if (priv->intertouch)
+		return -EINVAL;
+
+	pdata.sensor_pdata.topbuttonpad =
+			psmouse_matches_pnp_id(psmouse, topbuttonpad_pnp_ids) &&
+			!SYN_CAP_EXT_BUTTONS_STICK(priv->ext_cap_10);
+
+	memset(&pdevinfo, 0, sizeof(pdevinfo));
+	pdevinfo.name = "rmi4";
+	pdevinfo.id = rmi4_id++;
+	pdevinfo.data = &pdata;
+	pdevinfo.size_data = sizeof(pdata);
+	pdevinfo.parent = &psmouse->ps2dev.serio->dev;
+
+	pdev = platform_device_register_full(&pdevinfo);
+	if (IS_ERR(pdev))
+		return PTR_ERR(pdev);
+
+	priv->intertouch = pdev;
+
+	return 0;
+}
+
+/**
+ * synaptics_setup_intertouch - called once the PS/2 devices are enumerated
+ * and decides to instantiate a SMBus InterTouch device.
+ */
+static void synaptics_setup_intertouch(struct psmouse *psmouse)
+{
+	int ret;
+
+	if (synaptics_intertouch == SYNAPTICS_INTERTOUCH_OFF)
+		return;
+
+	if (synaptics_intertouch == SYNAPTICS_INTERTOUCH_NOT_SET) {
+		if (!psmouse_matches_pnp_id(psmouse, topbuttonpad_pnp_ids) &&
+		    !psmouse_matches_pnp_id(psmouse, smbus_pnp_ids))
+			return;
+	}
+
+	psmouse_info(psmouse, "device also supported by an other bus.\n");
+	ret = synaptics_create_intertouch(psmouse);
+	if (ret)
+		psmouse_info(psmouse,
+			     "unable to create intertouch device.\n");
+}
 /*****************************************************************************
  *	Synaptics communications functions
  ****************************************************************************/
@@ -1305,6 +1396,11 @@ static void synaptics_disconnect(struct psmouse *psmouse)
 		device_remove_file(&psmouse->ps2dev.serio->dev,
 				   &psmouse_attr_disable_gesture.dattr);
 
+	if (priv->intertouch) {
+		platform_device_unregister(priv->intertouch);
+		priv->intertouch = NULL;
+	}
+
 	synaptics_reset(psmouse);
 	kfree(priv);
 	psmouse->private = NULL;
@@ -1546,6 +1642,9 @@ static int __synaptics_init(struct psmouse *psmouse, bool absolute_mode)
 			goto init_fail;
 		}
 	}
+
+	if (SYN_CAP_INTERTOUCH(priv->ext_cap_0c))
+		synaptics_setup_intertouch(psmouse);
 
 	return 0;
 
