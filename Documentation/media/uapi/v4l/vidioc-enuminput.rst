@@ -173,6 +173,14 @@ at index zero, incrementing by one until the driver returns ``EINVAL``.
        -  Analog baseband input, for example CVBS / Composite Video,
 	  S-Video, RGB.
 
+    -  .. row 3
+
+       -  ``V4L2_INPUT_TYPE_TOUCH``
+
+       -  3
+
+       -  This input is a touch device for capturing raw touch data.
+
 
 
 .. _input-status:
