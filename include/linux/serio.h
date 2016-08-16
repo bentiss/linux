@@ -64,6 +64,14 @@ struct serio {
 	 * may get indigestion when exposed to concurrent access (i8042).
 	 */
 	struct mutex *ps2_cmd_mutex;
+
+	/*
+	 * For use with Synaptics devices that have the trackstick buttons
+	 * not actually wired to the trackstick PS/2 device.
+	 * This byte will be OR-ed with the first byte of the incoming packet
+	 * that contains actual data (not commands).
+	 */
+	u8 extra_byte;
 };
 #define to_serio_port(d)	container_of(d, struct serio, dev)
 
