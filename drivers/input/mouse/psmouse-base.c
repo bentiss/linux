@@ -365,6 +365,9 @@ static irqreturn_t psmouse_interrupt(struct serio *serio,
 		goto out;
 	}
 
+	if (psmouse->pktcnt == 1)
+		psmouse->packet[0] |= serio->extra_byte;
+
 	psmouse->last = jiffies;
 	psmouse_handle_byte(psmouse);
 
