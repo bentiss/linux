@@ -265,10 +265,20 @@ static int rmi_smb_reset(struct rmi_transport_dev *xport, u16 reset_addr)
 {
 	struct rmi_smb_xport *rmi_smb =
 		container_of(xport, struct rmi_smb_xport, xport);
+	int tries, ret;
 
 	rmi_smb_clear_state(rmi_smb);
 
-	return rmi_smb_enable_smbus_mode(rmi_smb);
+	for (tries = 3; tries > 0; tries--) {
+		ret = rmi_smb_enable_smbus_mode(rmi_smb);
+		if (!ret)
+			break;
+
+		/* we failed enabling SMBus, try again later */
+		msleep(500);
+	}
+
+	return ret;
 }
 
 static const struct rmi_transport_ops rmi_smb_ops = {
