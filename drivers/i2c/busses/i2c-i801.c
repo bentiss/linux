@@ -240,6 +240,7 @@ struct i801_priv {
 	struct i2c_adapter adapter;
 	unsigned long smba;
 	unsigned char original_hstcfg;
+	unsigned char original_slvcmd;
 	struct pci_dev *pci_dev;
 	unsigned int features;
 
@@ -952,7 +953,12 @@ static int i801_enable_host_notify(struct i2c_adapter *adapter)
 	if (!priv->host_notify)
 		return -ENOMEM;
 
-	outb_p(SMBSLVCMD_HST_NTFY_INTREN, SMBSLVCMD(priv));
+	priv->original_slvcmd = inb_p(SMBSLVCMD(priv));
+
+	if (!(SMBSLVCMD_HST_NTFY_INTREN & priv->original_slvcmd))
+		outb_p(SMBSLVCMD_HST_NTFY_INTREN | priv->original_slvcmd,
+		       SMBSLVCMD(priv));
+
 	/* clear Host Notify bit to allow a new notification */
 	outb_p(SMBSLVSTS_HST_NTFY_STS, SMBSLVSTS(priv));
 
@@ -961,12 +967,11 @@ static int i801_enable_host_notify(struct i2c_adapter *adapter)
 
 static void i801_disable_host_notify(struct i801_priv *priv)
 {
-
 	if (!(priv->features & FEATURE_HOST_NOTIFY))
 		return;
 
 	/* disable Host Notify... */
-	outb_p(0, SMBSLVCMD(priv));
+	outb_p(priv->original_slvcmd, SMBSLVCMD(priv));
 	/* ...and process the already queued notifications */
 	i2c_cancel_smbus_host_notify(priv->host_notify);
 }
