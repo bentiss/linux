@@ -347,7 +347,6 @@ int i2c_handle_smbus_host_notify(struct smbus_host_notify *host_notify,
 
 	if (host_notify->pending) {
 		spin_unlock_irqrestore(&host_notify->lock, flags);
-		dev_warn(&adapter->dev, "Host Notify already scheduled.\n");
 		return -EBUSY;
 	}
 
