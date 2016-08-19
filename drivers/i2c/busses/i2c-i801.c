@@ -959,6 +959,18 @@ static int i801_enable_host_notify(struct i2c_adapter *adapter)
 	return 0;
 }
 
+static void i801_disable_host_notify(struct i801_priv *priv)
+{
+
+	if (!(priv->features & FEATURE_HOST_NOTIFY))
+		return;
+
+	/* disable Host Notify... */
+	outb_p(0, SMBSLVCMD(priv));
+	/* ...and process the already queued notifications */
+	i2c_cancel_smbus_host_notify(priv->host_notify);
+}
+
 static const struct i2c_algorithm smbus_algorithm = {
 	.smbus_xfer	= i801_access,
 	.functionality	= i801_func,
@@ -1647,6 +1659,7 @@ static void i801_remove(struct pci_dev *dev)
 	pm_runtime_forbid(&dev->dev);
 	pm_runtime_get_noresume(&dev->dev);
 
+	i801_disable_host_notify(priv);
 	i801_del_mux(priv);
 	i2c_del_adapter(&priv->adapter);
 	i801_acpi_remove(priv);

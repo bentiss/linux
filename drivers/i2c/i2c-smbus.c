@@ -279,6 +279,8 @@ static void smbus_host_notify_work(struct work_struct *work)
  * Returns a struct smbus_host_notify pointer on success, and NULL on failure.
  * The resulting smbus_host_notify must not be freed afterwards, it is a
  * managed resource already.
+ * To prevent races on remove, the caller needs to stop the embedded worker
+ * by calling i2c_cancel_smbus_host_notify().
  */
 struct smbus_host_notify *i2c_setup_smbus_host_notify(struct i2c_adapter *adap)
 {
@@ -297,6 +299,23 @@ struct smbus_host_notify *i2c_setup_smbus_host_notify(struct i2c_adapter *adap)
 	return host_notify;
 }
 EXPORT_SYMBOL_GPL(i2c_setup_smbus_host_notify);
+
+/**
+ * i2c_cancel_smbus_host_notify - Terminate any active Host Notification.
+ * @host_notify: the host_notify object to terminate
+ *
+ * Process any pending Host Notifcation and prevent new ones to be added.
+ * Must be called to ensure no races between the adaptor being removed and
+ * the Host Notification being processed.
+ */
+void i2c_cancel_smbus_host_notify(struct smbus_host_notify *host_notify)
+{
+	if (!host_notify)
+		return;
+
+	cancel_work_sync(&host_notify->work);
+}
+EXPORT_SYMBOL_GPL(i2c_cancel_smbus_host_notify);
 
 /**
  * i2c_handle_smbus_host_notify - Forward a Host Notify event to the correct
