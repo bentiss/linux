@@ -82,6 +82,7 @@
 #define WACOM_DEVICETYPE_TOUCH          0x0002
 #define WACOM_DEVICETYPE_PAD            0x0004
 #define WACOM_DEVICETYPE_WL_MONITOR     0x0008
+#define WACOM_DEVICETYPE_DIRECT         0x0010
 
 #define WACOM_VENDORDEFINED_PEN		0xff0d0001
 #define WACOM_G9_PAGE			0xff090000
@@ -185,7 +186,6 @@ struct wacom_features {
 	int pktlen;
 	bool check_for_hid_type;
 	int hid_type;
-	int last_slot_field;
 };
 
 struct wacom_shared {
@@ -214,6 +214,7 @@ struct hid_data {
 	int cc_report;
 	int cc_index;
 	int cc_value_index;
+	int last_slot_field;
 	int num_expected;
 	int num_received;
 };
