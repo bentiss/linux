@@ -580,11 +580,20 @@ static irqreturn_t i801_host_notify_isr(struct i801_priv *priv)
 	unsigned short addr;
 	unsigned int data;
 
+	if (unlikely(!priv->host_notify))
+		goto out;
+
 	addr = inb_p(SMBNTFDADD(priv)) >> 1;
 	data = inw_p(SMBNTFDDAT(priv));
 
+	/*
+	 * We don't notify about missed host notify events when the adapter
+	 * lags behind. The operation is still scheduled and will get
+	 * eventually processed.
+	 */
 	i2c_handle_smbus_host_notify(priv->host_notify, addr, data);
 
+out:
 	/* clear Host Notify bit and return */
 	outb_p(SMBSLVSTS_HST_NTFY_STS, SMBSLVSTS(priv));
 	return IRQ_HANDLED;
