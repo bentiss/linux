@@ -357,7 +357,10 @@ int i2c_handle_smbus_host_notify(struct smbus_host_notify *host_notify,
 	host_notify->pending = true;
 	spin_unlock_irqrestore(&host_notify->lock, flags);
 
-	return schedule_work(&host_notify->work);
+	/* schedule_work is called if .pending is false, so it can't fail. */
+	schedule_work(&host_notify->work);
+
+	return 0;
 }
 EXPORT_SYMBOL_GPL(i2c_handle_smbus_host_notify);
 
