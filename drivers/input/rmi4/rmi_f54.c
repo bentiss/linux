@@ -533,7 +533,7 @@ static void rmi_f54_work(struct work_struct *work)
 	int report_size;
 	u8 command;
 	u8 *data;
-	int error;
+	int error, i;
 
 	data = f54->report_data;
 	report_size = rmi_f54_get_report_size(f54);
@@ -571,23 +571,25 @@ static void rmi_f54_work(struct work_struct *work)
 
 	report_size = 0;
 	for (; report->size; report++) {
-		fifo[0] = report->start & 0xff;
-		fifo[1] = (report->start >> 8) & 0xff;
-		error = rmi_write_block(fn->rmi_dev,
-					fn->fd.data_base_addr + F54_FIFO_OFFSET,
-					fifo, sizeof(fifo));
-		if (error) {
-			dev_err(&fn->dev, "Failed to set fifo start offset\n");
-			goto abort;
-		}
+		for (i = 0; i < report->size; i++) {
+			fifo[0] = (report->start + i) & 0xff;
+			fifo[1] = ((report->start + i) >> 8) & 0xff;
+			error = rmi_write_block(fn->rmi_dev,
+						fn->fd.data_base_addr + F54_FIFO_OFFSET,
+						fifo, sizeof(fifo));
+			if (error) {
+				dev_err(&fn->dev, "Failed to set fifo start offset\n");
+				goto abort;
+			}
 
-		error = rmi_read_block(fn->rmi_dev, fn->fd.data_base_addr +
-				       F54_REPORT_DATA_OFFSET, data,
-				       report->size);
-		if (error) {
-			dev_err(&fn->dev, "%s: read [%d bytes] returned %d\n",
-				__func__, report->size, error);
-			goto abort;
+			error = rmi_read_block(fn->rmi_dev, fn->fd.data_base_addr +
+					       F54_REPORT_DATA_OFFSET, data + i,
+					       1);
+			if (error) {
+				dev_err(&fn->dev, "%s: read [%d bytes] returned %d\n",
+					__func__, report->size, error);
+				goto abort;
+			}
 		}
 		data += report->size;
 		report_size += report->size;
