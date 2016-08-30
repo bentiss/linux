@@ -74,8 +74,11 @@ struct f30_data {
 
 	u8 data_regs[RMI_F30_CTRL_MAX_BYTES];
 	u16 *gpioled_key_map;
+	u16 *gpio_passthrough_key_map;
 
 	struct input_dev *input;
+	bool trackstick_buttons;
+	struct rmi_function *f03;
 };
 
 static int rmi_f30_read_control_parameters(struct rmi_function *fn,
@@ -108,6 +111,13 @@ static int rmi_f30_attention(struct rmi_function *fn, unsigned long *irq_bits)
 	if (!f30->input)
 		return 0;
 
+	if (f30->trackstick_buttons && !f30->f03) {
+		f30->f03 = rmi_find_function(rmi_dev, 3);
+
+		if (!f30->f03)
+			return -EBUSY;
+	}
+
 	/* Read the gpi led data. */
 	if (rmi_dev->xport->attn_data) {
 		if (rmi_dev->xport->attn_size < f30->register_count) {
@@ -132,22 +142,28 @@ static int rmi_f30_attention(struct rmi_function *fn, unsigned long *irq_bits)
 	for (reg_num = 0; reg_num < f30->register_count; ++reg_num) {
 		for (i = 0; gpiled < f30->gpioled_count && i < 8; ++i,
 			++gpiled) {
-			if (f30->gpioled_key_map[gpiled] != 0) {
-				/* buttons have pull up resistors */
-				value = (((f30->data_regs[reg_num] >> i) & 0x01)
-									== 0);
+			/* buttons have pull up resistors */
+			value = (((f30->data_regs[reg_num] >> i) & 0x01) == 0);
 
+			if (f30->gpioled_key_map[gpiled] != 0) {
 				rmi_dbg(RMI_DEBUG_FN, &fn->dev,
 					"%s: call input report key (0x%04x) value (0x%02x)",
 					__func__,
 					f30->gpioled_key_map[gpiled], value);
+
 				input_report_key(f30->input,
 						 f30->gpioled_key_map[gpiled],
 						 value);
+			} else if (f30->gpio_passthrough_key_map[gpiled]) {
+				rmi_f03_overwrite_button(f30->f03,
+						f30->gpio_passthrough_key_map[gpiled] - BTN_LEFT,
+						value);
 			}
-
 		}
 	}
+
+	if (f30->trackstick_buttons)
+		rmi_f03_commit_buttons(f30->f03);
 
 	return 0;
 }
@@ -246,10 +262,11 @@ static inline int rmi_f30_initialize(struct rmi_function *fn)
 	int retval = 0;
 	int control_address;
 	int i;
-	int button;
+	int button, extra_button;
 	u8 buf[RMI_F30_QUERY_SIZE];
 	u8 *ctrl_reg;
-	u8 *map_memory;
+	u8 *map_memory, *pt_memory;
+	bool buttonpad;
 
 	f30 = devm_kzalloc(&fn->dev, sizeof(struct f30_data),
 			   GFP_KERNEL);
@@ -347,27 +364,52 @@ static inline int rmi_f30_initialize(struct rmi_function *fn)
 	map_memory = devm_kzalloc(&fn->dev,
 				  (f30->gpioled_count * (sizeof(u16))),
 				  GFP_KERNEL);
-	if (!map_memory) {
+	pt_memory = devm_kzalloc(&fn->dev,
+				 (f30->gpioled_count * (sizeof(u16))),
+				 GFP_KERNEL);
+	if (!map_memory || !pt_memory) {
 		dev_err(&fn->dev, "Failed to allocate gpioled map memory.\n");
 		return -ENOMEM;
 	}
 
 	f30->gpioled_key_map = (u16 *)map_memory;
+	f30->gpio_passthrough_key_map = (u16 *)pt_memory;
 
 	pdata = rmi_get_platform_data(rmi_dev);
 	if (f30->has_gpio) {
+		/*
+		 * buttonpad might be given by f30->has_mech_mouse_btns,
+		 * but I am not sure, so use only the pdata info
+		 */
+		buttonpad = pdata->f30_data.buttonpad;
+		f30->trackstick_buttons = pdata->f30_data.trackstick_buttons;
+
+		/*
+		 * For touchpads the buttons are mapped as:
+		 * - bit 0 = Left, bit 1 = right, bit 2 = middle / clickbutton
+		 * - 3, 4, 5 are extended buttons and
+		 * - 6 and 7 are other sorts of GPIOs
+		 */
 		button = BTN_LEFT;
-		for (i = 0; i < f30->gpioled_count; i++) {
+		extra_button = BTN_LEFT;
+		for (i = 0; i < f30->gpioled_count && i < 3; i++) {
 			if (rmi_f30_is_valid_button(i, f30->ctrl)) {
 				f30->gpioled_key_map[i] = button++;
 
-				/*
-				 * buttonpad might be given by
-				 * f30->has_mech_mouse_btns, but I am
-				 * not sure, so use only the pdata info
-				 */
-				if (pdata->f30_data.buttonpad)
+				if (buttonpad)
 					break;
+			}
+		}
+
+		if (f30->trackstick_buttons) {
+			for (i = 3; i < f30->gpioled_count && i < 6; i++) {
+				if (rmi_f30_is_valid_button(i, f30->ctrl))
+					f30->gpio_passthrough_key_map[i] = extra_button++;
+			}
+		} else if (!buttonpad) {
+			for (i = 3; i < f30->gpioled_count; i++) {
+				if (rmi_f30_is_valid_button(i, f30->ctrl))
+					f30->gpioled_key_map[i] = button++;
 			}
 		}
 	}
