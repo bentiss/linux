@@ -37,6 +37,34 @@ struct f03_data {
 	u8 rx_queue_length;
 };
 
+int rmi_f03_overwrite_button(struct rmi_function *fn, unsigned int button,
+			     int value)
+{
+	struct f03_data *f03 = dev_get_drvdata(&fn->dev);
+	unsigned int bit = BIT(button);
+
+	if (button > 2)
+		return -EINVAL;
+
+	if (value)
+		f03->overwrite_buttons |= bit;
+	else
+		f03->overwrite_buttons &= ~bit;
+
+	return 0;
+}
+
+void rmi_f03_commit_buttons(struct rmi_function *fn)
+{
+	struct f03_data *f03 = dev_get_drvdata(&fn->dev);
+	int i;
+
+	f03->serio->extra_byte = f03->overwrite_buttons;
+
+	for (i = 0; i < 3; i++)
+		serio_interrupt(f03->serio, 0x00, 0x00);
+}
+
 static int rmi_f03_pt_write(struct serio *id, unsigned char val)
 {
 	struct f03_data *f03 = id->port_data;
