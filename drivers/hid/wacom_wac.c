@@ -3916,6 +3916,9 @@ int wacom_setup_pad_input_capabilities(struct input_dev *input_dev,
 	/* kept for making udev and libwacom accepting the pad */
 	__set_bit(BTN_STYLUS, input_dev->keybit);
 
+	/* added to be ignored by joydev */
+	__set_bit(BTN_TOOL_PEN, input_dev->keybit);
+
 	wacom_setup_numbered_buttons(input_dev, features->numbered_buttons);
 
 	switch (features->type) {
