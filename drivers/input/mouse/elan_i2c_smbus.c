@@ -226,7 +226,7 @@ static int elan_smbus_get_max(struct i2c_client *client,
 	u8 val[3];
 
 	error = i2c_smbus_read_block_data(client, ETP_SMBUS_RANGE_CMD, val);
-	if (error) {
+	if (error != 3) {
 		dev_err(&client->dev, "failed to get dimensions: %d\n", error);
 		return error;
 	}
@@ -245,7 +245,7 @@ static int elan_smbus_get_resolution(struct i2c_client *client,
 
 	error = i2c_smbus_read_block_data(client,
 					  ETP_SMBUS_RESOLUTION_CMD, val);
-	if (error) {
+	if (error != 3) {
 		dev_err(&client->dev, "failed to get resolution: %d\n", error);
 		return error;
 	}
@@ -265,7 +265,7 @@ static int elan_smbus_get_num_traces(struct i2c_client *client,
 
 	error = i2c_smbus_read_block_data(client,
 					  ETP_SMBUS_XY_TRACENUM_CMD, val);
-	if (error) {
+	if (error != 3) {
 		dev_err(&client->dev, "failed to get trace info: %d\n", error);
 		return error;
 	}
