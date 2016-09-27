@@ -245,13 +245,13 @@ static int alps_raw_event(struct hid_device *hdev,
 static int alps_post_reset(struct hid_device *hdev)
 {
 	return u1_read_write_register(hdev, ADDRESS_U1_DEV_CTRL_1,
-				NULL, U1_TP_ABS_MODE, false);
+				NULL, U1_TP_ABS_MODE | U1_SP_ABS_MODE, false);
 }
 
 static int alps_post_resume(struct hid_device *hdev)
 {
 	return u1_read_write_register(hdev, ADDRESS_U1_DEV_CTRL_1,
-				NULL, U1_TP_ABS_MODE, false);
+				NULL, U1_TP_ABS_MODE | U1_SP_ABS_MODE, false);
 }
 #endif /* CONFIG_PM */
 
@@ -384,7 +384,7 @@ static int alps_input_configured(struct hid_device *hdev, struct hid_input *hi)
 
 		input2 = input_allocate_device();
 		if (!input2) {
-			input_free_device(input2);
+			ret = -ENOMEM;
 			goto exit;
 		}
 
@@ -426,7 +426,8 @@ static int alps_input_configured(struct hid_device *hdev, struct hid_input *hi)
 		__set_bit(INPUT_PROP_POINTER, input2->propbit);
 		__set_bit(INPUT_PROP_POINTING_STICK, input2->propbit);
 
-		if (input_register_device(data->input2)) {
+		ret = input_register_device(data->input2);
+		if (ret) {
 			input_free_device(input2);
 			goto exit;
 		}
