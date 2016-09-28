@@ -1151,11 +1151,14 @@ static int elan_probe(struct i2c_client *client,
 						I2C_FUNC_SMBUS_I2C_BLOCK)) {
 		transport_ops = &elan_smbus_ops;
 
-		if (!client->irq &&
-		    !i2c_check_functionality(client->adapter,
+		if (!client->irq) {
+			has_trackpoint = true;
+
+			if (!i2c_check_functionality(client->adapter,
 					I2C_FUNC_SMBUS_HOST_NOTIFY)) {
-			dev_err(dev, "no Host Notify support\n");
-			return -ENODEV;
+				dev_err(dev, "no Host Notify support\n");
+				return -ENODEV;
+			}
 		}
 	} else {
 		dev_err(dev, "not a supported I2C/SMBus adapter\n");
