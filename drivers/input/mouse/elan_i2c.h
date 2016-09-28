@@ -87,4 +87,14 @@ struct elan_transport_ops {
 
 extern const struct elan_transport_ops elan_smbus_ops, elan_i2c_ops;
 
+/**
+ * struct elan_platform_data - system specific configuration info.
+ *
+ * @trackpoint - specify whether or not you want the trackstick input node to
+ * be created and handled by the driver.
+ */
+struct elan_platform_data {
+	bool trackpoint;
+};
+
 #endif /* _ELAN_I2C_H */
