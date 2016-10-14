@@ -183,10 +183,39 @@ static int rmi_process_interrupt_requests(struct rmi_device *rmi_dev)
 	return 0;
 }
 
+void rmi_process_attn_irq(struct rmi_device *rmi_dev, unsigned long irq_status,
+			 void *data, int size)
+{
+	struct rmi_driver_data *drvdata = dev_get_drvdata(&rmi_dev->dev);
+	struct rmi_device_platform_data *pdata = rmi_get_platform_data(rmi_dev);
+	unsigned long flags;
+
+	spin_lock_irqsave(&drvdata->attn_lock, flags);
+
+	drvdata->attn_irq_status = irq_status;
+	drvdata->attn_data = data;
+	drvdata->attn_size = size;
+
+	generic_handle_irq(pdata->irq);
+
+	spin_unlock_irqrestore(&drvdata->attn_lock, flags);
+}
+EXPORT_SYMBOL_GPL(rmi_process_attn_irq);
+
 static irqreturn_t rmi_irq_fn(int irq, void *dev_id)
 {
 	struct rmi_device *rmi_dev = dev_id;
+	struct rmi_driver_data *drvdata = dev_get_drvdata(&rmi_dev->dev);
+	unsigned long flags;
 	int ret;
+
+	spin_lock_irqsave(&drvdata->attn_lock, flags);
+
+	*(drvdata->irq_status) = drvdata->attn_irq_status;
+	rmi_dev->xport->attn_data = drvdata->attn_data;
+	rmi_dev->xport->attn_size = drvdata->attn_size;
+
+	spin_unlock_irqrestore(&drvdata->attn_lock, flags);
 
 	ret = rmi_process_interrupt_requests(rmi_dev);
 	if (ret)
@@ -1069,6 +1098,7 @@ static int rmi_driver_probe(struct device *dev)
 	}
 
 	mutex_init(&data->irq_mutex);
+	spin_lock_init(&data->attn_lock);
 
 	retval = rmi_probe_interrupts(data);
 	if (retval)

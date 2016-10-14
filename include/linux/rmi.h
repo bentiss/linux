@@ -358,6 +358,11 @@ struct rmi_driver_data {
 	bool enabled;
 
 	void *data;
+
+	spinlock_t attn_lock;
+	unsigned long attn_irq_status;
+	void *attn_data;
+	int attn_size;
 };
 
 static inline int rmi_transport_enable(struct rmi_device_platform_data *pdata,
@@ -372,6 +377,9 @@ static inline int rmi_transport_enable(struct rmi_device_platform_data *pdata,
 
 int rmi_register_transport_device(struct rmi_transport_dev *xport);
 void rmi_unregister_transport_device(struct rmi_transport_dev *xport);
+
+void rmi_process_attn_irq(struct rmi_device *rmi_dev, unsigned long irq_status,
+			 void *data, int size);
 
 int rmi_driver_suspend(struct rmi_device *rmi_dev, bool enable_wake);
 int rmi_driver_resume(struct rmi_device *rmi_dev, bool clear_wake);

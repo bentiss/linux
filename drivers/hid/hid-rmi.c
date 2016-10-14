@@ -309,16 +309,11 @@ static int rmi_input_event(struct hid_device *hdev, u8 *data, int size)
 {
 	struct rmi_data *hdata = hid_get_drvdata(hdev);
 	struct rmi_device *rmi_dev = hdata->xport.rmi_dev;
-	struct rmi_driver_data *drvdata = dev_get_drvdata(&rmi_dev->dev);
 
 	if (!(test_bit(RMI_STARTED, &hdata->flags)))
 		return 0;
 
-	*(drvdata->irq_status) = data[1];
-	hdata->xport.attn_data = &data[2];
-	hdata->xport.attn_size = size - 2;
-
-	handle_nested_irq(hdata->rmi_irq);
+	rmi_process_attn_irq(rmi_dev, data[1], &data[2], size - 2);
 
 	return 1;
 }
