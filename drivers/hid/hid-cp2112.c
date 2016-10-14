@@ -34,6 +34,9 @@
 #include <linux/usb/ch9.h>
 #include "hid-ids.h"
 
+#include <linux/delay.h>
+#include <linux/platform_data/i2c-hid.h>
+
 #define CP2112_REPORT_MAX_LENGTH		64
 #define CP2112_GPIO_CONFIG_LENGTH		5
 #define CP2112_GPIO_GET_LENGTH			2
@@ -1359,6 +1362,36 @@ static int cp2112_probe(struct hid_device *hdev, const struct hid_device_id *id)
 	if (ret) {
 		dev_err(dev->gc.parent, "failed to add IRQ chip\n");
 		goto err_sysfs_remove;
+	}
+
+	{
+		struct i2c_client *client;
+		struct i2c_hid_platform_data pdata = {
+			.hid_descriptor_address = 0x20,
+		};
+		struct i2c_board_info synaptics_info = {
+			I2C_BOARD_INFO("hid", 0x2c),
+			.platform_data = &pdata,
+		};
+		int irq = cp2112_allocate_irq(dev, 2);
+
+		if (irq <= 0) {
+			dev_err(dev->gc.parent, "Failed to translate GPIO to IRQ\n");
+			goto err_sysfs_remove;
+		}
+
+		synaptics_info.irq = irq;
+		irq_set_irq_type(irq, IRQ_TYPE_LEVEL_LOW);
+
+		hid_device_io_start(hdev);
+
+		/* give time for the device to initialize */
+		msleep(500);
+
+		client = i2c_new_device(&dev->adap, &synaptics_info);
+		if (!client)
+			hid_err(hdev, "failed allocating Synaptics device\n");
+
 	}
 
 	return ret;
