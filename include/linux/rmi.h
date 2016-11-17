@@ -99,6 +99,8 @@ struct rmi_2d_sensor_platform_data {
 	bool topbuttonpad;
 	bool kernel_tracking;
 	int dmax;
+	int dribble;
+	int palm_detect;
 };
 
 /**
@@ -116,14 +118,17 @@ struct rmi_f30_data {
 	bool disable;
 };
 
-/**
- * struct rmi_f01_power - override default power management settings.
- *
+
+/*
+ * Set the state of a register
+ *	DEFAULT - use the default value set by the firmware config
+ *	OFF - explicitly disable the register
+ *	ON - explicitly enable the register
  */
-enum rmi_f01_nosleep {
-	RMI_F01_NOSLEEP_DEFAULT = 0,
-	RMI_F01_NOSLEEP_OFF = 1,
-	RMI_F01_NOSLEEP_ON = 2
+enum rmi_reg_state {
+	RMI_REG_STATE_DEFAULT = 0,
+	RMI_REG_STATE_OFF = 1,
+	RMI_REG_STATE_ON = 2
 };
 
 /**
@@ -143,7 +148,7 @@ enum rmi_f01_nosleep {
  * when the touch sensor is in doze mode, in units of 10ms.
  */
 struct rmi_f01_power_management {
-	enum rmi_f01_nosleep nosleep;
+	enum rmi_reg_state nosleep;
 	u8 wakeup_threshold;
 	u8 doze_holdoff;
 	u8 doze_interval;
@@ -204,9 +209,11 @@ struct rmi_device_platform_data_spi {
  * @reset_delay_ms - after issuing a reset command to the touch sensor, the
  * driver waits a few milliseconds to give the firmware a chance to
  * to re-initialize.  You can override the default wait period here.
+ * @irq: irq associated with the attn gpio line, or negative
  */
 struct rmi_device_platform_data {
 	int reset_delay_ms;
+	int irq;
 
 	struct rmi_device_platform_data_spi spi_data;
 
@@ -352,8 +359,7 @@ struct rmi_driver_data {
 
 int rmi_register_transport_device(struct rmi_transport_dev *xport);
 void rmi_unregister_transport_device(struct rmi_transport_dev *xport);
-int rmi_process_interrupt_requests(struct rmi_device *rmi_dev);
 
-int rmi_driver_suspend(struct rmi_device *rmi_dev);
-int rmi_driver_resume(struct rmi_device *rmi_dev);
+int rmi_driver_suspend(struct rmi_device *rmi_dev, bool enable_wake);
+int rmi_driver_resume(struct rmi_device *rmi_dev, bool clear_wake);
 #endif

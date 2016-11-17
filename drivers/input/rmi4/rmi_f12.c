@@ -26,9 +26,12 @@ enum rmi_f12_object_type {
 	RMI_F12_OBJECT_SMALL_OBJECT		= 0x0D,
 };
 
+#define F12_DATA1_BYTES_PER_OBJ			8
+
 struct f12_data {
 	struct rmi_2d_sensor sensor;
 	struct rmi_2d_sensor_platform_data sensor_pdata;
+	bool has_dribble;
 
 	u16 data_addr;
 
@@ -146,12 +149,16 @@ static int rmi_f12_read_sensor_tuning(struct f12_data *f12)
 	return 0;
 }
 
-static void rmi_f12_process_objects(struct f12_data *f12, u8 *data1)
+static void rmi_f12_process_objects(struct f12_data *f12, u8 *data1, int size)
 {
 	int i;
 	struct rmi_2d_sensor *sensor = &f12->sensor;
+	int objects = f12->data1->num_subpackets;
 
-	for (i = 0; i < f12->data1->num_subpackets; i++) {
+	if ((f12->data1->num_subpackets * F12_DATA1_BYTES_PER_OBJ) > size)
+		objects = size / F12_DATA1_BYTES_PER_OBJ;
+
+	for (i = 0; i < objects; i++) {
 		struct rmi_2d_sensor_abs_object *obj = &sensor->objs[i];
 
 		obj->type = RMI_2D_OBJECT_NONE;
@@ -182,7 +189,7 @@ static void rmi_f12_process_objects(struct f12_data *f12, u8 *data1)
 
 		rmi_2d_sensor_abs_process(sensor, obj, i);
 
-		data1 += 8;
+		data1 += F12_DATA1_BYTES_PER_OBJ;
 	}
 
 	if (sensor->kernel_tracking)
@@ -192,7 +199,7 @@ static void rmi_f12_process_objects(struct f12_data *f12, u8 *data1)
 				      sensor->nbr_fingers,
 				      sensor->dmax);
 
-	for (i = 0; i < sensor->nbr_fingers; i++)
+	for (i = 0; i < objects; i++)
 		rmi_2d_sensor_abs_report(sensor, &sensor->objs[i], i);
 }
 
@@ -203,10 +210,15 @@ static int rmi_f12_attention(struct rmi_function *fn,
 	struct rmi_device *rmi_dev = fn->rmi_dev;
 	struct f12_data *f12 = dev_get_drvdata(&fn->dev);
 	struct rmi_2d_sensor *sensor = &f12->sensor;
+	int valid_bytes = sensor->pkt_size;
 
 	if (rmi_dev->xport->attn_data) {
+		if (sensor->attn_size > rmi_dev->xport->attn_size)
+			valid_bytes = rmi_dev->xport->attn_size;
+		else
+			valid_bytes = sensor->attn_size;
 		memcpy(sensor->data_pkt, rmi_dev->xport->attn_data,
-			sensor->attn_size);
+			valid_bytes);
 		rmi_dev->xport->attn_data += sensor->attn_size;
 		rmi_dev->xport->attn_size -= sensor->attn_size;
 	} else {
@@ -221,18 +233,82 @@ static int rmi_f12_attention(struct rmi_function *fn,
 
 	if (f12->data1)
 		rmi_f12_process_objects(f12,
-			&sensor->data_pkt[f12->data1_offset]);
+			&sensor->data_pkt[f12->data1_offset], valid_bytes);
 
 	input_mt_sync_frame(sensor->input);
 
 	return 0;
 }
 
+static int rmi_f12_write_control_regs(struct rmi_function *fn)
+{
+	int ret;
+	const struct rmi_register_desc_item *item;
+	struct rmi_device *rmi_dev = fn->rmi_dev;
+	struct f12_data *f12 = dev_get_drvdata(&fn->dev);
+	int control_size;
+	char buf[3];
+	u16 control_offset = 0;
+	u8 subpacket_offset = 0;
+
+	if (f12->has_dribble
+	    && (f12->sensor.dribble != RMI_REG_STATE_DEFAULT)) {
+		item = rmi_get_register_desc_item(&f12->control_reg_desc, 20);
+		if (item) {
+			control_offset = rmi_register_desc_calc_reg_offset(
+						&f12->control_reg_desc, 20);
+
+			/*
+			 * The byte containing the EnableDribble bit will be
+			 * in either byte 0 or byte 2 of control 20. Depending
+			 * on the existence of subpacket 0. If control 20 is
+			 * larger then 3 bytes, just read the first 3.
+			 */
+			control_size = min(item->reg_size, 3UL);
+
+			ret = rmi_read_block(rmi_dev, fn->fd.control_base_addr
+					+ control_offset, buf, control_size);
+			if (ret)
+				return ret;
+
+			if (rmi_register_desc_has_subpacket(item, 0))
+				subpacket_offset += 1;
+
+			switch (f12->sensor.dribble) {
+			case RMI_REG_STATE_OFF:
+				buf[subpacket_offset] &= ~BIT(2);
+				break;
+			case RMI_REG_STATE_ON:
+				buf[subpacket_offset] |= BIT(2);
+				break;
+			case RMI_REG_STATE_DEFAULT:
+			default:
+				break;
+			}
+
+			ret = rmi_write_block(rmi_dev,
+				fn->fd.control_base_addr + control_offset,
+				buf, control_size);
+			if (ret)
+				return ret;
+		}
+	}
+
+	return 0;
+
+}
+
 static int rmi_f12_config(struct rmi_function *fn)
 {
 	struct rmi_driver *drv = fn->rmi_dev->driver;
+	int ret;
 
 	drv->set_irq_bits(fn->rmi_dev, fn->irq_mask);
+
+	ret = rmi_f12_write_control_regs(fn);
+	if (ret)
+		dev_warn(&fn->dev,
+			"Failed to write F12 control registers: %d\n", ret);
 
 	return 0;
 }
@@ -260,7 +336,7 @@ static int rmi_f12_probe(struct rmi_function *fn)
 	}
 	++query_addr;
 
-	if (!(buf & 0x1)) {
+	if (!(buf & BIT(0))) {
 		dev_err(&fn->dev,
 			"Behavior of F12 without register descriptors is undefined.\n");
 		return -ENODEV;
@@ -269,6 +345,8 @@ static int rmi_f12_probe(struct rmi_function *fn)
 	f12 = devm_kzalloc(&fn->dev, sizeof(struct f12_data), GFP_KERNEL);
 	if (!f12)
 		return -ENOMEM;
+
+	f12->has_dribble = !!(buf & BIT(3));
 
 	if (fn->dev.of_node) {
 		ret = rmi_2d_sensor_of_probe(&fn->dev, &f12->sensor_pdata);
@@ -318,6 +396,7 @@ static int rmi_f12_probe(struct rmi_function *fn)
 
 	sensor->x_mm = f12->sensor_pdata.x_mm;
 	sensor->y_mm = f12->sensor_pdata.y_mm;
+	sensor->dribble = f12->sensor_pdata.dribble;
 
 	if (sensor->sensor_type == rmi_sensor_default)
 		sensor->sensor_type =
