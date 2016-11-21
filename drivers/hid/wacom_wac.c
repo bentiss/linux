@@ -645,6 +645,7 @@ static int wacom_intuos_get_tool_type(int tool_id)
 		break;
 
 	case 0x82a: /* Eraser */
+	case 0x84a:
 	case 0x85a:
 	case 0x91a:
 	case 0xd1a:
@@ -1765,7 +1766,7 @@ static int wacom_wac_pen_event(struct hid_device *hdev, struct hid_field *field,
 		wacom_wac->hid_data.tipswitch |= value;
 		return 0;
 	case HID_DG_TOOLSERIALNUMBER:
-		wacom_wac->serial[0] = (wacom_wac->serial[0] & ~0xFFFFFFFF);
+		wacom_wac->serial[0] = (wacom_wac->serial[0] & ~0xFFFFFFFFULL);
 		wacom_wac->serial[0] |= value;
 		return 0;
 	case WACOM_HID_WD_SENSE:
