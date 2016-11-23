@@ -337,11 +337,13 @@ struct rmi_driver_data {
 	struct rmi_device *rmi_dev;
 
 	struct rmi_function *f01_container;
+	struct rmi_function *f34_container;
 	bool f01_bootloader_mode;
 
 	u32 attn_count;
 	int num_of_irq_regs;
 	int irq_count;
+	void *irq_memory;
 	unsigned long *irq_status;
 	unsigned long *fn_irq_bits;
 	unsigned long *current_irq_mask;
@@ -351,6 +353,9 @@ struct rmi_driver_data {
 
 	u8 pdt_props;
 	u8 bsr;
+
+	u8 num_rx_electrodes;
+	u8 num_tx_electrodes;
 
 	bool enabled;
 
