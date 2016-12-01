@@ -108,7 +108,7 @@ struct rmi_2d_sensor_platform_data {
  * @buttonpad - the touchpad is a buttonpad, so enable only the first actual
  * button that is found.
  * @trackstick_buttons - Set when the function 30 is handling the physical
- * buttons of the trackstick (as a PD/2 passthrough device.
+ * buttons of the trackstick (as a PS/2 passthrough device).
  * @disable - the touchpad incorrectly reports F30 and it should be ignored.
  * This is a special case which is due to misconfigured firmware.
  */
@@ -218,9 +218,9 @@ struct rmi_device_platform_data {
 	struct rmi_device_platform_data_spi spi_data;
 
 	/* function handler pdata */
-	struct rmi_2d_sensor_platform_data *sensor_pdata;
+	struct rmi_2d_sensor_platform_data sensor_pdata;
 	struct rmi_f01_power_management power_management;
-	struct rmi_f30_data *f30_data;
+	struct rmi_f30_data f30_data;
 };
 
 /**
@@ -340,7 +340,6 @@ struct rmi_driver_data {
 	struct rmi_function *f34_container;
 	bool f01_bootloader_mode;
 
-	u32 attn_count;
 	int num_of_irq_regs;
 	int irq_count;
 	void *irq_memory;
@@ -352,14 +351,12 @@ struct rmi_driver_data {
 	struct input_dev *input;
 
 	u8 pdt_props;
-	u8 bsr;
 
 	u8 num_rx_electrodes;
 	u8 num_tx_electrodes;
 
 	bool enabled;
-
-	void *data;
+	struct mutex enabled_mutex;
 };
 
 int rmi_register_transport_device(struct rmi_transport_dev *xport);
