@@ -82,7 +82,7 @@
 #include <sound/core.h>
 #include <sound/control.h>
 #include <sound/initval.h>
-#include <asm/uaccess.h>
+#include <linux/uaccess.h>
 #include <acpi/video.h>
 
 /* ThinkPad CMOS commands */
@@ -3143,8 +3143,8 @@ typedef tpacpi_keymap_entry_t tpacpi_keymap_t[TPACPI_HOTKEY_MAP_LEN];
 
 static int hotkey_init_tablet_mode(void)
 {
-	int in_tablet_mode, res;
-	char *type;
+	int in_tablet_mode = 0, res;
+	char *type = NULL;
 
 	if (acpi_evalf(hkey_handle, &res, "MHKG", "qd")) {
 		/* For X41t, X60t, X61t Tablets... */
