@@ -30,6 +30,7 @@
 #include <linux/slab.h>
 #include <linux/kernel.h>
 #include <linux/sched.h>
+#include <linux/serio.h>
 #include <linux/input.h>
 #include <linux/uaccess.h>
 #include <linux/jiffies.h>
@@ -1092,6 +1093,7 @@ static int elan_probe(struct i2c_client *client,
 	const struct elan_transport_ops *transport_ops;
 	struct device *dev = &client->dev;
 	struct elan_tp_data *data;
+	struct serio *parent = NULL;
 	unsigned long irqflags;
 	bool has_trackpoint = pdata && pdata->trackpoint;
 	int error;
@@ -1121,6 +1123,12 @@ static int elan_probe(struct i2c_client *client,
 	data->client = client;
 	init_completion(&data->fw_completion);
 	mutex_init(&data->sysfs_mutex);
+
+	if (pdata)
+		parent = pdata->parent;
+
+	/* Make sure the driver stays here on resume */
+	serio_deactivate(parent);
 
 	data->vcc = devm_regulator_get(&client->dev, "vcc");
 	if (IS_ERR(data->vcc)) {

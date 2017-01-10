@@ -144,6 +144,9 @@ struct elantech_data {
 	unsigned char parity[256];
 	int (*send_cmd)(struct psmouse *psmouse, unsigned char c, unsigned char *param);
 	void (*original_set_rate)(struct psmouse *psmouse, unsigned int rate);
+
+	/* SMBus handling */
+	struct platform_device *smbus;
 };
 
 #ifdef CONFIG_MOUSE_PS2_ELANTECH

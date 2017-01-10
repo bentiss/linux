@@ -37,6 +37,7 @@
 #define ETP_FW_SIGNATURE_SIZE	6
 
 struct i2c_client;
+struct serio;
 struct completion;
 
 enum tp_mode {
@@ -93,6 +94,7 @@ extern const struct elan_transport_ops elan_smbus_ops, elan_i2c_ops;
  * be created and handled by the driver.
  */
 struct elan_platform_data {
+	struct serio *parent;
 	bool trackpoint;
 };
 

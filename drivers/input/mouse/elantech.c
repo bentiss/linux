@@ -16,11 +16,28 @@
 #include <linux/module.h>
 #include <linux/input.h>
 #include <linux/input/mt.h>
+#include <linux/platform_device.h>
 #include <linux/serio.h>
 #include <linux/libps2.h>
 #include <asm/unaligned.h>
 #include "psmouse.h"
 #include "elantech.h"
+#include "elan_i2c.h"
+
+/*
+ * The newest Elan devices can use a secondary bus (over SMBus) which
+ * provides a better bandwidth and allow a better control of the touchpads.
+ * This is used to decide if we need to use this bus or not.
+ */
+enum {
+	ELAN_SMBUS_NOT_SET = -1,
+	ELAN_SMBUS_OFF,
+	ELAN_SMBUS_ON,
+};
+
+static int elan_smbus = ELAN_SMBUS_OFF;
+module_param_named(elan_smbus, elan_smbus, int, 0644);
+MODULE_PARM_DESC(elan_smbus, "Use a secondary bus for the Elantech device.");
 
 #define elantech_debug(fmt, ...)					\
 	do {								\
@@ -1470,6 +1487,11 @@ static void elantech_disconnect(struct psmouse *psmouse)
 {
 	struct elantech_data *etd = psmouse->private;
 
+	if (etd->smbus) {
+		platform_device_unregister(etd->smbus);
+		etd->smbus = NULL;
+	}
+
 	if (etd->tp_dev)
 		input_unregister_device(etd->tp_dev);
 	sysfs_remove_group(&psmouse->ps2dev.serio->dev.kobj,
@@ -1629,6 +1651,35 @@ static int elantech_set_properties(struct elantech_data *etd)
 	return 0;
 }
 
+static int smbus_id;
+
+static int elan_create_smbus(struct psmouse *psmouse, struct elantech_data *etd)
+{
+	struct platform_device *pdev;
+	struct platform_device_info pdevinfo;
+	struct elan_platform_data pdata = {
+		.trackpoint = !!etd->tp_dev,
+	};
+
+	if (etd->smbus)
+		return -EINVAL;
+
+	memset(&pdevinfo, 0, sizeof(pdevinfo));
+	pdevinfo.name = "elan_smbus";
+	pdevinfo.id = smbus_id++;
+	pdevinfo.data = &pdata;
+	pdevinfo.size_data = sizeof(pdata);
+	pdevinfo.parent = &psmouse->ps2dev.serio->dev;
+
+	pdev = platform_device_register_full(&pdevinfo);
+	if (IS_ERR(pdev))
+		return PTR_ERR(pdev);
+
+	etd->smbus = pdev;
+
+	return 0;
+}
+
 /*
  * Initialize the touchpad and create sysfs entries
  */
@@ -1750,6 +1801,9 @@ int elantech_init(struct psmouse *psmouse)
 	psmouse->disconnect = elantech_disconnect;
 	psmouse->reconnect = elantech_reconnect;
 	psmouse->pktsize = etd->hw_version > 1 ? 6 : 4;
+
+	if (etd->hw_version == 4 && elan_smbus == ELAN_SMBUS_ON)
+		elan_create_smbus(psmouse, etd);
 
 	return 0;
  init_fail_tp_reg:

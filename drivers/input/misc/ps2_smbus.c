@@ -23,6 +23,7 @@ DEFINE_MUTEX(ps2smbus_mutex);
 
 enum ps2smbus_type {
 	PS2SMBUS_SYNAPTICS_RMI4,
+	PS2SMBUS_ELAN_SMBUS,
 };
 
 struct ps2smbus {
@@ -56,6 +57,18 @@ static void ps2smbus_create_rmi4(struct ps2smbus *ps2smbus,
 	ps2smbus->smbus_client = i2c_new_device(adap, &i2c_info);
 }
 
+static void ps2smbus_create_elan(struct ps2smbus *ps2smbus,
+				 struct i2c_adapter *adap)
+{
+	const struct i2c_board_info i2c_info = {
+		I2C_BOARD_INFO("elan_i2c", 0x15),
+		.platform_data = ps2smbus->pdata,
+		.flags = I2C_CLIENT_HOST_NOTIFY,
+	};
+
+	ps2smbus->smbus_client = i2c_new_device(adap, &i2c_info);
+}
+
 static void ps2smbus_worker(struct work_struct *work)
 {
 	struct ps2smbus_work *ps2smbus_work;
@@ -68,9 +81,16 @@ static void ps2smbus_worker(struct work_struct *work)
 
 	switch (ps2smbus_work->type) {
 	case PS2SMBUS_REGISTER_DEVICE:
-		if (ps2smbus_work->ps2smbus->type == PS2SMBUS_SYNAPTICS_RMI4)
+		switch (ps2smbus_work->ps2smbus->type) {
+		case PS2SMBUS_SYNAPTICS_RMI4:
 			ps2smbus_create_rmi4(ps2smbus_work->ps2smbus,
 					     ps2smbus_work->adap);
+			break;
+		case PS2SMBUS_ELAN_SMBUS:
+			ps2smbus_create_elan(ps2smbus_work->ps2smbus,
+					     ps2smbus_work->adap);
+			break;
+		}
 		break;
 	case PS2SMBUS_UNREGISTER_DEVICE:
 		if (client)
@@ -215,6 +235,7 @@ static int ps2smbus_remove(struct platform_device *pdev)
 
 static const struct platform_device_id ps2smbus_id_table[] = {
 	{ .name = "rmi4", .driver_data = PS2SMBUS_SYNAPTICS_RMI4 },
+	{ .name = "elan_smbus", .driver_data = PS2SMBUS_ELAN_SMBUS },
 	{ }
 };
 MODULE_DEVICE_TABLE(platform, ps2smbus_id_table);
