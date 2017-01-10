@@ -222,6 +222,8 @@ struct rmi_device_platform_data {
 	struct rmi_2d_sensor_platform_data sensor_pdata;
 	struct rmi_f01_power_management power_management;
 	struct rmi_f30_data f30_data;
+
+	struct serio *parent;
 };
 
 /**
