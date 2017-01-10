@@ -87,6 +87,8 @@ struct serio_driver {
 	int  (*reconnect)(struct serio *);
 	void (*disconnect)(struct serio *);
 	void (*cleanup)(struct serio *);
+	void (*deactivate)(struct serio *);
+	void (*activate)(struct serio *);
 
 	struct device_driver driver;
 };
@@ -169,6 +171,18 @@ static inline void serio_pause_rx(struct serio *serio)
 static inline void serio_continue_rx(struct serio *serio)
 {
 	spin_unlock_irq(&serio->lock);
+}
+
+static inline void serio_activate(struct serio *serio)
+{
+	if (serio && serio->drv && serio->drv->activate)
+		serio->drv->activate(serio);
+}
+
+static inline void serio_deactivate(struct serio *serio)
+{
+	if (serio && serio->drv && serio->drv->deactivate)
+		serio->drv->deactivate(serio);
 }
 
 #endif

@@ -78,9 +78,12 @@ struct psmouse {
 	void (*disconnect)(struct psmouse *psmouse);
 	void (*cleanup)(struct psmouse *psmouse);
 	int (*poll)(struct psmouse *psmouse);
+	void (*deactivate)(struct psmouse *psmouse);
+	void (*activate)(struct psmouse *psmouse);
 
 	void (*pt_activate)(struct psmouse *psmouse);
 	void (*pt_deactivate)(struct psmouse *psmouse);
+	bool ignore_reconnect;
 };
 
 enum psmouse_type {

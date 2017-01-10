@@ -657,6 +657,19 @@ static void synaptics_pt_create(struct psmouse *psmouse)
 	serio_register_port(serio);
 }
 
+void synaptics_deactivate(struct psmouse *psmouse)
+{
+	serio_unregister_child_port(psmouse->ps2dev.serio);
+}
+
+void synaptics_activate(struct psmouse *psmouse)
+{
+	struct synaptics_data *priv = psmouse->private;
+
+	if (SYN_CAP_PASS_THROUGH(priv->capabilities))
+		synaptics_pt_create(psmouse);
+}
+
 /*****************************************************************************
  *	Functions to interpret the absolute mode packets
  ****************************************************************************/
@@ -1518,6 +1531,8 @@ static int __synaptics_init(struct psmouse *psmouse, bool absolute_mode)
 	psmouse->disconnect = synaptics_disconnect;
 	psmouse->reconnect = synaptics_reconnect;
 	psmouse->cleanup = synaptics_reset;
+	psmouse->activate = synaptics_activate;
+	psmouse->activate = synaptics_deactivate;
 	/* Synaptics can usually stay in sync without extra help */
 	psmouse->resync_time = 0;
 

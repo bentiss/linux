@@ -936,6 +936,8 @@ static void psmouse_apply_defaults(struct psmouse *psmouse)
 	psmouse->reconnect = NULL;
 	psmouse->disconnect = NULL;
 	psmouse->cleanup = NULL;
+	psmouse->activate = NULL;
+	psmouse->deactivate = NULL;
 	psmouse->pt_activate = NULL;
 	psmouse->pt_deactivate = NULL;
 }
@@ -1603,6 +1605,9 @@ static int psmouse_reconnect(struct serio *serio)
 	unsigned char type;
 	int rc = -1;
 
+	if (psmouse->ignore_reconnect)
+		return 0;
+
 	mutex_lock(&psmouse_mutex);
 
 	if (serio->parent && serio->id.type == SERIO_PS_PSTHRU) {
@@ -1649,6 +1654,30 @@ out:
 	return rc;
 }
 
+static void psmouse_deactivate_cb(struct serio *serio)
+{
+	struct psmouse *psmouse = serio_get_drvdata(serio);
+
+	psmouse->ignore_reconnect = true;
+
+	if (psmouse->deactivate)
+		psmouse->deactivate(psmouse);
+
+	psmouse_deactivate(psmouse);
+}
+
+static void psmouse_activate_cb(struct serio *serio)
+{
+	struct psmouse *psmouse = serio_get_drvdata(serio);
+
+	psmouse->ignore_reconnect = false;
+
+	psmouse_activate(psmouse);
+
+	if (psmouse->activate)
+		psmouse->activate(psmouse);
+}
+
 static struct serio_device_id psmouse_serio_ids[] = {
 	{
 		.type	= SERIO_8042,
@@ -1678,6 +1707,8 @@ static struct serio_driver psmouse_drv = {
 	.reconnect	= psmouse_reconnect,
 	.disconnect	= psmouse_disconnect,
 	.cleanup	= psmouse_cleanup,
+	.deactivate	= psmouse_deactivate_cb,
+	.activate	= psmouse_activate_cb,
 };
 
 ssize_t psmouse_attr_show_helper(struct device *dev, struct device_attribute *devattr,
