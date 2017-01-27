@@ -139,6 +139,8 @@ static unsigned char ledioctl;
 static bool caps_as_controlllock;
 static bool task_caps_as_controlllock;
 
+static int saved_cur_kbd_console = -1;
+
 /*
  * Notifier list for console keyboard events
  */
@@ -1512,6 +1514,12 @@ static void kbd_event(struct input_handle *handle, unsigned int event_type,
 {
 	/* We are called with interrupts disabled, just take the lock */
 	spin_lock(&kbd_event_lock);
+
+	/* reset the led state on console switch */
+	if (saved_cur_kbd_console != fg_console) {
+		ledstate = -1U;
+		saved_cur_kbd_console = fg_console;
+	}
 
 	if (event_type == EV_MSC && event_code == MSC_RAW && HW_RAW(handle->dev))
 		kbd_rawcode(value);
