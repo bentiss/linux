@@ -179,6 +179,8 @@ struct cp2112_device {
 	struct delayed_work gpio_poll_worker;
 	unsigned long irq_mask;
 	u8 gpio_prev_state;
+
+	struct delayed_work init_work;
 };
 
 static int gpio_push_pull = 0xFF;
@@ -1234,6 +1236,40 @@ err_desc:
 	return ret;
 }
 
+static void cp2112_init_work(struct work_struct *work)
+{
+	struct cp2112_device *cp2112 = container_of(work, struct cp2112_device,
+						    init_work.work);
+	struct hid_device *hdev = cp2112->hdev;
+	struct i2c_client *client;
+	struct i2c_hid_platform_data pdata = {
+		.hid_descriptor_address = 0x20,
+	};
+	struct i2c_board_info synaptics_info = {
+		I2C_BOARD_INFO("hid", 0x2c),
+		.platform_data = &pdata,
+	};
+	int irq = cp2112_allocate_irq(cp2112, 2);
+
+	if (irq <= 0) {
+		dev_err(cp2112->gc.parent, "Failed to translate GPIO to IRQ\n");
+		return;
+	}
+
+	synaptics_info.irq = irq;
+	irq_set_irq_type(irq, IRQ_TYPE_LEVEL_LOW);
+
+	request_module("i2c-hid");
+
+	/* give time for the device to initialize */
+	msleep(500);
+
+	client = i2c_new_device(&cp2112->adap, &synaptics_info);
+	if (!client)
+		hid_err(hdev, "failed allocating Synaptics device\n");
+}
+
+
 static int cp2112_probe(struct hid_device *hdev, const struct hid_device_id *id)
 {
 	struct cp2112_device *dev;
@@ -1364,35 +1400,9 @@ static int cp2112_probe(struct hid_device *hdev, const struct hid_device_id *id)
 		goto err_sysfs_remove;
 	}
 
-	{
-		struct i2c_client *client;
-		struct i2c_hid_platform_data pdata = {
-			.hid_descriptor_address = 0x20,
-		};
-		struct i2c_board_info synaptics_info = {
-			I2C_BOARD_INFO("hid", 0x2c),
-			.platform_data = &pdata,
-		};
-		int irq = cp2112_allocate_irq(dev, 2);
 
-		if (irq <= 0) {
-			dev_err(dev->gc.parent, "Failed to translate GPIO to IRQ\n");
-			goto err_sysfs_remove;
-		}
-
-		synaptics_info.irq = irq;
-		irq_set_irq_type(irq, IRQ_TYPE_LEVEL_LOW);
-
-		hid_device_io_start(hdev);
-
-		/* give time for the device to initialize */
-		msleep(500);
-
-		client = i2c_new_device(&dev->adap, &synaptics_info);
-		if (!client)
-			hid_err(hdev, "failed allocating Synaptics device\n");
-
-	}
+	INIT_DELAYED_WORK(&dev->init_work, cp2112_init_work);
+	schedule_delayed_work(&dev->init_work, msecs_to_jiffies(1000));
 
 	return ret;
 
