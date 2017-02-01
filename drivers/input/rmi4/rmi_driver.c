@@ -364,7 +364,7 @@ static void rmi_driver_set_input_name(struct rmi_device *rmi_dev,
 				struct input_dev *input)
 {
 	struct rmi_driver_data *data = dev_get_drvdata(&rmi_dev->dev);
-	char *device_name = rmi_f01_get_product_ID(data->f01_container);
+	const char *device_name = rmi_f01_get_product_ID(data->f01_container);
 	char *name;
 
 	name = devm_kasprintf(&rmi_dev->dev, GFP_KERNEL,
@@ -836,7 +836,7 @@ static int rmi_create_function(struct rmi_device *rmi_dev,
 			       void *ctx, const struct pdt_entry *pdt)
 {
 	struct device *dev = &rmi_dev->dev;
-	struct rmi_driver_data *data = dev_get_drvdata(&rmi_dev->dev);
+	struct rmi_driver_data *data = dev_get_drvdata(dev);
 	int *current_irq_count = ctx;
 	struct rmi_function *fn;
 	int i;
@@ -1040,7 +1040,7 @@ int rmi_probe_interrupts(struct rmi_driver_data *data)
 	}
 
 	if (data->bootloader_mode)
-		dev_warn(&rmi_dev->dev, "Device in bootloader mode.\n");
+		dev_warn(dev, "Device in bootloader mode.\n");
 
 	data->irq_count = irq_count;
 	data->num_of_irq_regs = (data->irq_count + 7) / 8;
