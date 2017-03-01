@@ -231,7 +231,7 @@ static int rmi_f30_map_gpios(struct rmi_function *fn,
 	struct input_dev *input = f30->input;
 	unsigned int button = BTN_LEFT;
 	unsigned int trackstick_button = BTN_LEFT;
-	bool button_mapped = false;
+	unsigned int n_button_mapped = 0;
 	int i;
 	int button_count = min_t(u8, f30->gpioled_count, TRACKSTICK_RANGE_END);
 
@@ -251,10 +251,10 @@ static int rmi_f30_map_gpios(struct rmi_function *fn,
 		if (pdata->f30_data.trackstick_buttons &&
 		    i >= TRACKSTICK_RANGE_START && i < TRACKSTICK_RANGE_END) {
 			f30->gpioled_key_map[i] = trackstick_button++;
-		} else if (!pdata->f30_data.buttonpad || !button_mapped) {
+		} else if (!pdata->f30_data.buttonpad || !n_button_mapped) {
 			f30->gpioled_key_map[i] = button;
 			input_set_capability(input, EV_KEY, button++);
-			button_mapped = true;
+			n_button_mapped++;
 		}
 	}
 
@@ -264,10 +264,9 @@ static int rmi_f30_map_gpios(struct rmi_function *fn,
 
 	/*
 	 * Buttonpad could be also inferred from f30->has_mech_mouse_btns,
-	 * but I am not sure, so use only the pdata info and the number of
-	 * mapped buttons.
+	 * but I am not sure, so use only the number of mapped buttons.
 	 */
-	if (pdata->f30_data.buttonpad || (button - BTN_LEFT == 1))
+	if (n_button_mapped == 1)
 		__set_bit(INPUT_PROP_BUTTONPAD, input->propbit);
 
 	return 0;
