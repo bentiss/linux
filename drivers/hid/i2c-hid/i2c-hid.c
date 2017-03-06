@@ -994,9 +994,10 @@ static int i2c_hid_of_probe(struct i2c_client *client,
 	}
 	pdata->hid_descriptor_address = val;
 
-	ret = of_property_read_u32(dev->of_node, "init-delay-ms", &val);
+	ret = of_property_read_u32(dev->of_node, "post-power-on-delay-ms",
+				   &val);
 	if (!ret)
-		pdata->init_delay_ms = val;
+		pdata->post_power_delay_ms = val;
 
 	return 0;
 }
@@ -1058,22 +1059,22 @@ static int i2c_hid_probe(struct i2c_client *client,
 	}
 
 	ihid->pdata.supply = devm_regulator_get(&client->dev, "vdd");
- 	if (IS_ERR(ihid->pdata.supply)) {
- 		ret = PTR_ERR(ihid->pdata.supply);
- 		if (ret != -EPROBE_DEFER)
- 			dev_err(&client->dev, "Failed to get regulator: %d\n",
- 				ret);
- 		return ret;
- 	}
- 
+	if (IS_ERR(ihid->pdata.supply)) {
+		ret = PTR_ERR(ihid->pdata.supply);
+		if (ret != -EPROBE_DEFER)
+			dev_err(&client->dev, "Failed to get regulator: %d\n",
+				ret);
+		goto err;
+	}
+
 	ret = regulator_enable(ihid->pdata.supply);
 	if (ret < 0) {
 		dev_err(&client->dev, "Failed to enable regulator: %d\n",
 			ret);
 		goto err;
 	}
-	if (ihid->pdata.init_delay_ms)
-		msleep(ihid->pdata.init_delay_ms);
+	if (ihid->pdata.post_power_delay_ms)
+		msleep(ihid->pdata.post_power_delay_ms);
 
 	i2c_set_clientdata(client, ihid);
 
@@ -1229,8 +1230,7 @@ static int i2c_hid_suspend(struct device *dev)
 	} else {
 		ret = regulator_disable(ihid->pdata.supply);
 		if (ret < 0)
-			hid_warn(hid, "Failed to disable supply: %d\n",
-				 ret);
+			hid_warn(hid, "Failed to disable supply: %d\n", ret);
 	}
 
 	return 0;
@@ -1247,10 +1247,9 @@ static int i2c_hid_resume(struct device *dev)
 	if (!device_may_wakeup(&client->dev)) {
 		ret = regulator_enable(ihid->pdata.supply);
 		if (ret < 0)
-			hid_warn(hid, "Failed to enable supply: %d\n",
-					ret);
-		if (ihid->pdata.init_delay_ms)
-			msleep(ihid->pdata.init_delay_ms);
+			hid_warn(hid, "Failed to enable supply: %d\n", ret);
+		if (ihid->pdata.post_power_delay_ms)
+			msleep(ihid->pdata.post_power_delay_ms);
 	} else if (ihid->irq_wake_enabled) {
 		wake_status = disable_irq_wake(client->irq);
 		if (!wake_status)

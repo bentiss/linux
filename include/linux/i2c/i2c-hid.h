@@ -20,7 +20,7 @@ struct regulator;
  * struct i2chid_platform_data - used by hid over i2c implementation.
  * @hid_descriptor_address: i2c register where the HID descriptor is stored.
  * @supply: regulator for powering on the device.
- * @init_delay_ms: delay after powering on before device is usable.
+ * @post_power_delay_ms: delay after powering on before device is usable.
  *
  * Note that it is the responsibility of the platform driver (or the acpi 5.0
  * driver, or the flattened device tree) to setup the irq related to the gpio in
@@ -36,7 +36,7 @@ struct regulator;
 struct i2c_hid_platform_data {
 	u16 hid_descriptor_address;
 	struct regulator *supply;
-	int init_delay_ms;
+	int post_power_delay_ms;
 };
 
 #endif /* __LINUX_I2C_HID_H */
