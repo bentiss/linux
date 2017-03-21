@@ -129,6 +129,16 @@ struct hidpp_battery {
 	bool online;
 };
 
+struct hidpp_shared {
+	struct list_head list;
+	char name[128];		/* Device name */
+	char phys[64];		/* Device physical location */
+	char uniq[64];		/* Device unique identifier (serial #) */
+};
+
+static LIST_HEAD(hidpp_shared_list);
+static DEFINE_MUTEX(hidpp_shared_list_lock);
+
 struct hidpp_device {
 	struct hid_device *hid_dev;
 	struct mutex send_mutex;
@@ -151,6 +161,8 @@ struct hidpp_device {
 	unsigned long capabilities;
 
 	struct hidpp_battery battery;
+
+	struct hidpp_shared *shared;
 };
 
 /* HID++ 1.0 error codes */
@@ -387,6 +399,81 @@ static void hidpp_prefix_name(char **name, int name_length)
 	kfree(*name);
 
 	*name = new_name;
+}
+
+static void hidpp_remove_shared_data(void *res)
+{
+	struct hidpp_device *hidpp = res;
+
+	mutex_lock(&hidpp_shared_list_lock);
+
+	if (hidpp->shared) {
+		list_del(&hidpp->shared->list);
+		kfree(hidpp->shared);
+	}
+	hidpp->shared = NULL;
+
+	mutex_unlock(&hidpp_shared_list_lock);
+}
+
+static bool hidpp_compare_device_paths(const char *hdev_a, const char *hdev_b)
+{
+	const char separator = '/';
+	int n1 = strrchr(hdev_a, separator) - hdev_a;
+	int n2 = strrchr(hdev_b, separator) - hdev_b;
+
+	if (n1 != n2 || n1 <= 0 || n2 <= 0)
+		return false;
+
+	return !strncmp(hdev_a, hdev_b, n1);
+}
+
+static int hidpp_allocate_shared_data(struct hidpp_device *hidpp)
+{
+	struct hid_device *hdev = hidpp->hid_dev;
+	struct hidpp_shared *shared = NULL;
+
+	mutex_lock(&hidpp_shared_list_lock);
+
+	shared = kzalloc(sizeof(struct hidpp_shared), GFP_KERNEL);
+	if (!shared) {
+		mutex_unlock(&hidpp_shared_list_lock);
+		return -ENOMEM;
+	}
+	memcpy(shared->name, hdev->name, sizeof(shared->name));
+	memcpy(shared->uniq, hdev->uniq, sizeof(shared->uniq));
+	memcpy(shared->phys, hdev->phys, sizeof(shared->phys));
+	list_add_tail(&shared->list, &hidpp_shared_list);
+
+	hidpp->shared = shared;
+
+	mutex_unlock(&hidpp_shared_list_lock);
+
+	return devm_add_action_or_reset(&hidpp->hid_dev->dev,
+					hidpp_remove_shared_data, hidpp);
+}
+
+static int hidpp_get_shared_data(struct hid_device *hdev)
+{
+	struct hidpp_shared *s, *shared = NULL;
+
+	mutex_lock(&hidpp_shared_list_lock);
+
+	list_for_each_entry(s, &hidpp_shared_list, list) {
+		if (hidpp_compare_device_paths(s->phys, hdev->phys))
+			shared = s;
+	}
+
+	if (!shared) {
+		mutex_unlock(&hidpp_shared_list_lock);
+		return -EPROBE_DEFER;
+	}
+
+	memcpy(hdev->name, shared->name, sizeof(hdev->name));
+	memcpy(hdev->uniq, shared->uniq, sizeof(hdev->uniq));
+
+	mutex_unlock(&hidpp_shared_list_lock);
+	return 0;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -720,48 +807,90 @@ static int hidpp_unifying_get_serial(struct hidpp_device *hidpp, int index,
 	return 0;
 }
 
+static int hidpp_unifying_get_name_and_uniq(struct hidpp_device *hidpp,
+		int device_index, u16 quadid, char name[128], char uniq[64])
+{
+	const char *hidpp_name;
+	u32 serial;
+	int ret;
+
+	ret = hidpp_unifying_get_serial(hidpp, device_index, &serial);
+	if (ret)
+		return ret;
+
+	snprintf(uniq, 64, "%04x-%4phD", quadid, &serial);
+	dbg_hid("HID++ Unifying: Got serial: '%s' for device %d\n", uniq,
+		device_index);
+
+	hidpp_name = hidpp_unifying_get_name(hidpp, device_index);
+	if (!hidpp_name)
+		return -EIO;
+
+	snprintf(name, 128, "%s", hidpp_name);
+	dbg_hid("HID++ Unifying: Got name: '%s' for device %d\n", name,
+		device_index);
+
+	kfree(hidpp_name);
+	return 0;
+}
+
 static int hidpp_unifying_init(struct hidpp_device *hidpp)
 {
 	struct hid_device *hdev = hidpp->hid_dev;
-	const char *name;
-	u32 serial;
 	u16 quadid, q;
-	int device_index, ret;
+	int device_index, i, ret;
 	u8 type = 0;
 
 	device_index = 0;
 	quadid = hdev->product;
 
 	if (hidpp->quirks & HIDPP_QUIRK_RECEIVER) {
-		/*
-		 * On the receiver, the HID++ collection is on the mouse
-		 * interface, so match only there.
-		 */
-		ret = hidpp_unifying_get_quadid(hidpp, 2, &q, &type);
-		if (!ret && !hidpp_unifying_type_is_keyboard(type)) {
-			device_index = 2;
-			quadid = q;
+		ret = hidpp_allocate_shared_data(hidpp);
+		if (ret)
+			return ret;
+
+		/* The device indexes go from 1 to 2 */
+		for (i = 1; i <= 2; i++) {
+			ret = hidpp_unifying_get_quadid(hidpp, i, &q, &type);
+			if (ret)
+				continue;
+			/*
+			 * On the receiver, the HID++ collection is on the mouse
+			 * interface, so match only there.
+			 */
+			if (!hidpp_unifying_type_is_keyboard(type)) {
+				device_index = i;
+				quadid = q;
+			}
+
+			/*
+			 * The first device will be reported through the
+			 * first hidraw node (the non HID++ one).
+			 */
+			if (i == 1) {
+				ret = hidpp_unifying_get_name_and_uniq(hidpp, i,
+							q, hidpp->shared->name,
+							hidpp->shared->uniq);
+				if (ret)
+					return ret;
+			}
 		}
 		hidpp_unifying_enable_notifications(hidpp);
 	}
 
-	ret = hidpp_unifying_get_serial(hidpp, device_index, &serial);
-	if (ret)
-		return ret;
-
-	snprintf(hdev->uniq, sizeof(hdev->uniq), "%04x-%4phD", quadid, &serial);
-	dbg_hid("HID++ Unifying: Got serial: %s\n", hdev->uniq);
-
-	name = hidpp_unifying_get_name(hidpp, device_index);
-	if (!name)
-		return -EIO;
-
-	snprintf(hdev->name, sizeof(hdev->name), "%s", name);
-	dbg_hid("HID++ Unifying: Got name: %s\n", name);
+	if (device_index != 1) {
+		ret = hidpp_unifying_get_name_and_uniq(hidpp, device_index,
+						       quadid, hdev->name,
+						       hdev->uniq);
+		if (ret)
+			return ret;
+	} else {
+		memcpy(hdev->name, hidpp->shared->name, sizeof(hdev->name));
+		memcpy(hdev->uniq, hidpp->shared->uniq, sizeof(hdev->uniq));
+	}
 
 	hidpp->device_index = device_index;
 
-	kfree(name);
 	return 0;
 }
 
@@ -3070,10 +3199,20 @@ static int hidpp_probe(struct hid_device *hdev, const struct hid_device_id *id)
 	}
 
 	/*
-	 * Make sure the device is HID++ capable, otherwise treat as generic HID
+	 * Make sure the device is HID++ capable, otherwise treat as generic
+	 * HID.
+	 * Special case for manually affected Non Unifying receiver where we
+	 * want to link the interfaces together to have a proper name instead
+	 * of "Logitech USB Receiver".
 	 */
-	if (!hidpp_validate_device(hdev))
+	if (!hidpp_validate_device(hdev)) {
+		if (id->driver_data & HIDPP_QUIRK_RECEIVER) {
+			ret = hidpp_get_shared_data(hdev);
+			if (ret)
+				return ret;
+		}
 		return hid_hw_start(hdev, HID_CONNECT_DEFAULT);
+	}
 
 	hidpp = devm_kzalloc(&hdev->dev, sizeof(struct hidpp_device),
 			GFP_KERNEL);
