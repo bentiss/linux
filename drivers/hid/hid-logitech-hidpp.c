@@ -68,6 +68,7 @@ MODULE_PARM_DESC(disable_tap_to_click,
 #define HIDPP_QUIRK_HI_RES_SCROLL_1P0		BIT(26)
 #define HIDPP_QUIRK_HI_RES_SCROLL_X2120		BIT(27)
 #define HIDPP_QUIRK_HI_RES_SCROLL_X2121		BIT(28)
+#define HIDPP_QUIRK_DEFER_PROBE			BIT(29)
 
 /* Convenience constant to check for any high-res support. */
 #define HIDPP_QUIRK_HI_RES_SCROLL	(HIDPP_QUIRK_HI_RES_SCROLL_1P0 | \
@@ -3321,6 +3322,17 @@ static int hidpp_probe(struct hid_device *hdev, const struct hid_device_id *id)
 	if (!hidpp_validate_device(hdev))
 		return hid_hw_start(hdev, HID_CONNECT_DEFAULT);
 
+	/*
+	 * HID++ needs to read incoming report while in .probe().
+	 * However, this doesn't work for plain USB devices until the hdev
+	 * status is set with HID_STAT_ADDED (device fully registered once
+	 * with HID).
+	 * So we ask for it to be reprobed later.
+	 */
+	if (id->driver_data & HIDPP_QUIRK_DEFER_PROBE &&
+	    !(hdev->status & HID_STAT_ADDED))
+		return -EPROBE_DEFER;
+
 	hidpp = devm_kzalloc(&hdev->dev, sizeof(struct hidpp_device),
 			GFP_KERNEL);
 	if (!hidpp)
@@ -3520,6 +3532,9 @@ static const struct hid_device_id hidpp_devices[] = {
 
 	{ /* Logitech G403 Gaming Mouse over USB */
 	  HID_USB_DEVICE(USB_VENDOR_ID_LOGITECH, 0xC082) },
+	{ /* Logitech G502 Gaming Mouse */
+	  HID_USB_DEVICE(USB_VENDOR_ID_LOGITECH, 0xc07d),
+	  .driver_data = HIDPP_QUIRK_DEFER_PROBE },
 	{ /* Logitech G700 Gaming Mouse over USB */
 	  HID_USB_DEVICE(USB_VENDOR_ID_LOGITECH, 0xC06B) },
 	{ /* Logitech G900 Gaming Mouse over USB */
