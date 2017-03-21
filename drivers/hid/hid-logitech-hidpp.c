@@ -65,6 +65,7 @@ MODULE_PARM_DESC(disable_tap_to_click,
 #define HIDPP_QUIRK_FORCE_OUTPUT_REPORTS	BIT(24)
 #define HIDPP_QUIRK_UNIFYING			BIT(25)
 #define HIDPP_QUIRK_RECEIVER			BIT(26)
+#define HIDPP_QUIRK_FORCE_OPEN			BIT(27)
 
 #define HIDPP_QUIRK_DELAYED_INIT		HIDPP_QUIRK_NO_HIDINPUT
 
@@ -3355,6 +3356,12 @@ static int hidpp_probe(struct hid_device *hdev, const struct hid_device_id *id)
 		goto hid_hw_start_fail;
 	}
 
+	if (hidpp->quirks & HIDPP_QUIRK_FORCE_OPEN) {
+		ret = hid_hw_open(hdev);
+		if (ret)
+			goto hid_hw_open_fail;
+	}
+
 	return ret;
 
 hid_hw_init_fail:
@@ -3378,6 +3385,9 @@ static void hidpp_remove(struct hid_device *hdev)
 		return hid_hw_stop(hdev);
 
 	sysfs_remove_group(&hdev->dev.kobj, &ps_attribute_group);
+
+	if (hidpp->quirks & HIDPP_QUIRK_FORCE_OPEN)
+		hid_hw_close(hdev);
 
 	if (hidpp->quirks & HIDPP_QUIRK_CLASS_G920)
 		hidpp_ff_deinit(hdev);
@@ -3416,6 +3426,11 @@ static const struct hid_device_id hidpp_devices[] = {
 	{ /* G700 over Wireless */
 	  HID_USB_DEVICE(USB_VENDOR_ID_LOGITECH, USB_DEVICE_ID_LOGITECH_G700_RECEIVER),
 	  .driver_data = HIDPP_QUIRK_RECEIVER | HIDPP_QUIRK_UNIFYING },
+	{ /* G900 over Wireless */
+	  HID_USB_DEVICE(USB_VENDOR_ID_LOGITECH,
+		USB_DEVICE_ID_LOGITECH_G900_RECEIVER),
+	  .driver_data = HIDPP_QUIRK_RECEIVER | HIDPP_QUIRK_UNIFYING |
+			 HIDPP_QUIRK_FORCE_OPEN},
 
 	{ HID_DEVICE(BUS_USB, HID_GROUP_LOGITECH_DJ_DEVICE,
 		USB_VENDOR_ID_LOGITECH, HID_ANY_ID)},
