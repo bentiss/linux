@@ -66,6 +66,7 @@ MODULE_PARM_DESC(disable_tap_to_click,
 #define HIDPP_QUIRK_UNIFYING			BIT(25)
 #define HIDPP_QUIRK_RECEIVER			BIT(26)
 #define HIDPP_QUIRK_FORCE_OPEN			BIT(27)
+#define HIDPP_QUIRK_DEFER_PROBE			BIT(28)
 
 #define HIDPP_QUIRK_DELAYED_INIT		HIDPP_QUIRK_NO_HIDINPUT
 
@@ -3238,6 +3239,17 @@ static int hidpp_probe(struct hid_device *hdev, const struct hid_device_id *id)
 		return hid_hw_start(hdev, HID_CONNECT_DEFAULT);
 	}
 
+	/*
+	 * HID++ needs to read incoming report while in .probe().
+	 * However, this doesn't work for plain USB devices until the hdev
+	 * status is set with HID_STAT_ADDED (device fully registered once
+	 * with HID).
+	 * So we ask for it to be reprobed later.
+	 */
+	if (id->driver_data & HIDPP_QUIRK_DEFER_PROBE &&
+	    !(hdev->status & HID_STAT_ADDED))
+		return -EPROBE_DEFER;
+
 	hidpp = devm_kzalloc(&hdev->dev, sizeof(struct hidpp_device),
 			GFP_KERNEL);
 	if (!hidpp)
@@ -3444,6 +3456,10 @@ static const struct hid_device_id hidpp_devices[] = {
 	  HID_USB_DEVICE(USB_VENDOR_ID_LOGITECH,
 			 USB_DEVICE_ID_LOGITECH_NANO_RECEIVER_2),
 	  .driver_data = HIDPP_QUIRK_RECEIVER | HIDPP_QUIRK_UNIFYING },
+
+	{ /* Logitech G502 */
+	  HID_USB_DEVICE(USB_VENDOR_ID_LOGITECH, 0xc07d),
+	  .driver_data = HIDPP_QUIRK_DEFER_PROBE },
 
 	{ HID_USB_DEVICE(USB_VENDOR_ID_LOGITECH, USB_DEVICE_ID_LOGITECH_G920_WHEEL),
 		.driver_data = HIDPP_QUIRK_CLASS_G920 | HIDPP_QUIRK_FORCE_OUTPUT_REPORTS},
