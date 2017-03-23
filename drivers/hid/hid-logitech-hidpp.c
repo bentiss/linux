@@ -772,6 +772,9 @@ static char *hidpp_unifying_get_name(struct hidpp_device *hidpp_dev, int index)
 	if (2 + len > sizeof(response.rap.params))
 		return NULL;
 
+	if (len < 4) /* logitech devices are usually at least Xddd */
+		return NULL;
+
 	name = kzalloc(len + 1, GFP_KERNEL);
 	if (!name)
 		return NULL;
@@ -808,7 +811,8 @@ static int hidpp_unifying_get_serial(struct hidpp_device *hidpp, int index,
 }
 
 static int hidpp_unifying_get_name_and_uniq(struct hidpp_device *hidpp,
-		int device_index, u16 quadid, char name[128], char uniq[64])
+		int device_index, u16 quadid, u8 type, char name[128],
+		char uniq[64])
 {
 	const char *hidpp_name;
 	u32 serial;
@@ -823,8 +827,29 @@ static int hidpp_unifying_get_name_and_uniq(struct hidpp_device *hidpp,
 		device_index);
 
 	hidpp_name = hidpp_unifying_get_name(hidpp, device_index);
-	if (!hidpp_name)
-		return -EIO;
+	if (!hidpp_name) {
+		switch (type) {
+		case 0x01:
+			snprintf(name, 128, "Logitech Wireless Keyboard");
+			break;
+		case 0x02:
+			snprintf(name, 128, "Logitech Wireless Mouse");
+			break;
+		case 0x03:
+			snprintf(name, 128, "Logitech Wireless Numpad");
+			break;
+		case 0x04:
+			snprintf(name, 128, "Logitech Wireless Presenter");
+			break;
+		case 0x08:
+			snprintf(name, 128, "Logitech Wireless Trackball");
+			break;
+		case 0x09:
+			snprintf(name, 128, "Logitech Wireless Touchpad");
+			break;
+		}
+		return 0;
+	}
 
 	snprintf(name, 128, "%s", hidpp_name);
 	dbg_hid("HID++ Unifying: Got name: '%s' for device %d\n", name,
@@ -869,7 +894,8 @@ static int hidpp_unifying_init(struct hidpp_device *hidpp)
 			 */
 			if (i == 1) {
 				ret = hidpp_unifying_get_name_and_uniq(hidpp, i,
-							q, hidpp->shared->name,
+							q, type,
+							hidpp->shared->name,
 							hidpp->shared->uniq);
 				if (ret)
 					return ret;
@@ -880,7 +906,7 @@ static int hidpp_unifying_init(struct hidpp_device *hidpp)
 
 	if (device_index != 1) {
 		ret = hidpp_unifying_get_name_and_uniq(hidpp, device_index,
-						       quadid, hdev->name,
+						       quadid, type, hdev->name,
 						       hdev->uniq);
 		if (ret)
 			return ret;
