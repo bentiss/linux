@@ -185,47 +185,34 @@ void rmi_set_attn_data(struct rmi_device *rmi_dev, unsigned long irq_status,
 	attn_data.data = fifo_data;
 
 	kfifo_put(&drvdata->attn_fifo, attn_data);
-
-	schedule_work(&drvdata->attn_work);
 }
 EXPORT_SYMBOL_GPL(rmi_set_attn_data);
-
-static void attn_callback(struct work_struct *work)
-{
-	struct rmi_driver_data *drvdata = container_of(work,
-							struct rmi_driver_data,
-							attn_work);
-	struct rmi4_attn_data attn_data = {0};
-	int ret, count;
-
-	count = kfifo_get(&drvdata->attn_fifo, &attn_data);
-	if (!count)
-		return;
-
-	*(drvdata->irq_status) = attn_data.irq_status;
-	drvdata->attn_data = attn_data;
-
-	ret = rmi_process_interrupt_requests(drvdata->rmi_dev);
-	if (ret)
-		rmi_dbg(RMI_DEBUG_CORE, &drvdata->rmi_dev->dev,
-			"Failed to process interrupt request: %d\n", ret);
-
-	kfree(attn_data.data);
-	attn_data.data = NULL;
-
-	if (!kfifo_is_empty(&drvdata->attn_fifo))
-		schedule_work(&drvdata->attn_work);
-}
 
 static irqreturn_t rmi_irq_fn(int irq, void *dev_id)
 {
 	struct rmi_device *rmi_dev = dev_id;
-	int ret;
+	struct rmi_driver_data *drvdata = dev_get_drvdata(&rmi_dev->dev);
+	struct rmi4_attn_data attn_data = {0};
+	int ret, count;
+
+	count = kfifo_get(&drvdata->attn_fifo, &attn_data);
+	if (count) {
+		*(drvdata->irq_status) = attn_data.irq_status;
+		drvdata->attn_data = attn_data;
+	}
 
 	ret = rmi_process_interrupt_requests(rmi_dev);
 	if (ret)
 		rmi_dbg(RMI_DEBUG_CORE, &rmi_dev->dev,
 			"Failed to process interrupt request: %d\n", ret);
+
+	if (count) {
+		kfree(attn_data.data);
+		attn_data.data = NULL;
+	}
+
+	if (!kfifo_is_empty(&drvdata->attn_fifo))
+		return rmi_irq_fn(irq, dev_id);
 
 	return IRQ_HANDLED;
 }
@@ -233,6 +220,7 @@ static irqreturn_t rmi_irq_fn(int irq, void *dev_id)
 static int rmi_irq_init(struct rmi_device *rmi_dev)
 {
 	struct rmi_device_platform_data *pdata = rmi_get_platform_data(rmi_dev);
+	struct rmi_driver_data *data = dev_get_drvdata(&rmi_dev->dev);
 	int irq_flags = irq_get_trigger_type(pdata->irq);
 	int ret;
 
@@ -249,6 +237,8 @@ static int rmi_irq_init(struct rmi_device *rmi_dev)
 
 		return ret;
 	}
+
+	data->enabled = true;
 
 	return 0;
 }
@@ -899,27 +889,23 @@ void rmi_enable_irq(struct rmi_device *rmi_dev, bool clear_wake)
 	if (data->enabled)
 		goto out;
 
-	if (irq) {
-		enable_irq(irq);
-		data->enabled = true;
-		if (clear_wake && device_may_wakeup(rmi_dev->xport->dev)) {
-			retval = disable_irq_wake(irq);
-			if (retval)
-				dev_warn(&rmi_dev->dev,
-					 "Failed to disable irq for wake: %d\n",
-					 retval);
-		}
-
-		/*
-		 * Call rmi_process_interrupt_requests() after enabling irq,
-		 * otherwise we may lose interrupt on edge-triggered systems.
-		 */
-		irq_flags = irq_get_trigger_type(pdata->irq);
-		if (irq_flags & IRQ_TYPE_EDGE_BOTH)
-			rmi_process_interrupt_requests(rmi_dev);
-	} else {
-		data->enabled = true;
+	enable_irq(irq);
+	data->enabled = true;
+	if (clear_wake && device_may_wakeup(rmi_dev->xport->dev)) {
+		retval = disable_irq_wake(irq);
+		if (retval)
+			dev_warn(&rmi_dev->dev,
+				 "Failed to disable irq for wake: %d\n",
+				 retval);
 	}
+
+	/*
+	 * Call rmi_process_interrupt_requests() after enabling irq,
+	 * otherwise we may lose interrupt on edge-triggered systems.
+	 */
+	irq_flags = irq_get_trigger_type(pdata->irq);
+	if (irq_flags & IRQ_TYPE_EDGE_BOTH)
+		rmi_process_interrupt_requests(rmi_dev);
 
 out:
 	mutex_unlock(&data->enabled_mutex);
@@ -939,22 +925,20 @@ void rmi_disable_irq(struct rmi_device *rmi_dev, bool enable_wake)
 		goto out;
 
 	data->enabled = false;
-	if (irq) {
-		disable_irq(irq);
-		if (enable_wake && device_may_wakeup(rmi_dev->xport->dev)) {
-			retval = enable_irq_wake(irq);
-			if (retval)
-				dev_warn(&rmi_dev->dev,
-					 "Failed to enable irq for wake: %d\n",
-					 retval);
-		}
-	} else {
-		/* make sure the fifo is clean */
-		while (!kfifo_is_empty(&data->attn_fifo)) {
-			count = kfifo_get(&data->attn_fifo, &attn_data);
-			if (count)
-				kfree(attn_data.data);
-		}
+	disable_irq(irq);
+	if (enable_wake && device_may_wakeup(rmi_dev->xport->dev)) {
+		retval = enable_irq_wake(irq);
+		if (retval)
+			dev_warn(&rmi_dev->dev,
+				 "Failed to enable irq for wake: %d\n",
+				 retval);
+	}
+
+	/* make sure the fifo is clean */
+	while (!kfifo_is_empty(&data->attn_fifo)) {
+		count = kfifo_get(&data->attn_fifo, &attn_data);
+		if (count)
+			kfree(attn_data.data);
 	}
 
 out:
@@ -996,8 +980,6 @@ static int rmi_driver_remove(struct device *dev)
 	struct rmi_driver_data *data = dev_get_drvdata(&rmi_dev->dev);
 
 	rmi_disable_irq(rmi_dev, false);
-
-	cancel_work_sync(&data->attn_work);
 
 	irq_domain_remove(data->irqdomain);
 	data->irqdomain = NULL;
@@ -1239,15 +1221,9 @@ static int rmi_driver_probe(struct device *dev)
 		}
 	}
 
-	if (pdata->irq) {
-		retval = rmi_irq_init(rmi_dev);
-		if (retval < 0)
-			goto err_destroy_functions;
-	}
-
-	data->enabled = true;
-
-	INIT_WORK(&data->attn_work, attn_callback);
+	retval = rmi_irq_init(rmi_dev);
+	if (retval < 0)
+		goto err_destroy_functions;
 
 	if (data->f01_container->dev.driver) {
 		/* Driver already bound, so enable ATTN now. */
