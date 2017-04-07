@@ -985,7 +985,7 @@ static struct i2c_board_info raumfeld_controller_i2c_board_info __initdata = {
 	.type	= "eeti_ts",
 	.addr	= 0x0a,
 	.resources = raumfeld_controller_resources,
-	.num_resources = ARRAY_SZIE(raumfeld_controller_resources),
+	.num_resources = ARRAY_SIZE(raumfeld_controller_resources),
 };
 
 static struct platform_device *raumfeld_common_devices[] = {
