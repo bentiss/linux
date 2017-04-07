@@ -173,96 +173,6 @@ static u8 motion_rdesc[] = {
 	0xC0                /*  End Collection                      */
 };
 
-/* PS/3 Navigation controller */
-static u8 navigation_rdesc[] = {
-	0x05, 0x01,         /*  Usage Page (Desktop),               */
-	0x09, 0x04,         /*  Usage (Joystick),                   */
-	0xA1, 0x01,         /*  Collection (Application),           */
-	0xA1, 0x02,         /*      Collection (Logical),           */
-	0x85, 0x01,         /*          Report ID (1),              */
-	0x75, 0x08,         /*          Report Size (8),            */
-	0x95, 0x01,         /*          Report Count (1),           */
-	0x15, 0x00,         /*          Logical Minimum (0),        */
-	0x26, 0xFF, 0x00,   /*          Logical Maximum (255),      */
-	0x81, 0x03,         /*          Input (Constant, Variable), */
-	0x75, 0x01,         /*          Report Size (1),            */
-	0x95, 0x13,         /*          Report Count (19),          */
-	0x15, 0x00,         /*          Logical Minimum (0),        */
-	0x25, 0x01,         /*          Logical Maximum (1),        */
-	0x35, 0x00,         /*          Physical Minimum (0),       */
-	0x45, 0x01,         /*          Physical Maximum (1),       */
-	0x05, 0x09,         /*          Usage Page (Button),        */
-	0x19, 0x01,         /*          Usage Minimum (01h),        */
-	0x29, 0x13,         /*          Usage Maximum (13h),        */
-	0x81, 0x02,         /*          Input (Variable),           */
-	0x75, 0x01,         /*          Report Size (1),            */
-	0x95, 0x0D,         /*          Report Count (13),          */
-	0x06, 0x00, 0xFF,   /*          Usage Page (FF00h),         */
-	0x81, 0x03,         /*          Input (Constant, Variable), */
-	0x15, 0x00,         /*          Logical Minimum (0),        */
-	0x26, 0xFF, 0x00,   /*          Logical Maximum (255),      */
-	0x05, 0x01,         /*          Usage Page (Desktop),       */
-	0x09, 0x01,         /*          Usage (Pointer),            */
-	0xA1, 0x00,         /*          Collection (Physical),      */
-	0x75, 0x08,         /*              Report Size (8),        */
-	0x95, 0x02,         /*              Report Count (2),       */
-	0x35, 0x00,         /*              Physical Minimum (0),   */
-	0x46, 0xFF, 0x00,   /*              Physical Maximum (255), */
-	0x09, 0x30,         /*              Usage (X),              */
-	0x09, 0x31,         /*              Usage (Y),              */
-	0x81, 0x02,         /*              Input (Variable),       */
-	0xC0,               /*          End Collection,             */
-	0x06, 0x00, 0xFF,   /*          Usage Page (FF00h),         */
-	0x95, 0x06,         /*          Report Count (6),           */
-	0x81, 0x03,         /*          Input (Constant, Variable), */
-	0x05, 0x01,         /*          Usage Page (Desktop),       */
-	0x75, 0x08,         /*          Report Size (8),            */
-	0x95, 0x05,         /*          Report Count (5),           */
-	0x09, 0x01,         /*          Usage (Pointer),            */
-	0x81, 0x02,         /*          Input (Variable),           */
-	0x06, 0x00, 0xFF,   /*          Usage Page (FF00h),         */
-	0x95, 0x01,         /*          Report Count (1),           */
-	0x81, 0x02,         /*          Input (Variable),           */
-	0x05, 0x01,         /*          Usage Page (Desktop),       */
-	0x95, 0x01,         /*          Report Count (1),           */
-	0x09, 0x01,         /*          Usage (Pointer),            */
-	0x81, 0x02,         /*          Input (Variable),           */
-	0x06, 0x00, 0xFF,   /*          Usage Page (FF00h),         */
-	0x95, 0x1E,         /*          Report Count (24),          */
-	0x81, 0x02,         /*          Input (Variable),           */
-	0x75, 0x08,         /*          Report Size (8),            */
-	0x95, 0x30,         /*          Report Count (48),          */
-	0x09, 0x01,         /*          Usage (Pointer),            */
-	0x91, 0x02,         /*          Output (Variable),          */
-	0x75, 0x08,         /*          Report Size (8),            */
-	0x95, 0x30,         /*          Report Count (48),          */
-	0x09, 0x01,         /*          Usage (Pointer),            */
-	0xB1, 0x02,         /*          Feature (Variable),         */
-	0xC0,               /*      End Collection,                 */
-	0xA1, 0x02,         /*      Collection (Logical),           */
-	0x85, 0x02,         /*          Report ID (2),              */
-	0x75, 0x08,         /*          Report Size (8),            */
-	0x95, 0x30,         /*          Report Count (48),          */
-	0x09, 0x01,         /*          Usage (Pointer),            */
-	0xB1, 0x02,         /*          Feature (Variable),         */
-	0xC0,               /*      End Collection,                 */
-	0xA1, 0x02,         /*      Collection (Logical),           */
-	0x85, 0xEE,         /*          Report ID (238),            */
-	0x75, 0x08,         /*          Report Size (8),            */
-	0x95, 0x30,         /*          Report Count (48),          */
-	0x09, 0x01,         /*          Usage (Pointer),            */
-	0xB1, 0x02,         /*          Feature (Variable),         */
-	0xC0,               /*      End Collection,                 */
-	0xA1, 0x02,         /*      Collection (Logical),           */
-	0x85, 0xEF,         /*          Report ID (239),            */
-	0x75, 0x08,         /*          Report Size (8),            */
-	0x95, 0x30,         /*          Report Count (48),          */
-	0x09, 0x01,         /*          Usage (Pointer),            */
-	0xB1, 0x02,         /*          Feature (Variable),         */
-	0xC0,               /*      End Collection,                 */
-	0xC0                /*  End Collection                      */
-};
-
 static u8 ps3remote_rdesc[] = {
 	0x05, 0x01,          /* GUsagePage Generic Desktop */
 	0x09, 0x05,          /* LUsage 0x05 [Game Pad] */
@@ -425,6 +335,40 @@ static const unsigned int buzz_keymap[] = {
 	[20] = BTN_TRIGGER_HAPPY20,
 };
 
+/* The Navigation controller is a partial DS3 and uses the same HID report
+ * and hence the same keymap indices, however not not all axes/buttons
+ * are physically present. We use the same axis and button mapping as
+ * the DS3, which uses the Linux gamepad spec.
+ */
+static const unsigned int navigation_absmap[] = {
+	[0x30] = ABS_X,
+	[0x31] = ABS_Y,
+	[0x33] = ABS_Z, /* L2 */
+};
+
+/* Buttons not physically available on the device, but still available
+ * in the reports are explicitly set to 0 for documentation purposes.
+ */
+static const unsigned int navigation_keymap[] = {
+	[0x01] = 0, /* Select */
+	[0x02] = BTN_THUMBL, /* L3 */
+	[0x03] = 0, /* R3 */
+	[0x04] = 0, /* Start */
+	[0x05] = BTN_DPAD_UP, /* Up */
+	[0x06] = BTN_DPAD_RIGHT, /* Right */
+	[0x07] = BTN_DPAD_DOWN, /* Down */
+	[0x08] = BTN_DPAD_LEFT, /* Left */
+	[0x09] = BTN_TL2, /* L2 */
+	[0x0a] = 0, /* R2 */
+	[0x0b] = BTN_TL, /* L1 */
+	[0x0c] = 0, /* R1 */
+	[0x0d] = BTN_NORTH, /* Triangle */
+	[0x0e] = BTN_EAST, /* Circle */
+	[0x0f] = BTN_SOUTH, /* Cross */
+	[0x10] = BTN_WEST, /* Square */
+	[0x11] = BTN_MODE, /* PS */
+};
+
 static const unsigned int sixaxis_absmap[] = {
 	[0x30] = ABS_X,
 	[0x31] = ABS_Y,
@@ -451,7 +395,6 @@ static const unsigned int sixaxis_keymap[] = {
 	[0x10] = BTN_WEST, /* Square */
 	[0x11] = BTN_MODE, /* PS */
 };
-
 
 static const unsigned int ds4_absmap[] = {
 	[0x30] = ABS_X,
@@ -550,6 +493,9 @@ struct motion_output_report_02 {
 #define SENSOR_SUFFIX " Motion Sensors"
 #define DS4_TOUCHPAD_SUFFIX " Touchpad"
 
+/* Default to 4ms poll interval, which is same as USB (not adjustable). */
+#define DS4_BT_DEFAULT_POLL_INTERVAL_MS 4
+#define DS4_BT_MAX_POLL_INTERVAL_MS 62
 #define DS4_GYRO_RES_PER_DEG_S 1024
 #define DS4_ACC_RES_PER_G      8192
 
@@ -621,6 +567,7 @@ struct sony_sc {
 	u16 prev_timestamp;
 	unsigned int timestamp_us;
 
+	u8 ds4_bt_poll_interval;
 	enum ds4_dongle_state ds4_dongle_state;
 	/* DS4 calibration data */
 	struct ds4_calibration_data ds4_calib_data[6];
@@ -643,18 +590,49 @@ static inline void sony_schedule_work(struct sony_sc *sc,
 	}
 }
 
+static ssize_t ds4_show_poll_interval(struct device *dev,
+				struct device_attribute
+				*attr, char *buf)
+{
+	struct hid_device *hdev = to_hid_device(dev);
+	struct sony_sc *sc = hid_get_drvdata(hdev);
+
+	return snprintf(buf, PAGE_SIZE, "%i\n", sc->ds4_bt_poll_interval);
+}
+
+static ssize_t ds4_store_poll_interval(struct device *dev,
+				struct device_attribute *attr,
+				const char *buf, size_t count)
+{
+	struct hid_device *hdev = to_hid_device(dev);
+	struct sony_sc *sc = hid_get_drvdata(hdev);
+	unsigned long flags;
+	u8 interval;
+
+	if (kstrtou8(buf, 0, &interval))
+		return -EINVAL;
+
+	if (interval > DS4_BT_MAX_POLL_INTERVAL_MS)
+		return -EINVAL;
+
+	spin_lock_irqsave(&sc->lock, flags);
+	sc->ds4_bt_poll_interval = interval;
+	spin_unlock_irqrestore(&sc->lock, flags);
+
+	sony_schedule_work(sc, SONY_WORKER_STATE);
+
+	return count;
+}
+
+static DEVICE_ATTR(bt_poll_interval, 0644, ds4_show_poll_interval,
+		ds4_store_poll_interval);
+
+
 static u8 *motion_fixup(struct hid_device *hdev, u8 *rdesc,
 			     unsigned int *rsize)
 {
 	*rsize = sizeof(motion_rdesc);
 	return motion_rdesc;
-}
-
-static u8 *navigation_fixup(struct hid_device *hdev, u8 *rdesc,
-			     unsigned int *rsize)
-{
-	*rsize = sizeof(navigation_rdesc);
-	return navigation_rdesc;
 }
 
 static u8 *ps3remote_fixup(struct hid_device *hdev, u8 *rdesc,
@@ -697,6 +675,54 @@ static int ps3remote_mapping(struct hid_device *hdev, struct hid_input *hi,
 	hid_map_usage_clear(hi, usage, bit, max, EV_KEY, key);
 	return 1;
 }
+
+static int navigation_mapping(struct hid_device *hdev, struct hid_input *hi,
+			  struct hid_field *field, struct hid_usage *usage,
+			  unsigned long **bit, int *max)
+{
+	if ((usage->hid & HID_USAGE_PAGE) == HID_UP_BUTTON) {
+		unsigned int key = usage->hid & HID_USAGE;
+
+		if (key >= ARRAY_SIZE(sixaxis_keymap))
+			return -1;
+
+		key = navigation_keymap[key];
+		if (!key)
+			return -1;
+
+		hid_map_usage_clear(hi, usage, bit, max, EV_KEY, key);
+		return 1;
+	} else if (usage->hid == HID_GD_POINTER) {
+		/* See comment in sixaxis_mapping, basically the L2 (and R2)
+		 * triggers are reported through GD Pointer.
+		 * In addition we ignore any analog button 'axes' and only
+		 * support digital buttons.
+		 */
+		switch (usage->usage_index) {
+		case 8: /* L2 */
+			usage->hid = HID_GD_Z;
+			break;
+		default:
+			return -1;
+		}
+
+		hid_map_usage_clear(hi, usage, bit, max, EV_ABS, usage->hid & 0xf);
+		return 1;
+	} else if ((usage->hid & HID_USAGE_PAGE) == HID_UP_GENDESK) {
+		unsigned int abs = usage->hid & HID_USAGE;
+
+		if (abs >= ARRAY_SIZE(navigation_absmap))
+			return -1;
+
+		abs = navigation_absmap[abs];
+
+		hid_map_usage_clear(hi, usage, bit, max, EV_ABS, abs);
+		return 1;
+	}
+
+	return -1;
+}
+
 
 static int sixaxis_mapping(struct hid_device *hdev, struct hid_input *hi,
 			  struct hid_field *field, struct hid_usage *usage,
@@ -803,9 +829,6 @@ static u8 *sony_report_fixup(struct hid_device *hdev, u8 *rdesc,
 
 	if (sc->quirks & MOTION_CONTROLLER)
 		return motion_fixup(hdev, rdesc, rsize);
-
-	if (sc->quirks & NAVIGATION_CONTROLLER)
-		return navigation_fixup(hdev, rdesc, rsize);
 
 	if (sc->quirks & PS3REMOTE)
 		return ps3remote_fixup(hdev, rdesc, rsize);
@@ -1198,6 +1221,9 @@ static int sony_mapping(struct hid_device *hdev, struct hid_input *hi,
 
 	if (sc->quirks & PS3REMOTE)
 		return ps3remote_mapping(hdev, hi, field, usage, bit, max);
+
+	if (sc->quirks & NAVIGATION_CONTROLLER)
+		return navigation_mapping(hdev, hi, field, usage, bit, max);
 
 	if (sc->quirks & SIXAXIS_CONTROLLER)
 		return sixaxis_mapping(hdev, hi, field, usage, bit, max);
@@ -1644,10 +1670,10 @@ static void dualshock4_set_leds_from_id(struct sony_sc *sc)
 {
 	/* The first 4 color/index entries match what the PS4 assigns */
 	static const u8 color_code[7][3] = {
-			/* Blue   */	{ 0x00, 0x00, 0x01 },
-			/* Red	  */	{ 0x01, 0x00, 0x00 },
-			/* Green  */	{ 0x00, 0x01, 0x00 },
-			/* Pink   */	{ 0x02, 0x00, 0x01 },
+			/* Blue   */	{ 0x00, 0x00, 0x40 },
+			/* Red	  */	{ 0x40, 0x00, 0x00 },
+			/* Green  */	{ 0x00, 0x40, 0x00 },
+			/* Pink   */	{ 0x20, 0x00, 0x20 },
 			/* Orange */	{ 0x02, 0x01, 0x00 },
 			/* Teal   */	{ 0x00, 0x01, 0x01 },
 			/* White  */	{ 0x01, 0x01, 0x01 }
@@ -2001,26 +2027,24 @@ static void dualshock4_send_output_report(struct sony_sc *sc)
 	int offset;
 
 	/*
-	 * NOTE: The buf[1] field of the Bluetooth report controls
-	 * the Dualshock 4 reporting rate.
-	 *
-	 * Known values include:
-	 *
-	 * 0x80 - 1000hz (full speed)
-	 * 0xA0 - 31hz
-	 * 0xB0 - 20hz
-	 * 0xD0 - 66hz
+	 * NOTE: The lower 6 bits of buf[1] field of the Bluetooth report
+	 * control the interval at which Dualshock 4 reports data:
+	 * 0x00 - 1ms
+	 * 0x01 - 1ms
+	 * 0x02 - 2ms
+	 * 0x3E - 62ms
+	 * 0x3F - disabled
 	 */
 	if (sc->quirks & (DUALSHOCK4_CONTROLLER_USB | DUALSHOCK4_DONGLE)) {
 		memset(buf, 0, DS4_OUTPUT_REPORT_0x05_SIZE);
 		buf[0] = 0x05;
-		buf[1] = 0xFF;
+		buf[1] = 0x07; /* blink + LEDs + motor */
 		offset = 4;
 	} else {
 		memset(buf, 0, DS4_OUTPUT_REPORT_0x11_SIZE);
 		buf[0] = 0x11;
-		buf[1] = 0xC0; /* HID + CRC */
-		buf[3] = 0x0F;
+		buf[1] = 0xC0 /* HID + CRC */ | sc->ds4_bt_poll_interval;
+		buf[3] = 0x07; /* blink + LEDs + motor */
 		offset = 6;
 	}
 
@@ -2400,6 +2424,12 @@ static int sony_check_add(struct sony_sc *sc)
 		 */
 		for (n = 0; n < 6; n++)
 			sc->mac_address[5-n] = buf[4+n];
+
+		snprintf(sc->hdev->uniq, sizeof(sc->hdev->uniq),
+			"%02hhx:%02hhx:%02hhx:%02hhx:%02hhx:%02hhx",
+			sc->mac_address[5], sc->mac_address[4],
+			sc->mac_address[3], sc->mac_address[2],
+			sc->mac_address[1], sc->mac_address[0]);
 	} else {
 		return 0;
 	}
@@ -2463,6 +2493,7 @@ static inline void sony_cancel_work_sync(struct sony_sc *sc)
 	if (sc->state_worker_initialized)
 		cancel_work_sync(&sc->state_worker);
 }
+
 
 static int sony_input_configured(struct hid_device *hdev,
 					struct hid_input *hidinput)
@@ -2601,6 +2632,15 @@ static int sony_input_configured(struct hid_device *hdev,
 			goto err_stop;
 		}
 
+		if (sc->quirks & DUALSHOCK4_CONTROLLER_BT) {
+			sc->ds4_bt_poll_interval = DS4_BT_DEFAULT_POLL_INTERVAL_MS;
+			ret = device_create_file(&sc->hdev->dev, &dev_attr_bt_poll_interval);
+			if (ret)
+				hid_warn(sc->hdev,
+				 "can't create sysfs bt_poll_interval attribute err: %d\n",
+				 ret);
+		}
+
 		if (sc->quirks & DUALSHOCK4_DONGLE) {
 			INIT_WORK(&sc->hotplug_worker, dualshock4_calibration_work);
 			sc->hotplug_worker_initialized = 1;
@@ -2613,9 +2653,6 @@ static int sony_input_configured(struct hid_device *hdev,
 	} else {
 		ret = 0;
 	}
-
-	if (ret < 0)
-		goto err_stop;
 
 	if (sc->quirks & SONY_LED_SUPPORT) {
 		ret = sony_leds_init(sc);
@@ -2646,12 +2683,20 @@ static int sony_input_configured(struct hid_device *hdev,
 err_close:
 	hid_hw_close(hdev);
 err_stop:
+	/* Piggy back on the default ds4_bt_ poll_interval to determine
+	 * if we need to remove the file as we don't know for sure if we
+	 * executed that logic.
+	 */
+	if (sc->ds4_bt_poll_interval)
+		device_remove_file(&sc->hdev->dev, &dev_attr_bt_poll_interval);
 	if (sc->quirks & SONY_LED_SUPPORT)
 		sony_leds_remove(sc);
 	if (sc->quirks & SONY_BATTERY_SUPPORT)
 		sony_battery_remove(sc);
 	if (sc->touchpad)
 		sony_unregister_touchpad(sc);
+	if (sc->sensor_dev)
+		sony_unregister_sensors(sc);
 	sony_cancel_work_sync(sc);
 	kfree(sc->output_report_dmabuf);
 	sony_remove_dev_list(sc);
@@ -2742,8 +2787,8 @@ static void sony_remove(struct hid_device *hdev)
 	if (sc->sensor_dev)
 		sony_unregister_sensors(sc);
 
-	if (sc->sensor_dev)
-		sony_unregister_sensors(sc);
+	if (sc->quirks & DUALSHOCK4_CONTROLLER_BT)
+		device_remove_file(&sc->hdev->dev, &dev_attr_bt_poll_interval);
 
 	sony_cancel_work_sync(sc);
 
