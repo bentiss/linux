@@ -705,7 +705,13 @@
 #define REL_DIAL		0x07
 #define REL_WHEEL		0x08
 #define REL_MISC		0x09
-#define REL_MAX			0x0f
+#define REL_MISC_1		0x0a
+#define REL_MISC_2		0x0b
+#define REL_MISC_3		0x0c
+#define REL_MISC_4		0x0d
+#define REL_MISC_5		0x0e
+#define REL_MISC_6		0x0f
+#define REL_MAX			0x1f
 #define REL_CNT			(REL_MAX+1)
 
 /*
