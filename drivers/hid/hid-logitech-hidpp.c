@@ -2263,6 +2263,19 @@ static int hidpp_mouse_set_wheel_mode(struct hidpp_device *hidpp,
 			return ret;
 	}
 
+	ret = hidpp_send_fap_command_sync(hidpp, hrd->feature_index,
+					  CMD_MOUSE_GET_WHEEL_RATCHET,
+					  params, 0, &response);
+	if (ret > 0) {
+		hid_err(hidpp->hid_dev, "%s: received protocol error 0x%02x\n",
+			__func__, ret);
+		return -EPROTO;
+	}
+	if (ret)
+		return ret;
+
+	hrd->ratchet = response.fap.params[0] & 0x01;
+
 	params[0] = (invert     ? BIT(2) : 0)  |
 		    (high_res   ? BIT(1) : 0)  |
 		    (hidpp_mode ? BIT(0) : 0);
@@ -2796,9 +2809,10 @@ static int high_res_raw_event(struct hid_device *hdev, u8 *data, int size)
 			input_report_rel(hrd->input, REL_HIRES_WHEEL, delta);
 		else
 			input_report_rel(hrd->input, REL_WHEEL, delta);
+	} else if (data[3] == 0x10) {
+		hrd->ratchet = data[4] & 0x01;
+		input_report_switch(hrd->input, SW_RATCHET, hrd->ratchet);
 	}
-
-	/* FIXME: also report ratchet events to userspace */
 
 	return 1;
 }
@@ -2812,6 +2826,11 @@ static void high_res_populate_input(struct hidpp_device *hidpp,
 
 	__set_bit(REL_WHEEL, hrd->input->relbit);
 	__set_bit(REL_HIRES_WHEEL, hrd->input->relbit);
+	__set_bit(EV_SW, hrd->input->evbit);
+	__set_bit(SW_RATCHET, hrd->input->swbit);
+
+	/* Report current state of the ratchet switch */
+	input_report_switch(hrd->input, SW_RATCHET, hrd->ratchet);
 }
 
 
