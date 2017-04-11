@@ -250,9 +250,20 @@ Upon resume, if the switch state is the same as before suspend, then the input
 subsystem will filter out the duplicate switch state reports. The driver does
 not need to keep the state of the switch at any time.
 
-EV_MSC
-------
+A few EV_SW codes have special meanings:
 
+* SW_RATCHET:
+
+  - Some mice have a special switch for their wheel that allows to change
+    between free wheel mode and ratchet mode. When the switch is ratchet
+    mode (ON state), the wheel will offer some resistance for movements. It
+    may also provide a tactile feedback when scrolled.
+
+    Note that some mice have a ratchet switch that does not generate a
+    software event.
+
+EV_MSC:
+----------
 EV_MSC events are used for input and output events that do not fall under other
 categories.
 
