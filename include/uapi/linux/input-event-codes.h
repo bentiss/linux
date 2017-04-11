@@ -711,6 +711,7 @@
 #define REL_MISC_4		0x0d
 #define REL_MISC_5		0x0e
 #define REL_MISC_6		0x0f
+#define REL_HIRES_WHEEL		0x10
 #define REL_MAX			0x1f
 #define REL_CNT			(REL_MAX+1)
 

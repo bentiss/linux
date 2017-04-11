@@ -187,10 +187,20 @@ instead of EV_REL codes.
 
 A few EV_REL codes have special meanings:
 
-* REL_WHEEL, REL_HWHEEL:
+* REL_WHEEL:
 
-  - These codes are used for vertical and horizontal scroll wheels,
-    respectively.
+  - These codes are used for vertical scroll wheels.
+
+  - REL_WHEEL is for normal wheel operational mode, e. g. low-resolution
+    (line-based) scroll.
+
+  - REL_HIRES_WHEEL should be used when the wheel has two resolutions and it
+    is in high-resolution mode, e. g. the same angular movement that would
+    produce a single REL_WHEEL will produce multiple REL_HIRES_WHEEL events.
+
+* REL_HWHEEL:
+
+  - This code is used for horizontal scroll wheels.
 
 EV_ABS
 ------
