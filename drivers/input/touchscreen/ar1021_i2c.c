@@ -1,5 +1,5 @@
 /*
- * Microchip AR1021 driver for I2C
+ * Microchip AR1020 and AR1021 driver for I2C
  *
  * Author: Christian Gmeiner <christian.gmeiner@gmail.com>
  *
@@ -109,7 +109,7 @@ static int ar1021_i2c_probe(struct i2c_client *client,
 
 	error = devm_request_threaded_irq(&client->dev, client->irq,
 					  NULL, ar1021_i2c_irq,
-					  IRQF_TRIGGER_RISING | IRQF_ONESHOT,
+					  IRQF_ONESHOT,
 					  "ar1021_i2c", ar1021);
 	if (error) {
 		dev_err(&client->dev,
@@ -151,7 +151,7 @@ static int __maybe_unused ar1021_i2c_resume(struct device *dev)
 static SIMPLE_DEV_PM_OPS(ar1021_i2c_pm, ar1021_i2c_suspend, ar1021_i2c_resume);
 
 static const struct i2c_device_id ar1021_i2c_id[] = {
-	{ "MICROCHIP_AR1021_I2C", 0 },
+	{ "ar1021", 0 },
 	{ },
 };
 MODULE_DEVICE_TABLE(i2c, ar1021_i2c_id);
@@ -175,5 +175,5 @@ static struct i2c_driver ar1021_i2c_driver = {
 module_i2c_driver(ar1021_i2c_driver);
 
 MODULE_AUTHOR("Christian Gmeiner <christian.gmeiner@gmail.com>");
-MODULE_DESCRIPTION("Microchip AR1021 I2C Driver");
+MODULE_DESCRIPTION("Microchip AR1020 and AR1021 I2C Driver");
 MODULE_LICENSE("GPL");
