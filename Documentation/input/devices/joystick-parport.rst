@@ -2,9 +2,9 @@
 
 .. _joystick-parport:
 
-===================================
-Linux Joystick parport drivers v2.0
-===================================
+==============================
+Parallel Port Joystick Drivers
+==============================
 
 :Copyright: |copy| 1998-2000 Vojtech Pavlik <vojtech@ucw.cz>
 :Copyright: |copy| 1998 Andree Borrmann <a.borrmann@tu-bs.de>
@@ -20,8 +20,8 @@ it will be true. So, use it at your own risk. The possible damages that can
 happen include burning your parallel port, and/or the sticks and joystick
 and maybe even more. Like when a lightning kills you it is not our problem.
 
-Intro
-=====
+Introduction
+============
 
 The joystick parport drivers are used for joysticks and gamepads not
 originally designed for PCs and other computers Linux runs on. Because of
@@ -443,6 +443,43 @@ parallel port::
 The other pins (Up, Down, Right, Left, Power, Ground) are the same as for
 Multi joysticks using db9.c
 
+Amiga CD32
+----------
+
+Amiga CD32 joypad uses the following pinout::
+
+        +-----------> Button 3
+        | +---------> Right
+        | | +-------> Left
+        | | | +-----> Down
+        | | | | +---> Up
+        | | | | |
+      _____________
+    5 \ o o o o o / 1
+       \ o o o o /
+      9 `~~~~~~~' 6
+        | | | |
+        | | | +----> Button 1
+        | | +------> Power
+        | +--------> Ground
+        +----------> Button 2
+
+It can be connected to the parallel port and driven by db9.c driver. It needs the following wiring:
+
+	============    =============
+	CD32 pad        Parallel port
+	============    =============
+	1 (Up)           2 (D0)
+	2 (Down)         3 (D1)
+	3 (Left)         4 (D2)
+	4 (Right)        5 (D3)
+	5 (Button 3)    14 (AUTOFD)
+	6 (Button 1)    17 (SELIN)
+	7 (+5V)          1 (STROBE)
+	8 (Gnd)         18 (Gnd)
+	9 (Button 2)     7 (D5)
+	============    =============
+
 The drivers
 ===========
 
@@ -545,7 +582,7 @@ use turbografx.map2 and turbografx.map3 as additional command line parameters
 for two more interfaces.
 
 PC parallel port pinout
------------------------
+=======================
 
 ::
 
