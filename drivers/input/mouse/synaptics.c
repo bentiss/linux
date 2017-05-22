@@ -1750,10 +1750,13 @@ static int synaptics_create_intertouch(struct psmouse *psmouse,
 				!!SYN_CAP_EXT_BUTTONS_STICK(info->ext_cap_10),
 		},
 	};
-	const struct i2c_board_info intertouch_board = {
+	struct i2c_board_info intertouch_board = {
 		I2C_BOARD_INFO("rmi4_smbus", 0x2c),
 		.flags = I2C_CLIENT_HOST_NOTIFY,
 	};
+
+	if (psmouse_matches_pnp_id(psmouse, forcepad_pnp_ids))
+		intertouch_board.addr = 0x20;
 
 	return psmouse_smbus_init(psmouse, &intertouch_board,
 				  &pdata, sizeof(pdata), true,
