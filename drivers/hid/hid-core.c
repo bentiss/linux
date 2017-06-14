@@ -1597,8 +1597,8 @@ unlock:
 }
 EXPORT_SYMBOL_GPL(hid_input_report);
 
-static bool hid_match_one_id(struct hid_device *hdev,
-		const struct hid_device_id *id)
+bool hid_match_one_id(const struct hid_device *hdev,
+		      const struct hid_device_id *id)
 {
 	return (id->bus == HID_BUS_ANY || id->bus == hdev->bus) &&
 		(id->group == HID_GROUP_ANY || id->group == hdev->group) &&
@@ -2933,6 +2933,8 @@ int hid_add_device(struct hid_device *hdev)
 	if (WARN_ON(hdev->status & HID_STAT_ADDED))
 		return -EBUSY;
 
+	hdev->quirks = hid_lookup_quirk(hdev);
+
 	/* we need to kill them here, otherwise they will stay allocated to
 	 * wait for coming driver */
 	if (hid_ignore(hdev))
@@ -3120,6 +3122,7 @@ static void __exit hid_exit(void)
 	hid_debug_exit();
 	hidraw_exit();
 	bus_unregister(&hid_bus_type);
+	hid_quirks_exit(HID_BUS_ANY);
 }
 
 module_init(hid_init);
