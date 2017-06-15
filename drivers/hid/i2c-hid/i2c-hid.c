@@ -1192,7 +1192,7 @@ static int i2c_hid_resume(struct device *dev)
 			ihid->irq_wake_enabled = false;
 		else
 			hid_warn(hid, "Failed to disable irq wake: %d\n",
-					wake_status);
+				wake_status);
 	}
 
 	/* We'll resume to full power */
