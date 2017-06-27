@@ -1719,6 +1719,7 @@ int elantech_query_info(struct psmouse *psmouse, struct elantech_device_info *in
 			info->x_res = elantech_convert_res(param[1] & 0x0f);
 			info->y_res = elantech_convert_res((param[1] & 0xf0) >> 4);
 			info->bus = param[2];
+			pr_err("%s interface: %3ph %s:%d\n", __func__, param, __FILE__, __LINE__);
 		}
 	}
 
@@ -1946,6 +1947,7 @@ int elantech_init(struct psmouse *psmouse)
 	if (error)
 		goto init_fail;
 
+	pr_err("%s bus: %d %s:%d\n", __func__, info.bus, __FILE__, __LINE__);
 	switch (info.bus) {
 	case ETP_BUS_PS2_ONLY:
 		/* expected case */
@@ -1958,6 +1960,7 @@ int elantech_init(struct psmouse *psmouse)
 	case ETP_BUS_SMB_HST_NTFY_ONLY:
 		/* fall-through  */
 	case ETP_BUS_PS2_SMB_HST_NTFY:
+		pr_err("%s  %s:%d\n", __func__, __FILE__, __LINE__);
 		if (!IS_ENABLED(CONFIG_MOUSE_ELAN_I2C_SMBUS) ||
 		    !IS_ENABLED(CONFIG_MOUSE_PS2_ELANTECH_SMBUS)) {
 			psmouse_warn(psmouse,
