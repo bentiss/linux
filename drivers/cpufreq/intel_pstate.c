@@ -572,7 +572,7 @@ static int min_perf_pct_min(void)
 	int turbo_pstate = cpu->pstate.turbo_pstate;
 
 	return turbo_pstate ?
-		DIV_ROUND_UP(cpu->pstate.min_pstate * 100, turbo_pstate) : 0;
+		(cpu->pstate.min_pstate * 100 / turbo_pstate) : 0;
 }
 
 static s16 intel_pstate_get_epb(struct cpudata *cpu_data)
@@ -1214,7 +1214,7 @@ static struct attribute *intel_pstate_attributes[] = {
 	NULL
 };
 
-static struct attribute_group intel_pstate_attr_group = {
+static const struct attribute_group intel_pstate_attr_group = {
 	.attrs = intel_pstate_attributes,
 };
 
@@ -1616,9 +1616,6 @@ static inline int32_t get_target_pstate_use_cpu_load(struct cpudata *cpu)
 	int32_t busy_frac, boost;
 	int target, avg_pstate;
 
-	if (cpu->policy == CPUFREQ_POLICY_PERFORMANCE)
-		return cpu->pstate.turbo_pstate;
-
 	busy_frac = div_fp(sample->mperf, sample->tsc);
 
 	boost = cpu->iowait_boost;
@@ -1654,9 +1651,6 @@ static inline int32_t get_target_pstate_use_performance(struct cpudata *cpu)
 {
 	int32_t perf_scaled, max_pstate, current_pstate, sample_ratio;
 	u64 duration_ns;
-
-	if (cpu->policy == CPUFREQ_POLICY_PERFORMANCE)
-		return cpu->pstate.turbo_pstate;
 
 	/*
 	 * perf_scaled is the ratio of the average P-state during the last

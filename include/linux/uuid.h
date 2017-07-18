@@ -18,8 +18,10 @@
 
 #include <uapi/linux/uuid.h>
 
+#define UUID_SIZE 16
+
 typedef struct {
-	__u8 b[16];
+	__u8 b[UUID_SIZE];
 } uuid_t;
 
 #define UUID_INIT(a, b, c, d0, d1, d2, d3, d4, d5, d6, d7)			\
@@ -48,7 +50,7 @@ static inline void guid_copy(guid_t *dst, const guid_t *src)
 	memcpy(dst, src, sizeof(guid_t));
 }
 
-static inline bool guid_is_null(guid_t *guid)
+static inline bool guid_is_null(const guid_t *guid)
 {
 	return guid_equal(guid, &guid_null);
 }
@@ -63,7 +65,7 @@ static inline void uuid_copy(uuid_t *dst, const uuid_t *src)
 	memcpy(dst, src, sizeof(uuid_t));
 }
 
-static inline bool uuid_is_null(uuid_t *uuid)
+static inline bool uuid_is_null(const uuid_t *uuid)
 {
 	return uuid_equal(uuid, &uuid_null);
 }
