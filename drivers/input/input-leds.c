@@ -175,6 +175,8 @@ static void input_leds_disconnect(struct input_handle *handle)
 	struct input_leds *leds = handle->private;
 	int i;
 
+	input_close_device(handle);
+
 	for (i = 0; i < leds->num_leds; i++) {
 		struct input_led *led = &leds->leds[i];
 
@@ -182,7 +184,6 @@ static void input_leds_disconnect(struct input_handle *handle)
 		kfree(led->cdev.name);
 	}
 
-	input_close_device(handle);
 	input_unregister_handle(handle);
 
 	kfree(leds);
