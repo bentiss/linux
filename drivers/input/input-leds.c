@@ -66,11 +66,6 @@ static void input_leds_brightness_set(struct led_classdev *cdev,
 	input_inject_event(led->handle, EV_LED, led->code, !!brightness);
 }
 
-static void input_leds_event(struct input_handle *handle, unsigned int type,
-			     unsigned int code, int value)
-{
-}
-
 static int input_leds_get_count(struct input_dev *dev)
 {
 	unsigned int led_code;
@@ -199,7 +194,6 @@ static const struct input_device_id input_leds_ids[] = {
 MODULE_DEVICE_TABLE(input, input_leds_ids);
 
 static struct input_handler input_leds_handler = {
-	.event =	input_leds_event,
 	.connect =	input_leds_connect,
 	.disconnect =	input_leds_disconnect,
 	.name =		"leds",
