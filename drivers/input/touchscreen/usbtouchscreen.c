@@ -1479,7 +1479,7 @@ static void usbtouch_close(struct input_dev *input)
 	if (!usbtouch->type->irq_always)
 		usb_kill_urb(usbtouch->irq);
 	usbtouch->is_open = false;
-	mutex_lock(&usbtouch->pm_mutex);
+	mutex_unlock(&usbtouch->pm_mutex);
 
 	r = usb_autopm_get_interface(usbtouch->interface);
 	usbtouch->interface->needs_remote_wakeup = 0;
