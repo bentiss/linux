@@ -12,6 +12,9 @@ Optional properties for Touchscreens:
  - touchscreen-min-pressure	: minimum pressure on the touchscreen to be
 				  achieved in order for the touchscreen
 				  driver to report a touch event.
+ - touchscreen-max-width	: maximum reported touch width, in surface units
+ - touchscreen-max-height	: maximum reported touch height, in surface
+				  units
  - touchscreen-fuzz-x		: horizontal noise value of the absolute input
 				  device (in pixels)
  - touchscreen-fuzz-y		: vertical noise value of the absolute input
