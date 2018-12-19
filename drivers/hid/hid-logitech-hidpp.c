@@ -717,8 +717,27 @@ static int hidpp10_battery_event(struct hidpp_device *hidpp, u8 *data, int size)
 }
 
 #define HIDPP_REG_PAIRING_INFORMATION			0xB5
+#define HIDPP_PAIRING_INFORMATION			0x20
 #define HIDPP_EXTENDED_PAIRING				0x30
 #define HIDPP_DEVICE_NAME				0x40
+
+static int hidpp_unifying_get_type(struct hidpp_device *hidpp_dev)
+{
+	struct hidpp_report response;
+	int ret;
+	u8 params[1] = { HIDPP_PAIRING_INFORMATION };
+
+	ret = hidpp_send_rap_command_sync(hidpp_dev,
+					  REPORT_ID_HIDPP_SHORT,
+					  HIDPP_GET_LONG_REGISTER,
+					  HIDPP_REG_PAIRING_INFORMATION,
+					  params, 1, &response);
+	if (ret)
+		return ret;
+
+	return response.rap.params[7];
+
+}
 
 static char *hidpp_unifying_get_name(struct hidpp_device *hidpp_dev)
 {
@@ -740,6 +759,9 @@ static char *hidpp_unifying_get_name(struct hidpp_device *hidpp_dev)
 
 	if (2 + len > sizeof(response.rap.params))
 		return NULL;
+
+	if (len < 4) /* logitech devices are usually at least Xddd */
+		return 0;
 
 	name = kzalloc(len + 1, GFP_KERNEL);
 	if (!name)
@@ -778,7 +800,7 @@ static int hidpp_unifying_get_serial(struct hidpp_device *hidpp, u32 *serial)
 static int hidpp_unifying_init(struct hidpp_device *hidpp)
 {
 	struct hid_device *hdev = hidpp->hid_dev;
-	const char *name;
+	const char *name = NULL;
 	u32 serial;
 	int ret;
 
@@ -791,8 +813,35 @@ static int hidpp_unifying_init(struct hidpp_device *hidpp)
 	dbg_hid("HID++ Unifying: Got serial: %s\n", hdev->uniq);
 
 	name = hidpp_unifying_get_name(hidpp);
-	if (!name)
-		return -EIO;
+	if (!name) {
+		ret = hidpp_unifying_get_type(hidpp);
+		if (ret < 0)
+			return ret;
+
+		switch (ret) {
+		case 0x01:
+			name = "Logitech Wireless Keyboard";
+			break;
+		case 0x02:
+			name = "Logitech Wireless Mouse";
+			break;
+		case 0x03:
+			name = "Logitech Wireless Numpad";
+			break;
+		case 0x04:
+			name = "Logitech Wireless Presenter";
+			break;
+		case 0x08:
+			name = "Logitech Wireless Trackball";
+			break;
+		case 0x09:
+			name = "Logitech Wireless Touchpad";
+			break;
+		}
+		if (name)
+			snprintf(hdev->name, sizeof(hdev->name), "%s", name);
+		return 0;
+	}
 
 	snprintf(hdev->name, sizeof(hdev->name), "%s", name);
 	dbg_hid("HID++ Unifying: Got name: %s\n", name);
