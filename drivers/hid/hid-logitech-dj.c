@@ -99,6 +99,7 @@
 #define POWER_KEYS				BIT(4)
 #define MEDIA_CENTER				BIT(8)
 #define KBD_LEDS				BIT(14)
+#define HIGRES_MOUSE				BIT(31) /* custom for non DJ */
 
 /* HID++ Device Connected Notification */
 #define REPORT_TYPE_NOTIF_DEVICE_CONNECTED	0x41
@@ -254,6 +255,44 @@ static const char mse_descriptor[] = {
 	0xC0,			/*  END_COLLECTION                      */
 };
 
+/* Gaming Mouse descriptor (21)     */
+static const char mse_high_res_descriptor[] = {
+	0x05, 0x01,		/*  USAGE_PAGE (Generic Desktop)        */
+	0x09, 0x02,		/*  USAGE (Mouse)                       */
+	0xA1, 0x01,		/*  COLLECTION (Application)            */
+	0x85, 0x02,		/*    REPORT_ID = 2                     */
+	0x09, 0x01,		/*    USAGE (pointer)                   */
+	0xA1, 0x00,		/*    COLLECTION (physical)             */
+	0x05, 0x09,		/*      USAGE_PAGE (buttons)            */
+	0x19, 0x01,		/*      USAGE_MIN (1)                   */
+	0x29, 0x10,		/*      USAGE_MAX (16)                  */
+	0x15, 0x00,		/*      LOGICAL_MIN (0)                 */
+	0x25, 0x01,		/*      LOGICAL_MAX (1)                 */
+	0x95, 0x10,		/*      REPORT_COUNT (16)               */
+	0x75, 0x01,		/*      REPORT_SIZE (1)                 */
+	0x81, 0x02,		/*      INPUT (data var abs)            */
+	0x05, 0x01,		/*      USAGE_PAGE (generic desktop)    */
+	0x16, 0x01, 0x80,	/*      LOGICAL_MIN (-32767)            */
+	0x26, 0xFF, 0x7F,	/*      LOGICAL_MAX (32767)             */
+	0x75, 0x10,		/*      REPORT_SIZE (16)                */
+	0x95, 0x02,		/*      REPORT_COUNT (2)                */
+	0x09, 0x30,		/*      USAGE (X)                       */
+	0x09, 0x31,		/*      USAGE (Y)                       */
+	0x81, 0x06,		/*      INPUT                           */
+	0x15, 0x81,		/*      LOGICAL_MIN (-127)              */
+	0x25, 0x7F,		/*      LOGICAL_MAX (127)               */
+	0x75, 0x08,		/*      REPORT_SIZE (8)                 */
+	0x95, 0x01,		/*      REPORT_COUNT (1)                */
+	0x09, 0x38,		/*      USAGE (wheel)                   */
+	0x81, 0x06,		/*      INPUT                           */
+	0x05, 0x0C,		/*      USAGE_PAGE(consumer)            */
+	0x0A, 0x38, 0x02,	/*      USAGE(AC Pan)                   */
+	0x95, 0x01,		/*      REPORT_COUNT (1)                */
+	0x81, 0x06,		/*      INPUT                           */
+	0xC0,			/*    END_COLLECTION                    */
+	0xC0,			/*  END_COLLECTION                      */
+};
+
 /* Consumer Control descriptor (3) */
 static const char consumer_descriptor[] = {
 	0x05, 0x0C,		/* USAGE_PAGE (Consumer Devices)       */
@@ -363,6 +402,7 @@ static const char hidpp_descriptor[] = {
 #define MAX_RDESC_SIZE				\
 	(sizeof(kbd_descriptor) +		\
 	 sizeof(mse_descriptor) +		\
+	 sizeof(mse_high_res_descriptor) +	\
 	 sizeof(consumer_descriptor) +		\
 	 sizeof(syscontrol_descriptor) +	\
 	 sizeof(media_descriptor) +	\
@@ -581,7 +621,8 @@ static void logi_dj_recv_add_djhid_device(struct dj_receiver_dev *djrcv_dev,
 	 */
 	unsigned char tmpstr[3];
 
-	if (djrcv_dev->paired_dj_devices[device_index]) {
+	if (djrcv_dev->type != recvr_type_gaming_hidpp &&
+	    djrcv_dev->paired_dj_devices[device_index]) {
 		/* The device is already known. No need to reallocate it. */
 		dbg_hid("%s: device is already known\n", __func__);
 		return;
@@ -591,10 +632,17 @@ static void logi_dj_recv_add_djhid_device(struct dj_receiver_dev *djrcv_dev,
 		if ((workitem->reports_supported & STD_KEYBOARD) &&
 		    djrcv_dev->shared->keyboard)
 			parent_hdev = djrcv_dev->shared->keyboard;
-		else if ((workitem->reports_supported & STD_MOUSE) &&
+		else if ((workitem->reports_supported & (STD_MOUSE|HIGRES_MOUSE)) &&
 			 djrcv_dev->shared->mouse)
 			parent_hdev = djrcv_dev->shared->mouse;
 		parent = hid_get_drvdata(parent_hdev);
+
+		if (parent->self_dj_device) {
+			/* The device is already known. No need to
+			 * reallocate it. */
+			dbg_hid("%s: device is already known\n", __func__);
+			return;
+		}
 	}
 
 	if (!devres_open_group(&parent_hdev->dev,
@@ -650,7 +698,12 @@ static void logi_dj_recv_add_djhid_device(struct dj_receiver_dev *djrcv_dev,
 	dj_dev->device_index = device_index;
 	dj_hiddev->driver_data = dj_dev;
 
-	djrcv_dev->paired_dj_devices[device_index] = dj_dev;
+	/*
+	 * The gaming receivers might have more than one DJ dev, keep only
+	 * the first.
+	 */
+	if (!djrcv_dev->paired_dj_devices[device_index])
+		djrcv_dev->paired_dj_devices[device_index] = dj_dev;
 
 	/* in the non DJ case, we store the HID++ node. */
 	if (djrcv_dev->type != recvr_type_dj)
@@ -852,7 +905,10 @@ static void logi_hidpp_recv_queue_notif(struct dj_receiver_dev *djrcv_dev,
 			workitem.reports_supported |= STD_KEYBOARD;
 			break;
 		case REPORT_TYPE_MOUSE:
-			workitem.reports_supported |= STD_MOUSE;
+			if (djrcv_dev->type == recvr_type_dual_hidpp)
+				workitem.reports_supported |= STD_MOUSE;
+			else if (djrcv_dev->type == recvr_type_gaming_hidpp)
+				workitem.reports_supported |= HIGRES_MOUSE;
 			workitem.reports_supported |= MULTIMEDIA |
 						      POWER_KEYS |
 						      MEDIA_CENTER;
@@ -876,6 +932,20 @@ static void logi_hidpp_recv_queue_notif(struct dj_receiver_dev *djrcv_dev,
 	}
 
 	kfifo_in(&djrcv_dev->notif_fifo, &workitem, sizeof(workitem));
+
+	if (schedule_work(&djrcv_dev->work) == 0) {
+		dbg_hid("%s: did not schedule the work item, was already "
+			"queued\n", __func__);
+	}
+
+	if (djrcv_dev->type == recvr_type_gaming_hidpp) {
+		workitem.reports_supported ^= STD_KEYBOARD |
+					      HIGRES_MOUSE |
+					      MULTIMEDIA |
+					      POWER_KEYS |
+					      MEDIA_CENTER;
+		kfifo_in(&djrcv_dev->notif_fifo, &workitem, sizeof(workitem));
+	}
 
 	if (schedule_work(&djrcv_dev->work) == 0) {
 		dbg_hid("%s: did not schedule the work item, was already "
@@ -1186,7 +1256,16 @@ static int logi_dj_ll_parse(struct hid_device *hid)
 	if (djdev->reports_supported & STD_MOUSE) {
 		dbg_hid("%s: sending a mouse descriptor, reports_supported: "
 			"%x\n", __func__, djdev->reports_supported);
-		rdcat(rdesc, &rsize, mse_descriptor, sizeof(mse_descriptor));
+		rdcat(rdesc, &rsize, mse_descriptor,
+		      sizeof(mse_descriptor));
+	}
+
+	if (djdev->parent_dev->type != recvr_type_dj &&
+	    djdev->reports_supported & HIGRES_MOUSE) {
+		dbg_hid("%s: sending a mouse descriptor, reports_supported: "
+			"%x\n", __func__, djdev->reports_supported);
+		rdcat(rdesc, &rsize, mse_high_res_descriptor,
+		      sizeof(mse_high_res_descriptor));
 	}
 
 	if (djdev->reports_supported & MULTIMEDIA) {
@@ -1316,7 +1395,9 @@ static int logi_dj_hidpp_event(struct hid_device *hdev,
 			     int size)
 {
 	struct dj_receiver_dev *djrcv_dev = hid_get_drvdata(hdev);
+	struct dj_receiver_dev *tmp_djrcv_dev;
 	struct hidpp_event *hidpp_report = (struct hidpp_event *) data;
+	struct dj_device *dj_dev;
 	unsigned long flags;
 	u8 device_index = hidpp_report->device_index;
 
@@ -1353,14 +1434,26 @@ static int logi_dj_hidpp_event(struct hid_device *hdev,
 
 	spin_lock_irqsave(&djrcv_dev->lock, flags);
 
-	if (!djrcv_dev->paired_dj_devices[device_index]) {
+	dj_dev = djrcv_dev->paired_dj_devices[device_index];
+
+	if (!dj_dev) {
 		logi_hidpp_recv_queue_notif(djrcv_dev, hidpp_report);
 		/* received an event for an unknown device, bail out */
 		goto out;
 	}
 
-	logi_dj_recv_forward_report(djrcv_dev->paired_dj_devices[device_index],
-				    data, size);
+	if (djrcv_dev->type == recvr_type_gaming_hidpp) {
+		tmp_djrcv_dev = hid_get_drvdata(djrcv_dev->shared->mouse);
+		dj_dev = tmp_djrcv_dev->self_dj_device;
+		if (dj_dev)
+			logi_dj_recv_forward_report(dj_dev, data, size);
+		tmp_djrcv_dev = hid_get_drvdata(djrcv_dev->shared->keyboard);
+		dj_dev = tmp_djrcv_dev->self_dj_device;
+		if (dj_dev)
+			logi_dj_recv_forward_report(dj_dev, data, size);
+	} else {
+		logi_dj_recv_forward_report(dj_dev, data, size);
+	}
 
 out:
 	spin_unlock_irqrestore(&djrcv_dev->lock, flags);
@@ -1396,6 +1489,12 @@ static int logi_dj_raw_event(struct hid_device *hdev,
 	switch (data[0]) {
 	case REPORT_ID_DJ_SHORT:
 		if (size != DJREPORT_SHORT_LENGTH) {
+			dev_err(&hdev->dev, "DJ report of bad size (%d)", size);
+			return false;
+		}
+		return logi_dj_dj_event(hdev, report, data, size);
+	case REPORT_ID_DJ_LONG:
+		if (size != DJREPORT_LONG_LENGTH) {
 			dev_err(&hdev->dev, "DJ report of bad size (%d)", size);
 			return false;
 		}
@@ -1600,6 +1699,10 @@ static const struct hid_device_id logi_dj_receivers[] = {
 	{ /* Logitech Nano (non DJ) receiver */
 	  HID_USB_DEVICE(USB_VENDOR_ID_LOGITECH,
 			 USB_DEVICE_ID_LOGITECH_NANO_RECEIVER_2),
+	 .driver_data = recvr_type_hidpp},
+	{ /* Logitech gaming receiver (0xc539) */
+	  HID_USB_DEVICE(USB_VENDOR_ID_LOGITECH,
+		USB_DEVICE_ID_LOGITECH_NANO_RECEIVER_GAMING),
 	 .driver_data = recvr_type_hidpp},
 	{}
 };
