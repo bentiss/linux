@@ -366,7 +366,7 @@ static void logi_dj_recv_destroy_djhid_device(struct dj_receiver_dev *djrcv_dev,
 
 	if (dj_dev != NULL) {
 		hid_destroy_device(dj_dev->hdev);
-		kfree(dj_dev);
+		devm_kfree(&djrcv_dev->hdev->dev, dj_dev);
 	} else {
 		dev_err(&djrcv_dev->hdev->dev, "%s: can't destroy a NULL device\n",
 			__func__);
@@ -425,7 +425,7 @@ static void logi_dj_recv_add_djhid_device(struct dj_receiver_dev *djrcv_dev,
 	snprintf(tmpstr, sizeof(tmpstr), ":%d", dj_report->device_index);
 	strlcat(dj_hiddev->phys, tmpstr, sizeof(dj_hiddev->phys));
 
-	dj_dev = kzalloc(sizeof(struct dj_device), GFP_KERNEL);
+	dj_dev = devm_kzalloc(&djrcv_hdev->dev, sizeof(*dj_dev), GFP_KERNEL);
 
 	if (!dj_dev) {
 		dev_err(&djrcv_hdev->dev, "%s: failed allocating dj_device\n",
@@ -452,7 +452,6 @@ static void logi_dj_recv_add_djhid_device(struct dj_receiver_dev *djrcv_dev,
 
 hid_add_device_fail:
 	djrcv_dev->paired_dj_devices[dj_report->device_index] = NULL;
-	kfree(dj_dev);
 dj_device_allocate_fail:
 	hid_destroy_device(dj_hiddev);
 }
@@ -1003,6 +1002,15 @@ static int logi_dj_raw_event(struct hid_device *hdev,
 	return false;
 }
 
+static void
+logi_dj_kfifo_free(void *data)
+{
+	struct kfifo *fifo = data;
+
+	kfifo_free(fifo);
+}
+
+
 static int logi_dj_probe(struct hid_device *hdev,
 			 const struct hid_device_id *id)
 {
@@ -1041,7 +1049,7 @@ static int logi_dj_probe(struct hid_device *hdev,
 
 	/* Treat DJ/HID++ interface */
 
-	djrcv_dev = kzalloc(sizeof(struct dj_receiver_dev), GFP_KERNEL);
+	djrcv_dev = devm_kzalloc(&hdev->dev, sizeof(*djrcv_dev), GFP_KERNEL);
 	if (!djrcv_dev) {
 		dev_err(&hdev->dev,
 			"%s:failed allocating dj_receiver_dev\n", __func__);
@@ -1055,19 +1063,23 @@ static int logi_dj_probe(struct hid_device *hdev,
 			GFP_KERNEL)) {
 		dev_err(&hdev->dev,
 			"%s:failed allocating notif_fifo\n", __func__);
-		kfree(djrcv_dev);
 		return -ENOMEM;
 	}
+	retval = devm_add_action_or_reset(&hdev->dev, logi_dj_kfifo_free,
+					  &djrcv_dev->notif_fifo);
+	if (retval)
+		return retval;
+
 	hid_set_drvdata(hdev, djrcv_dev);
 
 
 	/* Starts the usb device and connects to upper interfaces hiddev and
 	 * hidraw */
-	retval = hid_hw_start(hdev, HID_CONNECT_DEFAULT);
+	retval = hid_hw_start(hdev, HID_CONNECT_HIDRAW|HID_CONNECT_HIDDEV);
 	if (retval) {
 		dev_err(&hdev->dev,
 			"%s:hid_hw_start returned error\n", __func__);
-		goto hid_hw_start_fail;
+		return retval;
 	}
 
 	retval = logi_dj_recv_switch_to_dj_mode(djrcv_dev, 0);
@@ -1105,11 +1117,7 @@ llopen_failed:
 switch_to_dj_mode_fail:
 	hid_hw_stop(hdev);
 
-hid_hw_start_fail:
-	kfifo_free(&djrcv_dev->notif_fifo);
-	kfree(djrcv_dev);
 	return retval;
-
 }
 
 #ifdef CONFIG_PM
@@ -1151,13 +1159,9 @@ static void logi_dj_remove(struct hid_device *hdev)
 		dj_dev = djrcv_dev->paired_dj_devices[i];
 		if (dj_dev != NULL) {
 			hid_destroy_device(dj_dev->hdev);
-			kfree(dj_dev);
 			djrcv_dev->paired_dj_devices[i] = NULL;
 		}
 	}
-
-	kfifo_free(&djrcv_dev->notif_fifo);
-	kfree(djrcv_dev);
 }
 
 static const struct hid_device_id logi_dj_receivers[] = {
