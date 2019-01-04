@@ -31,7 +31,7 @@
 #include "hid-ids.h"
 
 #define DJ_MAX_PAIRED_DEVICES			6
-#define DJ_MAX_NUMBER_NOTIFICATIONS		8
+#define DJ_MAX_NUMBER_NOTIFS			8
 #define DJ_RECEIVER_INDEX			0
 #define DJ_DEVICE_INDEX_MIN			1
 #define DJ_DEVICE_INDEX_MAX			6
@@ -133,6 +133,19 @@ struct dj_device {
 	struct dj_receiver_dev *dj_receiver_dev;
 	u32 reports_supported;
 	u8 device_index;
+};
+
+#define WORKITEM_TYPE_EMPTY	0
+#define WORKITEM_TYPE_PAIRED	1
+#define WORKITEM_TYPE_UNPAIRED	2
+#define WORKITEM_TYPE_UNKNOWN	255
+
+struct dj_workitem {
+	u8 type;		/* WORKITEM_TYPE_* */
+	u8 device_index;
+	u8 quad_id_msb;
+	u8 quad_id_lsb;
+	u32 reports_supported;
 };
 
 /* Keyboard descriptor (1) */
@@ -353,12 +366,12 @@ static struct hid_ll_driver logi_dj_ll_driver;
 static int logi_dj_recv_query_paired_devices(struct dj_receiver_dev *djrcv_dev);
 
 static void logi_dj_recv_destroy_djhid_device(struct dj_receiver_dev *djrcv_dev,
-						struct dj_report *dj_report)
+						struct dj_workitem *workitem)
 {
 	/* Called in delayed work context */
 	struct dj_device *dj_dev;
 	unsigned long flags;
-	u8 device_index = dj_report->device_index;
+	u8 device_index = workitem->device_index;
 
 	spin_lock_irqsave(&djrcv_dev->lock, flags);
 	dj_dev = djrcv_dev->paired_dj_devices[device_index];
@@ -382,26 +395,19 @@ static void logi_dj_recv_remove_djhid_device(void *res)
 }
 
 static void logi_dj_recv_add_djhid_device(struct dj_receiver_dev *djrcv_dev,
-					  struct dj_report *dj_report)
+					  struct dj_workitem *workitem)
 {
 	/* Called in delayed work context */
 	struct hid_device *djrcv_hdev = djrcv_dev->hdev;
 	struct hid_device *dj_hiddev;
 	struct dj_device *dj_dev;
 	int retval;
-	u8 device_index = dj_report->device_index;
+	u8 device_index = workitem->device_index;
 
 	/* Device index goes from 1 to 6, we need 3 bytes to store the
 	 * semicolon, the index, and a null terminator
 	 */
 	unsigned char tmpstr[3];
-
-	if (dj_report->report_params[DEVICE_PAIRED_PARAM_SPFUNCTION] &
-	    SPFUNCTION_DEVICE_LIST_EMPTY) {
-		dbg_hid("%s: device list is empty\n", __func__);
-		djrcv_dev->querying_devices = false;
-		return;
-	}
 
 	if (djrcv_dev->paired_dj_devices[device_index]) {
 		/* The device is already known. No need to reallocate it. */
@@ -435,10 +441,8 @@ static void logi_dj_recv_add_djhid_device(struct dj_receiver_dev *djrcv_dev,
 	dj_hiddev->dev.parent = &djrcv_hdev->dev;
 	dj_hiddev->bus = BUS_USB;
 	dj_hiddev->vendor = djrcv_hdev->vendor;
-	dj_hiddev->product =
-		(dj_report->report_params[DEVICE_PAIRED_PARAM_EQUAD_ID_MSB]
-									<< 8) |
-		dj_report->report_params[DEVICE_PAIRED_PARAM_EQUAD_ID_LSB];
+	dj_hiddev->product = (workitem->quad_id_msb << 8) |
+			      workitem->quad_id_lsb;
 	snprintf(dj_hiddev->name, sizeof(dj_hiddev->name),
 		"Logitech Unifying Device. Wireless PID:%04x",
 		dj_hiddev->product);
@@ -457,8 +461,7 @@ static void logi_dj_recv_add_djhid_device(struct dj_receiver_dev *djrcv_dev,
 		goto err;
 	}
 
-	dj_dev->reports_supported = get_unaligned_le32(
-		dj_report->report_params + DEVICE_PAIRED_RF_REPORT_TYPE);
+	dj_dev->reports_supported = workitem->reports_supported;
 	dj_dev->hdev = dj_hiddev;
 	dj_dev->dj_receiver_dev = djrcv_dev;
 	dj_dev->device_index = device_index;
@@ -488,7 +491,7 @@ static void delayedwork_callback(struct work_struct *work)
 	struct dj_receiver_dev *djrcv_dev =
 		container_of(work, struct dj_receiver_dev, work);
 
-	struct dj_report dj_report;
+	struct dj_workitem workitem;
 	unsigned long flags;
 	int count;
 	int retval;
@@ -497,10 +500,9 @@ static void delayedwork_callback(struct work_struct *work)
 
 	spin_lock_irqsave(&djrcv_dev->lock, flags);
 
-	count = kfifo_out(&djrcv_dev->notif_fifo, &dj_report,
-				sizeof(struct dj_report));
+	count = kfifo_out(&djrcv_dev->notif_fifo, &workitem, sizeof(workitem));
 
-	if (count != sizeof(struct dj_report)) {
+	if (count != sizeof(workitem)) {
 		dev_err(&djrcv_dev->hdev->dev, "%s: workitem triggered without "
 			"notifications available\n", __func__);
 		spin_unlock_irqrestore(&djrcv_dev->lock, flags);
@@ -516,12 +518,55 @@ static void delayedwork_callback(struct work_struct *work)
 
 	spin_unlock_irqrestore(&djrcv_dev->lock, flags);
 
-	switch (dj_report.report_type) {
-	case REPORT_TYPE_NOTIF_DEVICE_PAIRED:
-		logi_dj_recv_add_djhid_device(djrcv_dev, &dj_report);
+	switch (workitem.type) {
+	case WORKITEM_TYPE_PAIRED:
+		logi_dj_recv_add_djhid_device(djrcv_dev, &workitem);
 		break;
+	case WORKITEM_TYPE_UNPAIRED:
+		logi_dj_recv_destroy_djhid_device(djrcv_dev, &workitem);
+		break;
+	case WORKITEM_TYPE_UNKNOWN:
+		retval = logi_dj_recv_query_paired_devices(djrcv_dev);
+		if (retval) {
+			dev_err(&djrcv_dev->hdev->dev,
+				"%s:logi_dj_recv_query_paired_devices "
+				"error:%d\n", __func__, retval);
+		}
+		break;
+	case WORKITEM_TYPE_EMPTY:
+		dbg_hid("%s: device list is empty\n", __func__);
+		djrcv_dev->querying_devices = false;
+		break;
+	}
+}
+
+static void logi_dj_recv_queue_notification(struct dj_receiver_dev *djrcv_dev,
+					   struct dj_report *dj_report)
+{
+	/* We are called from atomic context (tasklet && djrcv->lock held) */
+	struct dj_workitem workitem = {
+		.device_index = dj_report->device_index,
+	};
+
+	switch (dj_report->report_type) {
+	case REPORT_TYPE_NOTIF_DEVICE_PAIRED:
+		workitem.type = WORKITEM_TYPE_PAIRED;
+		if (dj_report->report_params[DEVICE_PAIRED_PARAM_SPFUNCTION] &
+		    SPFUNCTION_DEVICE_LIST_EMPTY) {
+			workitem.type = WORKITEM_TYPE_EMPTY;
+			break;
+		}
+		/* fall-through */
 	case REPORT_TYPE_NOTIF_DEVICE_UNPAIRED:
-		logi_dj_recv_destroy_djhid_device(djrcv_dev, &dj_report);
+		workitem.quad_id_msb =
+			dj_report->report_params[DEVICE_PAIRED_PARAM_EQUAD_ID_MSB];
+		workitem.quad_id_lsb =
+			dj_report->report_params[DEVICE_PAIRED_PARAM_EQUAD_ID_LSB];
+		workitem.reports_supported = get_unaligned_le32(
+						dj_report->report_params +
+						DEVICE_PAIRED_RF_REPORT_TYPE);
+		if (dj_report->report_type == REPORT_TYPE_NOTIF_DEVICE_UNPAIRED)
+			workitem.type = WORKITEM_TYPE_UNPAIRED;
 		break;
 	default:
 	/* A normal report (i. e. not belonging to a pair/unpair notification)
@@ -531,28 +576,15 @@ static void delayedwork_callback(struct work_struct *work)
 	 * to this dj_device never arrived to this driver. The reason is that
 	 * hid-core discards all packets coming from a device while probe() is
 	 * executing. */
-	if (!djrcv_dev->paired_dj_devices[dj_report.device_index]) {
-		/* ok, we don't know the device, just re-ask the
-		 * receiver for the list of connected devices. */
-		retval = logi_dj_recv_query_paired_devices(djrcv_dev);
-		if (!retval) {
-			/* everything went fine, so just leave */
-			break;
+		if (!djrcv_dev->paired_dj_devices[dj_report->device_index]) {
+			/* ok, we don't know the device, just re-ask the
+			 * receiver for the list of connected devices in
+			 * the delayed work callback. */
+			workitem.type = WORKITEM_TYPE_UNKNOWN;
 		}
-		dev_err(&djrcv_dev->hdev->dev,
-			"%s:logi_dj_recv_query_paired_devices "
-			"error:%d\n", __func__, retval);
-		}
-		dbg_hid("%s: unexpected report type\n", __func__);
 	}
-}
 
-static void logi_dj_recv_queue_notification(struct dj_receiver_dev *djrcv_dev,
-					   struct dj_report *dj_report)
-{
-	/* We are called from atomic context (tasklet && djrcv->lock held) */
-
-	kfifo_in(&djrcv_dev->notif_fifo, dj_report, sizeof(struct dj_report));
+	kfifo_in(&djrcv_dev->notif_fifo, &workitem, sizeof(workitem));
 
 	if (schedule_work(&djrcv_dev->work) == 0) {
 		dbg_hid("%s: did not schedule the work item, was already "
@@ -1086,7 +1118,7 @@ static int logi_dj_probe(struct hid_device *hdev,
 	INIT_WORK(&djrcv_dev->work, delayedwork_callback);
 	spin_lock_init(&djrcv_dev->lock);
 	if (kfifo_alloc(&djrcv_dev->notif_fifo,
-			DJ_MAX_NUMBER_NOTIFICATIONS * sizeof(struct dj_report),
+			DJ_MAX_NUMBER_NOTIFS * sizeof(struct dj_workitem),
 			GFP_KERNEL)) {
 		dev_err(&hdev->dev,
 			"%s:failed allocating notif_fifo\n", __func__);
