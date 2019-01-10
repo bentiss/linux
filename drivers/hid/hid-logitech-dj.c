@@ -358,19 +358,27 @@ static void logi_dj_recv_destroy_djhid_device(struct dj_receiver_dev *djrcv_dev,
 	/* Called in delayed work context */
 	struct dj_device *dj_dev;
 	unsigned long flags;
+	u8 device_index = dj_report->device_index;
 
 	spin_lock_irqsave(&djrcv_dev->lock, flags);
-	dj_dev = djrcv_dev->paired_dj_devices[dj_report->device_index];
-	djrcv_dev->paired_dj_devices[dj_report->device_index] = NULL;
+	dj_dev = djrcv_dev->paired_dj_devices[device_index];
+	djrcv_dev->paired_dj_devices[device_index] = NULL;
 	spin_unlock_irqrestore(&djrcv_dev->lock, flags);
 
 	if (dj_dev != NULL) {
-		hid_destroy_device(dj_dev->hdev);
-		devm_kfree(&djrcv_dev->hdev->dev, dj_dev);
+		devres_release_group(&djrcv_dev->hdev->dev,
+				     &djrcv_dev->paired_dj_devices[device_index]);
 	} else {
 		dev_err(&djrcv_dev->hdev->dev, "%s: can't destroy a NULL device\n",
 			__func__);
 	}
+}
+
+static void logi_dj_recv_remove_djhid_device(void *res)
+{
+	struct hid_device *hdev = res;
+
+	hid_destroy_device(hdev);
 }
 
 static void logi_dj_recv_add_djhid_device(struct dj_receiver_dev *djrcv_dev,
@@ -380,6 +388,8 @@ static void logi_dj_recv_add_djhid_device(struct dj_receiver_dev *djrcv_dev,
 	struct hid_device *djrcv_hdev = djrcv_dev->hdev;
 	struct hid_device *dj_hiddev;
 	struct dj_device *dj_dev;
+	int retval;
+	u8 device_index = dj_report->device_index;
 
 	/* Device index goes from 1 to 6, we need 3 bytes to store the
 	 * semicolon, the index, and a null terminator
@@ -393,17 +403,31 @@ static void logi_dj_recv_add_djhid_device(struct dj_receiver_dev *djrcv_dev,
 		return;
 	}
 
-	if (djrcv_dev->paired_dj_devices[dj_report->device_index]) {
+	if (djrcv_dev->paired_dj_devices[device_index]) {
 		/* The device is already known. No need to reallocate it. */
 		dbg_hid("%s: device is already known\n", __func__);
 		return;
 	}
+
+	if (!devres_open_group(&djrcv_hdev->dev,
+			       &djrcv_dev->paired_dj_devices[device_index],
+			       GFP_KERNEL))
+		return;
 
 	dj_hiddev = hid_allocate_device();
 	if (IS_ERR(dj_hiddev)) {
 		dev_err(&djrcv_hdev->dev, "%s: hid_allocate_device failed\n",
 			__func__);
 		return;
+	}
+
+	retval = devm_add_action_or_reset(&djrcv_hdev->dev,
+					  logi_dj_recv_remove_djhid_device,
+					  dj_hiddev);
+	if (retval) {
+		dev_err(&djrcv_hdev->dev, "%s: failed allocating hid device\n",
+			__func__);
+		goto err;
 	}
 
 	dj_hiddev->ll_driver = &logi_dj_ll_driver;
@@ -422,7 +446,7 @@ static void logi_dj_recv_add_djhid_device(struct dj_receiver_dev *djrcv_dev,
 	dj_hiddev->group = HID_GROUP_LOGITECH_DJ_DEVICE;
 
 	memcpy(dj_hiddev->phys, djrcv_hdev->phys, sizeof(djrcv_hdev->phys));
-	snprintf(tmpstr, sizeof(tmpstr), ":%d", dj_report->device_index);
+	snprintf(tmpstr, sizeof(tmpstr), ":%d", device_index);
 	strlcat(dj_hiddev->phys, tmpstr, sizeof(dj_hiddev->phys));
 
 	dj_dev = devm_kzalloc(&djrcv_hdev->dev, sizeof(*dj_dev), GFP_KERNEL);
@@ -430,30 +454,33 @@ static void logi_dj_recv_add_djhid_device(struct dj_receiver_dev *djrcv_dev,
 	if (!dj_dev) {
 		dev_err(&djrcv_hdev->dev, "%s: failed allocating dj_device\n",
 			__func__);
-		goto dj_device_allocate_fail;
+		goto err;
 	}
 
 	dj_dev->reports_supported = get_unaligned_le32(
 		dj_report->report_params + DEVICE_PAIRED_RF_REPORT_TYPE);
 	dj_dev->hdev = dj_hiddev;
 	dj_dev->dj_receiver_dev = djrcv_dev;
-	dj_dev->device_index = dj_report->device_index;
+	dj_dev->device_index = device_index;
 	dj_hiddev->driver_data = dj_dev;
 
-	djrcv_dev->paired_dj_devices[dj_report->device_index] = dj_dev;
+	djrcv_dev->paired_dj_devices[device_index] = dj_dev;
 
 	if (hid_add_device(dj_hiddev)) {
 		dev_err(&djrcv_hdev->dev, "%s: failed adding dj_device\n",
 			__func__);
-		goto hid_add_device_fail;
+		goto err;
 	}
+
+	devres_close_group(&djrcv_hdev->dev,
+			   &djrcv_dev->paired_dj_devices[device_index]);
 
 	return;
 
-hid_add_device_fail:
-	djrcv_dev->paired_dj_devices[dj_report->device_index] = NULL;
-dj_device_allocate_fail:
-	hid_destroy_device(dj_hiddev);
+err:
+	djrcv_dev->paired_dj_devices[device_index] = NULL;
+	devres_release_group(&djrcv_hdev->dev,
+			     &djrcv_dev->paired_dj_devices[device_index]);
 }
 
 static void delayedwork_callback(struct work_struct *work)
@@ -1140,8 +1167,6 @@ static int logi_dj_reset_resume(struct hid_device *hdev)
 static void logi_dj_remove(struct hid_device *hdev)
 {
 	struct dj_receiver_dev *djrcv_dev = hid_get_drvdata(hdev);
-	struct dj_device *dj_dev;
-	int i;
 
 	dbg_hid("%s\n", __func__);
 
@@ -1149,19 +1174,6 @@ static void logi_dj_remove(struct hid_device *hdev)
 
 	hid_hw_close(hdev);
 	hid_hw_stop(hdev);
-
-	/* I suppose that at this point the only context that can access
-	 * the djrecv_data is this thread as the work item is guaranteed to
-	 * have finished and no more raw_event callbacks should arrive after
-	 * the remove callback was triggered so no locks are put around the
-	 * code below */
-	for (i = 0; i < (DJ_MAX_PAIRED_DEVICES + DJ_DEVICE_INDEX_MIN); i++) {
-		dj_dev = djrcv_dev->paired_dj_devices[i];
-		if (dj_dev != NULL) {
-			hid_destroy_device(dj_dev->hdev);
-			djrcv_dev->paired_dj_devices[i] = NULL;
-		}
-	}
 }
 
 static const struct hid_device_id logi_dj_receivers[] = {
