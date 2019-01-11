@@ -100,9 +100,26 @@
 #define MEDIA_CENTER				BIT(8)
 #define KBD_LEDS				BIT(14)
 
+/* HID++ Device Connected Notification */
+#define REPORT_TYPE_NOTIF_DEVICE_CONNECTED	0x41
+#define HIDPP_PARAM_PROTO_TYPE			0x00
+#define HIDPP_PARAM_DEVICE_INFO			0x01
+#define HIDPP_PARAM_EQUAD_LSB			0x02
+#define HIDPP_PARAM_EQUAD_MSB			0x03
+#define HIDPP_DEVICE_TYPE_MASK			GENMASK(3, 0)
+#define HIDPP_LINK_STATUS_MASK			BIT(6)
+
+#define HIDPP_SET_REGISTER			0x80
 #define HIDPP_GET_LONG_REGISTER			0x83
+#define HIDPP_REG_CONNECTION_STATE		0x02
 #define HIDPP_REG_PAIRING_INFORMATION		0xB5
 #define HIDPP_PAIRING_INFORMATION		0x20
+#define HIDPP_FAKE_DEVICE_ARRIVAL		0x02
+
+enum recvr_type {
+	recvr_type_dj,
+	recvr_type_hidpp,
+};
 
 struct dj_report {
 	u8 report_id;
@@ -118,12 +135,25 @@ struct hidpp_event {
 	u8 params[HIDPP_REPORT_LONG_LENGTH - 3U];
 } __packed;
 
+struct dj_shared {
+	struct list_head list;
+	struct hid_device *mouse;
+	struct hid_device *keyboard;
+	struct hid_device *hidpp;
+	struct kref kref;
+};
+
 struct dj_receiver_dev {
 	struct hid_device *hdev;
 	struct dj_device *paired_dj_devices[DJ_MAX_PAIRED_DEVICES +
 					    DJ_DEVICE_INDEX_MIN];
+	struct dj_device *self_dj_device;
+	struct dj_shared *shared;
 	struct work_struct work;
 	struct kfifo notif_fifo;
+	enum recvr_type type;
+	unsigned int application;
+	bool is_hidpp;
 	spinlock_t lock;
 	bool querying_devices;
 };
@@ -131,6 +161,7 @@ struct dj_receiver_dev {
 struct dj_device {
 	struct hid_device *hdev;
 	struct dj_receiver_dev *dj_receiver_dev;
+	struct dj_receiver_dev *parent_dev;
 	u32 reports_supported;
 	u8 device_index;
 };
@@ -365,6 +396,104 @@ static struct hid_ll_driver logi_dj_ll_driver;
 
 static int logi_dj_recv_query_paired_devices(struct dj_receiver_dev *djrcv_dev);
 
+static LIST_HEAD(dj_hdev_list);
+static DEFINE_MUTEX(dj_hdev_list_lock);
+
+static struct dj_shared *dj_get_shared_data(struct hid_device *hdev)
+{
+	struct dj_shared *data;
+
+	/* Try to find an already-probed interface from the same device */
+	list_for_each_entry(data, &dj_hdev_list, list) {
+		if (data->mouse &&
+		    hid_compare_device_paths(hdev, data->mouse, '/')) {
+			kref_get(&data->kref);
+			return data;
+		}
+		if (data->keyboard &&
+		    hid_compare_device_paths(hdev, data->keyboard, '/')) {
+			kref_get(&data->kref);
+			return data;
+		}
+		if (data->hidpp &&
+		    hid_compare_device_paths(hdev, data->hidpp, '/')) {
+			kref_get(&data->kref);
+			return data;
+		}
+	}
+
+	return NULL;
+}
+
+static void dj_release_shared_data(struct kref *kref)
+{
+	struct dj_shared *data = container_of(kref, struct dj_shared, kref);
+
+	mutex_lock(&dj_hdev_list_lock);
+	list_del(&data->list);
+	mutex_unlock(&dj_hdev_list_lock);
+
+	kfree(data);
+}
+
+static void dj_remove_shared_data(void *res)
+{
+	struct dj_receiver_dev *djrcv_dev = res;
+	struct dj_shared *data;
+
+	if (!djrcv_dev->shared)
+		return;
+
+	data = djrcv_dev->shared;
+
+	if (data->mouse == djrcv_dev->hdev)
+		data->mouse = NULL;
+	if (data->keyboard == djrcv_dev->hdev)
+		data->keyboard = NULL;
+	if (data->hidpp == djrcv_dev->hdev)
+		data->hidpp = NULL;
+
+	djrcv_dev->shared = NULL;
+	kref_put(&data->kref, dj_release_shared_data);
+}
+
+static int dj_add_shared_data(struct dj_receiver_dev *djrcv_dev)
+{
+	struct hid_device *hdev = djrcv_dev->hdev;
+	struct dj_shared *data;
+	int retval = 0;
+
+	mutex_lock(&dj_hdev_list_lock);
+
+	data = dj_get_shared_data(hdev);
+	if (!data) {
+		data = kzalloc(sizeof(*data), GFP_KERNEL);
+		if (!data) {
+			retval = -ENOMEM;
+			goto out;
+		}
+
+		kref_init(&data->kref);
+		list_add_tail(&data->list, &dj_hdev_list);
+	}
+
+	if (djrcv_dev->application == HID_GD_KEYBOARD)
+		data->keyboard = hdev;
+	if (djrcv_dev->application == HID_GD_MOUSE)
+		data->mouse = hdev;
+	if (djrcv_dev->is_hidpp)
+		data->hidpp = hdev;
+
+	djrcv_dev->shared = data;
+
+	retval = devm_add_action_or_reset(&hdev->dev, dj_remove_shared_data,
+					  djrcv_dev);
+
+out:
+	mutex_unlock(&dj_hdev_list_lock);
+	return retval;
+}
+
 static void logi_dj_recv_destroy_djhid_device(struct dj_receiver_dev *djrcv_dev,
 						struct dj_workitem *workitem)
 {
@@ -387,9 +516,51 @@ static void logi_dj_recv_destroy_djhid_device(struct dj_receiver_dev *djrcv_dev,
 	}
 }
 
+static void logi_dj_recv_cleanup_djhid_device(struct hid_device *hdev,
+					      struct hid_device *djhdev)
+{
+	struct dj_receiver_dev *djrcv_dev;
+	struct dj_device *dj_dev;
+	int i;
+
+	if (!hdev)
+		return;
+
+	djrcv_dev = hid_get_drvdata(hdev);
+
+	if (!djrcv_dev)
+		return;
+
+	if (djrcv_dev->self_dj_device &&
+	    djrcv_dev->self_dj_device->hdev == djhdev)
+		djrcv_dev->self_dj_device = NULL;
+
+	for (i = 0; i < (DJ_MAX_PAIRED_DEVICES + DJ_DEVICE_INDEX_MIN); i++) {
+		dj_dev = djrcv_dev->paired_dj_devices[i];
+		if (dj_dev && dj_dev->hdev == djhdev)
+			djrcv_dev->paired_dj_devices[i] = NULL;
+	}
+}
+
 static void logi_dj_recv_remove_djhid_device(void *res)
 {
 	struct hid_device *hdev = res;
+	struct dj_shared *data;
+
+	mutex_lock(&dj_hdev_list_lock);
+
+	/*
+	 * We don't know if there are users of this HID device.
+	 * So parse the list of known receivers, and remove all
+	 * occurences of this particular HID device.
+	 */
+	list_for_each_entry(data, &dj_hdev_list, list) {
+		logi_dj_recv_cleanup_djhid_device(data->hidpp, hdev);
+		logi_dj_recv_cleanup_djhid_device(data->mouse, hdev);
+		logi_dj_recv_cleanup_djhid_device(data->keyboard, hdev);
+	}
+
+	mutex_unlock(&dj_hdev_list_lock);
 
 	hid_destroy_device(hdev);
 }
@@ -398,7 +569,8 @@ static void logi_dj_recv_add_djhid_device(struct dj_receiver_dev *djrcv_dev,
 					  struct dj_workitem *workitem)
 {
 	/* Called in delayed work context */
-	struct hid_device *djrcv_hdev = djrcv_dev->hdev;
+	struct dj_receiver_dev *parent = djrcv_dev;
+	struct hid_device *parent_hdev = parent->hdev;
 	struct hid_device *dj_hiddev;
 	struct dj_device *dj_dev;
 	int retval;
@@ -415,32 +587,42 @@ static void logi_dj_recv_add_djhid_device(struct dj_receiver_dev *djrcv_dev,
 		return;
 	}
 
-	if (!devres_open_group(&djrcv_hdev->dev,
+	if (djrcv_dev->type != recvr_type_dj) {
+		if ((workitem->reports_supported & STD_KEYBOARD) &&
+		    djrcv_dev->shared->keyboard)
+			parent_hdev = djrcv_dev->shared->keyboard;
+		else if ((workitem->reports_supported & STD_MOUSE) &&
+			 djrcv_dev->shared->mouse)
+			parent_hdev = djrcv_dev->shared->mouse;
+		parent = hid_get_drvdata(parent_hdev);
+	}
+
+	if (!devres_open_group(&parent_hdev->dev,
 			       &djrcv_dev->paired_dj_devices[device_index],
 			       GFP_KERNEL))
 		return;
 
 	dj_hiddev = hid_allocate_device();
 	if (IS_ERR(dj_hiddev)) {
-		dev_err(&djrcv_hdev->dev, "%s: hid_allocate_device failed\n",
+		dev_err(&parent_hdev->dev, "%s: hid_allocate_device failed\n",
 			__func__);
 		return;
 	}
 
-	retval = devm_add_action_or_reset(&djrcv_hdev->dev,
+	retval = devm_add_action_or_reset(&parent_hdev->dev,
 					  logi_dj_recv_remove_djhid_device,
 					  dj_hiddev);
 	if (retval) {
-		dev_err(&djrcv_hdev->dev, "%s: failed allocating hid device\n",
+		dev_err(&parent_hdev->dev, "%s: failed allocating hid device\n",
 			__func__);
 		goto err;
 	}
 
 	dj_hiddev->ll_driver = &logi_dj_ll_driver;
 
-	dj_hiddev->dev.parent = &djrcv_hdev->dev;
+	dj_hiddev->dev.parent = &parent_hdev->dev;
 	dj_hiddev->bus = BUS_USB;
-	dj_hiddev->vendor = djrcv_hdev->vendor;
+	dj_hiddev->vendor = parent_hdev->vendor;
 	dj_hiddev->product = (workitem->quad_id_msb << 8) |
 			      workitem->quad_id_lsb;
 	snprintf(dj_hiddev->name, sizeof(dj_hiddev->name),
@@ -449,14 +631,14 @@ static void logi_dj_recv_add_djhid_device(struct dj_receiver_dev *djrcv_dev,
 
 	dj_hiddev->group = HID_GROUP_LOGITECH_DJ_DEVICE;
 
-	memcpy(dj_hiddev->phys, djrcv_hdev->phys, sizeof(djrcv_hdev->phys));
+	memcpy(dj_hiddev->phys, parent_hdev->phys, sizeof(parent_hdev->phys));
 	snprintf(tmpstr, sizeof(tmpstr), ":%d", device_index);
 	strlcat(dj_hiddev->phys, tmpstr, sizeof(dj_hiddev->phys));
 
-	dj_dev = devm_kzalloc(&djrcv_hdev->dev, sizeof(*dj_dev), GFP_KERNEL);
+	dj_dev = devm_kzalloc(&parent_hdev->dev, sizeof(*dj_dev), GFP_KERNEL);
 
 	if (!dj_dev) {
-		dev_err(&djrcv_hdev->dev, "%s: failed allocating dj_device\n",
+		dev_err(&parent_hdev->dev, "%s: failed allocating dj_device\n",
 			__func__);
 		goto err;
 	}
@@ -464,25 +646,30 @@ static void logi_dj_recv_add_djhid_device(struct dj_receiver_dev *djrcv_dev,
 	dj_dev->reports_supported = workitem->reports_supported;
 	dj_dev->hdev = dj_hiddev;
 	dj_dev->dj_receiver_dev = djrcv_dev;
+	dj_dev->parent_dev = parent;
 	dj_dev->device_index = device_index;
 	dj_hiddev->driver_data = dj_dev;
 
 	djrcv_dev->paired_dj_devices[device_index] = dj_dev;
 
+	/* in the non DJ case, we store the HID++ node. */
+	if (djrcv_dev->type != recvr_type_dj)
+		parent->self_dj_device = dj_dev;
+
 	if (hid_add_device(dj_hiddev)) {
-		dev_err(&djrcv_hdev->dev, "%s: failed adding dj_device\n",
+		dev_err(&parent_hdev->dev, "%s: failed adding dj_device\n",
 			__func__);
 		goto err;
 	}
 
-	devres_close_group(&djrcv_hdev->dev,
+	devres_close_group(&parent_hdev->dev,
 			   &djrcv_dev->paired_dj_devices[device_index]);
 
 	return;
 
 err:
 	djrcv_dev->paired_dj_devices[device_index] = NULL;
-	devres_release_group(&djrcv_hdev->dev,
+	devres_release_group(&parent_hdev->dev,
 			     &djrcv_dev->paired_dj_devices[device_index]);
 }
 
@@ -592,6 +779,110 @@ static void logi_dj_recv_queue_notification(struct dj_receiver_dev *djrcv_dev,
 	}
 }
 
+static void logi_hidpp_recv_queue_notif(struct dj_receiver_dev *djrcv_dev,
+					struct hidpp_event *hidpp_report)
+{
+	/* We are called from atomic context (tasklet && djrcv->lock held) */
+	const char *device_type = "UNKNOWN";
+	struct dj_workitem workitem = {
+		.device_index = hidpp_report->device_index,
+	};
+	int type = 0;
+
+	if (hidpp_report->sub_id == REPORT_TYPE_NOTIF_DEVICE_CONNECTED) {
+		switch (hidpp_report->params[HIDPP_PARAM_PROTO_TYPE]) {
+		case 0x00:
+			/* UNKNOWN */
+			type = -ENODEV;
+			break;
+		case 0x01:
+			device_type = "Bluetooth";
+			break;
+		case 0x02:
+			device_type = "27Mhz";
+			type = -ENODEV;
+			break;
+		case 0x03:
+			device_type = "QUAD or eQUAD";
+			break;
+		case 0x04:
+			device_type = "eQUAD step 4 DJ";
+			break;
+		case 0x05:
+			device_type = "DFU Lite";
+			type = -ENODEV;
+			break;
+		case 0x06:
+			device_type = "eQUAD step 4 Lite";
+			break;
+		case 0x07:
+			device_type = "eQUAD step 4 Gaming";
+			type = -ENODEV;
+			break;
+		case 0x08:
+			device_type = "eQUAD step 4 for gamepads";
+			type = -ENODEV;
+			break;
+		case 0x0a:
+			device_type = "eQUAD nano Lite";
+			break;
+		}
+		if (type < 0) {
+			hid_warn(djrcv_dev->hdev,
+				 "unusable device of type %s (0x%02x) connected on slot %d",
+				 device_type,
+				 hidpp_report->params[HIDPP_PARAM_PROTO_TYPE],
+				 hidpp_report->device_index);
+			return;
+		}
+
+		hid_info(djrcv_dev->hdev,
+			 "device of type %s (0x%02x) connected on slot %d",
+			 device_type,
+			 hidpp_report->params[HIDPP_PARAM_PROTO_TYPE],
+			 hidpp_report->device_index);
+		workitem.type = WORKITEM_TYPE_PAIRED;
+		workitem.quad_id_msb =
+			hidpp_report->params[HIDPP_PARAM_EQUAD_MSB];
+		workitem.quad_id_lsb =
+			hidpp_report->params[HIDPP_PARAM_EQUAD_LSB];
+		switch (hidpp_report->params[HIDPP_PARAM_DEVICE_INFO] &
+			HIDPP_DEVICE_TYPE_MASK) {
+		case REPORT_TYPE_KEYBOARD:
+			workitem.reports_supported |= STD_KEYBOARD;
+			break;
+		case REPORT_TYPE_MOUSE:
+			workitem.reports_supported |= STD_MOUSE;
+			workitem.reports_supported |= MULTIMEDIA |
+						      POWER_KEYS |
+						      MEDIA_CENTER;
+			break;
+		}
+	} else {
+		/* A normal report (i. e. not belonging to a pair/unpair
+		 * notification) arriving here, means that the report arrived
+		 * but we did not have a paired dj_device associated to the
+		 * report's device_index, this means that the original
+		 * "device paired" notification corresponding to this
+		 * HID++ device never arrived to this driver. The reason is
+		 * that hid-core discards all packets coming from a device
+		 * while probe() is executing. */
+		if (!djrcv_dev->paired_dj_devices[hidpp_report->device_index]) {
+			/* ok, we don't know the device, just re-ask the
+			 * receiver for the list of connected devices in
+			 * the delayed work callback. */
+			workitem.type = WORKITEM_TYPE_UNKNOWN;
+		}
+	}
+
+	kfifo_in(&djrcv_dev->notif_fifo, &workitem, sizeof(workitem));
+
+	if (schedule_work(&djrcv_dev->work) == 0) {
+		dbg_hid("%s: did not schedule the work item, was already "
+			"queued\n", __func__);
+	}
+}
+
 static void logi_dj_recv_forward_null_report(struct dj_receiver_dev *djrcv_dev,
 					     struct dj_report *dj_report)
 {
@@ -672,10 +963,41 @@ static int logi_dj_recv_send_report(struct dj_receiver_dev *djrcv_dev,
 	return 0;
 }
 
+static int logi_dj_recv_query_hidpp_devices(struct dj_receiver_dev *djrcv_dev)
+{
+	const u8 template[] = {REPORT_ID_HIDPP_SHORT,
+			       HIDPP_RECEIVER_INDEX,
+			       HIDPP_SET_REGISTER,
+			       HIDPP_REG_CONNECTION_STATE,
+			       HIDPP_FAKE_DEVICE_ARRIVAL,
+			       0x00, 0x00};
+	u8 *hidpp_report;
+	int retval;
+
+	if (!djrcv_dev->is_hidpp)
+		return 0;
+
+	hidpp_report = kmemdup(template, sizeof(template), GFP_KERNEL);
+	if (!hidpp_report)
+		return -ENOMEM;
+
+	retval = hid_hw_raw_request(djrcv_dev->hdev,
+				    REPORT_ID_HIDPP_SHORT,
+				    hidpp_report, sizeof(template),
+				    HID_OUTPUT_REPORT,
+				    HID_REQ_SET_REPORT);
+
+	kfree(hidpp_report);
+	return 0;
+}
+
 static int logi_dj_recv_query_paired_devices(struct dj_receiver_dev *djrcv_dev)
 {
 	struct dj_report *dj_report;
 	int retval;
+
+	if (djrcv_dev->type != recvr_type_dj)
+		return logi_dj_recv_query_hidpp_devices(djrcv_dev);
 
 	/* no need to protect djrcv_dev->querying_devices */
 	if (djrcv_dev->querying_devices)
@@ -699,24 +1021,30 @@ static int logi_dj_recv_switch_to_dj_mode(struct dj_receiver_dev *djrcv_dev,
 	struct hid_device *hdev = djrcv_dev->hdev;
 	struct dj_report *dj_report;
 	u8 *buf;
-	int retval;
+	int retval = 0;
 
 	dj_report = kzalloc(sizeof(struct dj_report), GFP_KERNEL);
 	if (!dj_report)
 		return -ENOMEM;
-	dj_report->report_id = REPORT_ID_DJ_SHORT;
-	dj_report->device_index = 0xFF;
-	dj_report->report_type = REPORT_TYPE_CMD_SWITCH;
-	dj_report->report_params[CMD_SWITCH_PARAM_DEVBITFIELD] = 0x3F;
-	dj_report->report_params[CMD_SWITCH_PARAM_TIMEOUT_SECONDS] = (u8)timeout;
-	retval = logi_dj_recv_send_report(djrcv_dev, dj_report);
 
-	/*
-	 * Ugly sleep to work around a USB 3.0 bug when the receiver is still
-	 * processing the "switch-to-dj" command while we send an other command.
-	 * 50 msec should gives enough time to the receiver to be ready.
-	 */
-	msleep(50);
+	if (djrcv_dev->type == recvr_type_dj) {
+		dj_report->report_id = REPORT_ID_DJ_SHORT;
+		dj_report->device_index = 0xFF;
+		dj_report->report_type = REPORT_TYPE_CMD_SWITCH;
+		dj_report->report_params[CMD_SWITCH_PARAM_DEVBITFIELD] = 0x3F;
+		dj_report->report_params[CMD_SWITCH_PARAM_TIMEOUT_SECONDS] =
+								(u8)timeout;
+
+		retval = logi_dj_recv_send_report(djrcv_dev, dj_report);
+
+		/*
+		 * Ugly sleep to work around a USB 3.0 bug when the receiver is
+		 * still processing the "switch-to-dj" command while we send an
+		 * other command.
+		 * 50 msec should gives enough time to the receiver to be ready.
+		 */
+		msleep(50);
+	}
 
 	/*
 	 * Magical bits to set up hidpp notifications when the dj devices
@@ -799,6 +1127,15 @@ static int logi_dj_ll_raw_request(struct hid_device *hid,
 
 	if (buf[0] != REPORT_TYPE_LEDS)
 		return -EINVAL;
+
+	if (djrcv_dev->type != recvr_type_dj && count >= 2) {
+		djrcv_dev = djdev->parent_dev;
+
+		/* usbhid will override the report ID and
+		 * ignore the first byte */
+		return hid_hw_raw_request(djrcv_dev->hdev, 0, buf, count,
+					  report_type, reqtype);
+	}
 
 	out_buf = kzalloc(DJREPORT_SHORT_LENGTH, GFP_ATOMIC);
 	if (!out_buf)
@@ -1016,9 +1353,11 @@ static int logi_dj_hidpp_event(struct hid_device *hdev,
 
 	spin_lock_irqsave(&djrcv_dev->lock, flags);
 
-	if (!djrcv_dev->paired_dj_devices[device_index])
+	if (!djrcv_dev->paired_dj_devices[device_index]) {
+		logi_hidpp_recv_queue_notif(djrcv_dev, hidpp_report);
 		/* received an event for an unknown device, bail out */
 		goto out;
+	}
 
 	logi_dj_recv_forward_report(djrcv_dev->paired_dj_devices[device_index],
 				    data, size);
@@ -1033,7 +1372,26 @@ static int logi_dj_raw_event(struct hid_device *hdev,
 			     struct hid_report *report, u8 *data,
 			     int size)
 {
+	struct dj_receiver_dev *djrcv_dev = hid_get_drvdata(hdev);
 	dbg_hid("%s, size:%d\n", __func__, size);
+
+	if (!hdev->report_enum[HID_INPUT_REPORT].numbered &&
+	    djrcv_dev->application == HID_GD_KEYBOARD &&
+	    djrcv_dev->self_dj_device) {
+		/* in case of the keyboard, we can reuse the same report
+		 * by using the second byte which is constant in the USB
+		 * HID report descriptor */
+		data[1] = data[0];
+		data[0] = REPORT_TYPE_KEYBOARD;
+
+		logi_dj_recv_forward_report(djrcv_dev->self_dj_device, data,
+					    size);
+
+		/* restore previous state */
+		data[0] = data[1];
+		data[1] = 0;
+		return false;
+	}
 
 	switch (data[0]) {
 	case REPORT_ID_DJ_SHORT:
@@ -1058,6 +1416,10 @@ static int logi_dj_raw_event(struct hid_device *hdev,
 		return logi_dj_hidpp_event(hdev, report, data, size);
 	}
 
+	if (djrcv_dev->self_dj_device)
+		logi_dj_recv_forward_report(djrcv_dev->self_dj_device, data,
+					    size);
+
 	return false;
 }
 
@@ -1076,6 +1438,7 @@ static int logi_dj_probe(struct hid_device *hdev,
 	struct hid_report_enum *rep_enum;
 	struct hid_report *rep;
 	struct dj_receiver_dev *djrcv_dev;
+	unsigned int application;
 	bool has_hidpp = false;
 	int retval;
 
@@ -1091,6 +1454,10 @@ static int logi_dj_probe(struct hid_device *hdev,
 
 	rep_enum = &hdev->report_enum[HID_INPUT_REPORT];
 
+	/* no input reports, bail out */
+	if (list_empty(&rep_enum->report_list))
+		return -ENODEV;
+
 	/*
 	 * Check for the HID++ application.
 	 * Note: we should theoretically check for HID++ and DJ
@@ -1103,10 +1470,14 @@ static int logi_dj_probe(struct hid_device *hdev,
 
 	/* Ignore interfaces without DJ/HID++ collection, they will not carry
 	 * any data, dont create any hid_device for them */
-	if (!has_hidpp)
+	if (!has_hidpp && id->driver_data == recvr_type_dj)
 		return -ENODEV;
 
-	/* Treat DJ/HID++ interface */
+	/* get the current application attached to the node */
+	rep = list_first_entry(&rep_enum->report_list,
+			       struct hid_report,
+			       list);
+	application = rep->application;
 
 	djrcv_dev = devm_kzalloc(&hdev->dev, sizeof(*djrcv_dev), GFP_KERNEL);
 	if (!djrcv_dev) {
@@ -1115,6 +1486,9 @@ static int logi_dj_probe(struct hid_device *hdev,
 		return -ENOMEM;
 	}
 	djrcv_dev->hdev = hdev;
+	djrcv_dev->type = id->driver_data;
+	djrcv_dev->is_hidpp = has_hidpp;
+	djrcv_dev->application = application;
 	INIT_WORK(&djrcv_dev->work, delayedwork_callback);
 	spin_lock_init(&djrcv_dev->lock);
 	if (kfifo_alloc(&djrcv_dev->notif_fifo,
@@ -1130,6 +1504,10 @@ static int logi_dj_probe(struct hid_device *hdev,
 		return retval;
 
 	hid_set_drvdata(hdev, djrcv_dev);
+
+	retval = dj_add_shared_data(djrcv_dev);
+	if (retval)
+		return retval;
 
 
 	/* Starts the usb device and connects to upper interfaces hiddev and
@@ -1210,9 +1588,19 @@ static void logi_dj_remove(struct hid_device *hdev)
 
 static const struct hid_device_id logi_dj_receivers[] = {
 	{HID_USB_DEVICE(USB_VENDOR_ID_LOGITECH,
-		USB_DEVICE_ID_LOGITECH_UNIFYING_RECEIVER)},
+		USB_DEVICE_ID_LOGITECH_UNIFYING_RECEIVER),
+	 .driver_data = recvr_type_dj},
 	{HID_USB_DEVICE(USB_VENDOR_ID_LOGITECH,
-		USB_DEVICE_ID_LOGITECH_UNIFYING_RECEIVER_2)},
+		USB_DEVICE_ID_LOGITECH_UNIFYING_RECEIVER_2),
+	 .driver_data = recvr_type_dj},
+	{ /* Logitech Nano (non DJ) receiver */
+	  HID_USB_DEVICE(USB_VENDOR_ID_LOGITECH,
+			 USB_DEVICE_ID_LOGITECH_NANO_RECEIVER),
+	 .driver_data = recvr_type_hidpp},
+	{ /* Logitech Nano (non DJ) receiver */
+	  HID_USB_DEVICE(USB_VENDOR_ID_LOGITECH,
+			 USB_DEVICE_ID_LOGITECH_NANO_RECEIVER_2),
+	 .driver_data = recvr_type_hidpp},
 	{}
 };
 
