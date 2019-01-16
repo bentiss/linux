@@ -830,6 +830,19 @@ static void logi_dj_recv_queue_notification(struct dj_receiver_dev *djrcv_dev,
 	}
 }
 
+/*
+ * Register 0xB5 is "pairing information". It is solely intended for the
+ * receiver, so do not overwrite the device index.
+ */
+static const u8 unifying_pairing_query[]  = { REPORT_ID_HIDPP_SHORT,
+					      HIDPP_RECEIVER_INDEX,
+					      HIDPP_GET_LONG_REGISTER,
+					      HIDPP_REG_PAIRING_INFORMATION };
+static const u8 unifying_pairing_answer[] = { REPORT_ID_HIDPP_LONG,
+					      HIDPP_RECEIVER_INDEX,
+					      HIDPP_GET_LONG_REGISTER,
+					      HIDPP_REG_PAIRING_INFORMATION };
+
 static void logi_hidpp_recv_queue_notif(struct dj_receiver_dev *djrcv_dev,
 					struct hidpp1_report *hidpp_report)
 {
@@ -879,6 +892,29 @@ static void logi_hidpp_recv_queue_notif(struct dj_receiver_dev *djrcv_dev,
 			 * receiver for the list of connected devices in
 			 * the delayed work callback. */
 			workitem.type = WORKITEM_TYPE_UNKNOWN;
+		}
+	}
+
+	if (!memcmp(hidpp_report, unifying_pairing_answer,
+	    sizeof(unifying_pairing_answer)) &&
+	    (hidpp_report->params[0] & 0xF0) == HIDPP_PAIRING_INFORMATION) {
+		workitem.type = WORKITEM_TYPE_PAIRED;
+		workitem.device_index = (hidpp_report->params[0] & 0x0F) + 1;
+		workitem.quad_id_msb = hidpp_report->params[3];
+		workitem.quad_id_lsb = hidpp_report->params[4];
+		switch (hidpp_report->params[7]) {
+		case REPORT_TYPE_KEYBOARD:
+			workitem.reports_supported |= STD_KEYBOARD;
+			break;
+		case REPORT_TYPE_MOUSE:
+			if (djrcv_dev->type == recvr_type_dual_hidpp)
+				workitem.reports_supported |= STD_MOUSE;
+			else if (djrcv_dev->type == recvr_type_gaming_hidpp)
+				workitem.reports_supported |= HIGRES_MOUSE;
+			workitem.reports_supported |= MULTIMEDIA |
+						      POWER_KEYS |
+						      MEDIA_CENTER;
+			break;
 		}
 	}
 
@@ -984,13 +1020,49 @@ static int logi_dj_recv_send_report(struct dj_receiver_dev *djrcv_dev,
 	return 0;
 }
 
+static int logi_dj_recv_query_hidpp_devices(struct dj_receiver_dev *djrcv_dev)
+{
+	u8 template[] = {REPORT_ID_HIDPP_SHORT,
+			 HIDPP_RECEIVER_INDEX,
+			 HIDPP_GET_LONG_REGISTER,
+			 HIDPP_REG_PAIRING_INFORMATION,
+			 HIDPP_PAIRING_INFORMATION,
+			 0x00, 0x00};
+	u8 *hidpp_report;
+	u8 i;
+	int retval;
+
+	if (!djrcv_dev->is_hidpp)
+		return 0;
+
+	hidpp_report = kmemdup(template, sizeof(template), GFP_KERNEL);
+	if (!hidpp_report)
+		return -ENOMEM;
+
+	for (i = 0; i < 2; i++) {
+		hidpp_report[4] = HIDPP_PAIRING_INFORMATION | i;
+
+		retval = hid_hw_raw_request(djrcv_dev->hdev,
+					    REPORT_ID_HIDPP_SHORT,
+					    hidpp_report, sizeof(template),
+					    HID_OUTPUT_REPORT,
+					    HID_REQ_SET_REPORT);
+
+		/* give time for the receiver to process the event */
+		msleep(1);
+	}
+
+	kfree(hidpp_report);
+	return 0;
+}
+
 static int logi_dj_recv_query_paired_devices(struct dj_receiver_dev *djrcv_dev)
 {
 	struct dj_report *dj_report;
 	int retval;
 
 	if (djrcv_dev->type != recvr_type_dj)
-		return 0;
+		return logi_dj_recv_query_hidpp_devices(djrcv_dev);
 
 	/* no need to protect djrcv_dev->querying_devices */
 	if (djrcv_dev->querying_devices)
@@ -1078,19 +1150,6 @@ static void logi_dj_ll_close(struct hid_device *hid)
 {
 	dbg_hid("%s:%s\n", __func__, hid->phys);
 }
-
-/*
- * Register 0xB5 is "pairing information". It is solely intended for the
- * receiver, so do not overwrite the device index.
- */
-static u8 unifying_pairing_query[]  = { REPORT_ID_HIDPP_SHORT,
-					HIDPP_RECEIVER_INDEX,
-					HIDPP_GET_LONG_REGISTER,
-					HIDPP_REG_PAIRING_INFORMATION };
-static u8 unifying_pairing_answer[] = { REPORT_ID_HIDPP_LONG,
-					HIDPP_RECEIVER_INDEX,
-					HIDPP_GET_LONG_REGISTER,
-					HIDPP_REG_PAIRING_INFORMATION };
 
 static int logi_dj_ll_raw_request(struct hid_device *hid,
 				  unsigned char reportnum, __u8 *buf,
