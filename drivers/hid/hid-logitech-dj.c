@@ -109,9 +109,12 @@
 #define HIDPP_DEVICE_TYPE_MASK			GENMASK(3, 0)
 #define HIDPP_LINK_STATUS_MASK			BIT(6)
 
+#define HIDPP_GET_REGISTER			0x80
 #define HIDPP_GET_LONG_REGISTER			0x83
+#define HIDPP_REG_CONNECTION_STATE		0x02
 #define HIDPP_REG_PAIRING_INFORMATION		0xB5
 #define HIDPP_PAIRING_INFORMATION		0x20
+#define HIDPP_FAKE_DEVICE_ARRIVAL		0x02
 
 enum recvr_type {
 	recvr_type_dj,
@@ -853,11 +856,12 @@ static void logi_hidpp_recv_queue_notif(struct dj_receiver_dev *djrcv_dev,
 
 	switch (hidpp_report->sub_id) {
 	case REPORT_TYPE_NOTIF_DEVICE_CONNECTED:
-		if (hidpp_report->params[HIDPP_PARAM_DEVICE_INFO] &
-				HIDPP_LINK_STATUS_MASK)
-			/* link not established, no need to do anything */
-			return;
-
+		if (hidpp_report->reg_address < 0x05) {
+			hid_warn(djrcv_dev->hdev,
+				 "unusable receiver of type 0x%02x",
+				 hidpp_report->reg_address);
+			break;
+		}
 		workitem.type = WORKITEM_TYPE_PAIRED;
 		workitem.quad_id_msb =
 			hidpp_report->params[HIDPP_PARAM_EQUAD_MSB];
@@ -1022,14 +1026,13 @@ static int logi_dj_recv_send_report(struct dj_receiver_dev *djrcv_dev,
 
 static int logi_dj_recv_query_hidpp_devices(struct dj_receiver_dev *djrcv_dev)
 {
-	u8 template[] = {REPORT_ID_HIDPP_SHORT,
-			 HIDPP_RECEIVER_INDEX,
-			 HIDPP_GET_LONG_REGISTER,
-			 HIDPP_REG_PAIRING_INFORMATION,
-			 HIDPP_PAIRING_INFORMATION,
-			 0x00, 0x00};
+	const u8 template[] = {REPORT_ID_HIDPP_SHORT,
+			       HIDPP_RECEIVER_INDEX,
+			       HIDPP_GET_REGISTER,
+			       HIDPP_REG_CONNECTION_STATE,
+			       HIDPP_FAKE_DEVICE_ARRIVAL,
+			       0x00, 0x00};
 	u8 *hidpp_report;
-	u8 i;
 	int retval;
 
 	if (!djrcv_dev->is_hidpp)
@@ -1039,18 +1042,11 @@ static int logi_dj_recv_query_hidpp_devices(struct dj_receiver_dev *djrcv_dev)
 	if (!hidpp_report)
 		return -ENOMEM;
 
-	for (i = 0; i < 2; i++) {
-		hidpp_report[4] = HIDPP_PAIRING_INFORMATION | i;
-
-		retval = hid_hw_raw_request(djrcv_dev->hdev,
-					    REPORT_ID_HIDPP_SHORT,
-					    hidpp_report, sizeof(template),
-					    HID_OUTPUT_REPORT,
-					    HID_REQ_SET_REPORT);
-
-		/* give time for the receiver to process the event */
-		msleep(1);
-	}
+	retval = hid_hw_raw_request(djrcv_dev->hdev,
+				    REPORT_ID_HIDPP_SHORT,
+				    hidpp_report, sizeof(template),
+				    HID_OUTPUT_REPORT,
+				    HID_REQ_SET_REPORT);
 
 	kfree(hidpp_report);
 	return 0;
