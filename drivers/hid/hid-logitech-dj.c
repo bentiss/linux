@@ -1510,21 +1510,25 @@ static int logi_dj_raw_event(struct hid_device *hdev,
 	struct dj_receiver_dev *djrcv_dev = hid_get_drvdata(hdev);
 	dbg_hid("%s, size:%d\n", __func__, size);
 
-	if (!hdev->report_enum[HID_INPUT_REPORT].numbered &&
-	    djrcv_dev->application == HID_GD_KEYBOARD &&
-	    djrcv_dev->self_dj_device) {
-		/* in case of the keyboard, we can reuse the same report
-		 * by using the second byte which is constant in the USB
-		 * HID report descriptor */
-		data[1] = data[0];
-		data[0] = REPORT_TYPE_KEYBOARD;
 
-		logi_dj_recv_forward_report(djrcv_dev->self_dj_device, data,
-					    size);
+	if (!hdev->report_enum[HID_INPUT_REPORT].numbered) {
 
-		/* restore previous state */
-		data[0] = data[1];
-		data[1] = 0;
+		if (djrcv_dev->application == HID_GD_KEYBOARD &&
+		    djrcv_dev->self_dj_device) {
+			/* in case of the keyboard, we can reuse the same report
+			 * by using the second byte which is constant in the USB
+			 * HID report descriptor */
+			data[1] = data[0];
+			data[0] = REPORT_TYPE_KEYBOARD;
+
+			logi_dj_recv_forward_report(djrcv_dev->self_dj_device,
+						    data, size);
+
+			/* restore previous state */
+			data[0] = data[1];
+			data[1] = 0;
+		}
+
 		return false;
 	}
 
