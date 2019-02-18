@@ -170,6 +170,7 @@ struct dj_device {
 #define WORKITEM_TYPE_EMPTY	0
 #define WORKITEM_TYPE_PAIRED	1
 #define WORKITEM_TYPE_UNPAIRED	2
+#define WORKITEM_TYPE_BYPASS	3
 #define WORKITEM_TYPE_UNKNOWN	255
 
 struct dj_workitem {
@@ -730,7 +731,7 @@ static void delayedwork_callback(struct work_struct *work)
 {
 	struct dj_receiver_dev *djrcv_dev =
 		container_of(work, struct dj_receiver_dev, work);
-
+	struct hid_device *hdev = NULL;
 	struct dj_workitem workitem;
 	unsigned long flags;
 	int count;
@@ -771,6 +772,34 @@ static void delayedwork_callback(struct work_struct *work)
 			dev_err(&djrcv_dev->hdev->dev,
 				"%s:logi_dj_recv_query_paired_devices "
 				"error:%d\n", __func__, retval);
+		}
+		break;
+	case WORKITEM_TYPE_BYPASS:
+		if (workitem.device_index == 1 &&
+		    djrcv_dev->shared->keyboard)
+			hdev = djrcv_dev->shared->keyboard;
+		else if (workitem.device_index == 2 &&
+			 djrcv_dev->shared->mouse)
+			hdev = djrcv_dev->shared->mouse;
+		if (hdev && !(hdev->claimed & HID_CLAIMED_INPUT)) {
+			hid_device_io_stop(hdev);
+			hid_hw_close(hdev);
+			hid_hw_stop(hdev);
+			retval = hid_hw_start(hdev, HID_CONNECT_DEFAULT);
+			if (retval) {
+				hid_err(hdev,
+					"%s: error while starting error:%d\n",
+					__func__, retval);
+				break;
+			}
+			hid_device_io_start(hdev);
+			retval = hid_hw_open(hdev);
+			if (retval) {
+				hid_err(hdev,
+					"%s: error while opening error:%d\n",
+					__func__, retval);
+				break;
+			}
 		}
 		break;
 	case WORKITEM_TYPE_EMPTY:
@@ -839,80 +868,79 @@ static void logi_hidpp_recv_queue_notif(struct dj_receiver_dev *djrcv_dev,
 	const char *device_type = "UNKNOWN";
 	struct dj_workitem workitem = {
 		.device_index = hidpp_report->device_index,
+		.type = WORKITEM_TYPE_BYPASS,
 	};
-	int type = 0;
 
 	if (hidpp_report->sub_id == REPORT_TYPE_NOTIF_DEVICE_CONNECTED) {
 		switch (hidpp_report->params[HIDPP_PARAM_PROTO_TYPE]) {
 		case 0x00:
 			/* UNKNOWN */
-			type = -ENODEV;
 			break;
 		case 0x01:
 			device_type = "Bluetooth";
 			break;
 		case 0x02:
 			device_type = "27Mhz";
-			type = -ENODEV;
 			break;
 		case 0x03:
 			device_type = "QUAD or eQUAD";
+			workitem.type = WORKITEM_TYPE_PAIRED;
 			break;
 		case 0x04:
 			device_type = "eQUAD step 4 DJ";
+			workitem.type = WORKITEM_TYPE_PAIRED;
 			break;
 		case 0x05:
 			device_type = "DFU Lite";
-			type = -ENODEV;
 			break;
 		case 0x06:
 			device_type = "eQUAD step 4 Lite";
+			workitem.type = WORKITEM_TYPE_PAIRED;
 			break;
 		case 0x07:
 			device_type = "eQUAD step 4 Gaming";
-			type = -ENODEV;
 			break;
 		case 0x08:
 			device_type = "eQUAD step 4 for gamepads";
-			type = -ENODEV;
 			break;
 		case 0x0a:
 			device_type = "eQUAD nano Lite";
+			workitem.type = WORKITEM_TYPE_PAIRED;
 			break;
 		}
-		if (type < 0) {
-			hid_warn(djrcv_dev->hdev,
-				 "unusable device of type %s (0x%02x) connected on slot %d",
-				 device_type,
-				 hidpp_report->params[HIDPP_PARAM_PROTO_TYPE],
-				 hidpp_report->device_index);
-			return;
-		}
+		hid_dbg(djrcv_dev->hdev,
+			"device of type %s (0x%02x) connected on slot %d",
+			device_type,
+			hidpp_report->params[HIDPP_PARAM_PROTO_TYPE],
+			hidpp_report->device_index);
 
-		hid_info(djrcv_dev->hdev,
-			 "device of type %s (0x%02x) connected on slot %d",
-			 device_type,
-			 hidpp_report->params[HIDPP_PARAM_PROTO_TYPE],
-			 hidpp_report->device_index);
-		workitem.type = WORKITEM_TYPE_PAIRED;
-		workitem.quad_id_msb =
-			hidpp_report->params[HIDPP_PARAM_EQUAD_MSB];
-		workitem.quad_id_lsb =
-			hidpp_report->params[HIDPP_PARAM_EQUAD_LSB];
-		switch (hidpp_report->params[HIDPP_PARAM_DEVICE_INFO] &
-			HIDPP_DEVICE_TYPE_MASK) {
-		case REPORT_TYPE_KEYBOARD:
-			workitem.reports_supported |= STD_KEYBOARD;
-			break;
-		case REPORT_TYPE_MOUSE:
-			if (djrcv_dev->type == recvr_type_dual_hidpp)
-				workitem.reports_supported |= STD_MOUSE;
-			else if (djrcv_dev->type == recvr_type_gaming_hidpp)
-				workitem.reports_supported |= HIGRES_MOUSE;
-			workitem.reports_supported |= MULTIMEDIA |
-						      POWER_KEYS |
-						      MEDIA_CENTER;
-			break;
+		if (workitem.type == WORKITEM_TYPE_PAIRED) {
+			switch (hidpp_report->params[HIDPP_PARAM_PROTO_TYPE]) {
+			case 0x03: /* QUAD or eQUAD */
+				/* fall through */
+			case 0x04: /* eQUAD step 4 DJ */
+				/* fall through */
+			case 0x06: /* eQUAD step 4 Lite */
+				/* fall through */
+			case 0x0a: /* eQUAD nano Lite */
+				workitem.quad_id_msb =
+					hidpp_report->params[HIDPP_PARAM_EQUAD_MSB];
+				workitem.quad_id_lsb =
+					hidpp_report->params[HIDPP_PARAM_EQUAD_LSB];
+				switch (hidpp_report->params[HIDPP_PARAM_DEVICE_INFO] &
+					HIDPP_DEVICE_TYPE_MASK) {
+				case REPORT_TYPE_KEYBOARD:
+					workitem.reports_supported |= STD_KEYBOARD;
+					break;
+				case REPORT_TYPE_MOUSE:
+					workitem.reports_supported |= STD_MOUSE |
+								      MULTIMEDIA |
+								      POWER_KEYS |
+								      MEDIA_CENTER;
+					break;
+				}
+			}
+
 		}
 	} else {
 		/* A normal report (i. e. not belonging to a pair/unpair
