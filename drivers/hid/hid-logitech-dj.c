@@ -120,6 +120,7 @@
 enum recvr_type {
 	recvr_type_dj,
 	recvr_type_hidpp,
+	recvr_type_gaming_hidpp,
 };
 
 struct dj_report {
@@ -907,6 +908,11 @@ static void logi_hidpp_recv_queue_notif(struct dj_receiver_dev *djrcv_dev,
 			device_type = "eQUAD nano Lite";
 			workitem.type = WORKITEM_TYPE_PAIRED;
 			break;
+		case 0x0c:
+			device_type = "eQUAD Lightspeed";
+			workitem.type = WORKITEM_TYPE_PAIRED;
+			djrcv_dev->type = recvr_type_gaming_hidpp;
+			break;
 		}
 		hid_dbg(djrcv_dev->hdev,
 			"device of type %s (0x%02x) connected on slot %d",
@@ -923,6 +929,8 @@ static void logi_hidpp_recv_queue_notif(struct dj_receiver_dev *djrcv_dev,
 			case 0x06: /* eQUAD step 4 Lite */
 				/* fall through */
 			case 0x0a: /* eQUAD nano Lite */
+				/* fall through */
+			case 0x0c: /* eQUAD Lightspeed */
 				workitem.quad_id_msb =
 					hidpp_report->params[HIDPP_PARAM_EQUAD_MSB];
 				workitem.quad_id_lsb =
@@ -941,6 +949,11 @@ static void logi_hidpp_recv_queue_notif(struct dj_receiver_dev *djrcv_dev,
 				}
 			}
 
+			if (hidpp_report->params[HIDPP_PARAM_PROTO_TYPE] == 0x0c &&
+			    (workitem.reports_supported & STD_MOUSE)) {
+				workitem.reports_supported &= ~STD_MOUSE;
+				workitem.reports_supported |= HIGRES_MOUSE;
+			}
 		}
 	} else {
 		/* A normal report (i. e. not belonging to a pair/unpair
@@ -966,7 +979,8 @@ static void logi_hidpp_recv_queue_notif(struct dj_receiver_dev *djrcv_dev,
 			"queued\n", __func__);
 	}
 
-	if (djrcv_dev->type == recvr_type_gaming_hidpp) {
+	if (hidpp_report->sub_id == REPORT_TYPE_NOTIF_DEVICE_CONNECTED &&
+	    hidpp_report->params[HIDPP_PARAM_PROTO_TYPE] == 0x0c) {
 		workitem.reports_supported ^= STD_KEYBOARD |
 					      HIGRES_MOUSE |
 					      MULTIMEDIA |
